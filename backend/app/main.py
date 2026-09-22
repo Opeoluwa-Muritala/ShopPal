@@ -23,8 +23,25 @@ def create_app() -> FastAPI:
     setup_logging()
     application = FastAPI(
         title="Naija Marketplace API",
-        description="WhatsApp e-commerce bot backend",
+        description=(
+            "ShopPal backend for vendor commerce and customer conversations over "
+            "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
+            "the configured frontend API key and applicable account credentials; "
+            "provider webhooks use provider-specific signature verification."
+        ),
         version="0.6.0",
+        openapi_tags=[
+            {
+                "name": "Meta WhatsApp",
+                "description": (
+                    "Public Meta Cloud API verification and signed event callbacks."
+                ),
+            },
+            {
+                "name": "Legal",
+                "description": "Public legal pages required by connected platforms.",
+            },
+        ],
     )
 
     # Global timing and structured request logging middleware
