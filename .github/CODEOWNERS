@@ -1,0 +1,14 @@
+# Global default owners
+* @tech-lead-placeholder
+
+# Backend ownership
+backend/** @backend-dev-placeholder
+.github/workflows/backend-ci.yml @backend-dev-placeholder
+
+# Frontend ownership
+frontend/** @frontend-dev-placeholder
+.github/workflows/frontend-ci.yml @frontend-dev-placeholder
+
+# Shared DevOps & Documentation
+.github/** @tech-lead-placeholder
+docs/** @tech-lead-placeholder @backend-dev-placeholder @frontend-dev-placeholder
