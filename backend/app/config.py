@@ -15,14 +15,22 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Keep health checks usable before external services are configured.
+    # Database & Cache
     database_url: PostgresDsn | None = Field(default=None, repr=False)
     redis_host: str = "localhost"
     redis_port: int = Field(default=6379, ge=1, le=65535)
+
+    # Twilio / WhatsApp
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
+
+    # LLM (Anthropic)
     anthropic_api_key: SecretStr = SecretStr("")
+
+    # Paystack Payments
+    paystack_secret_key: SecretStr = SecretStr("")
+    paystack_public_key: str = ""
 
 
 @lru_cache
