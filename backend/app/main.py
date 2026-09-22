@@ -1,7 +1,12 @@
 from fastapi import FastAPI
 
-app = FastAPI(title="Naija Marketplace API")
+from app.routers import health
 
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok"}
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="Naija Marketplace API")
+    application.include_router(health.router)
+    return application
+
+
+app = create_app()
