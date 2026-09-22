@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
@@ -10,6 +11,7 @@ from app.config import Settings, get_settings
 from app.db.models import WhatsAppMessage
 from app.db.session import get_engine
 from app.main import app
+from app.routers.whatsapp_webhook import _send_meta_message
 
 VERIFY_TOKEN = "meta-verify-token"
 APP_SECRET = "meta-app-secret"
@@ -112,6 +114,33 @@ def test_post_rejects_signature_mismatch():
         app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 403
+
+
+def test_send_meta_message_calls_graph_api_without_exposing_token(monkeypatch):
+    response = Mock()
+    post = Mock(return_value=response)
+    monkeypatch.setattr("app.routers.whatsapp_webhook.httpx.post", post)
+    settings = Settings(
+        _env_file=None,
+        WHATSAPP_ACCESS_TOKEN="secret-meta-token",
+        WHATSAPP_PHONE_NUMBER_ID="123456789",
+    )
+
+    _send_meta_message("2348012345678", "Hello from ShopPal", settings)
+
+    response.raise_for_status.assert_called_once_with()
+    post.assert_called_once_with(
+        "https://graph.facebook.com/v23.0/123456789/messages",
+        headers={"Authorization": "Bearer secret-meta-token"},
+        json={
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": "2348012345678",
+            "type": "text",
+            "text": {"preview_url": False, "body": "Hello from ShopPal"},
+        },
+        timeout=20,
+    )
 
 
 def test_message_payload_persists_once_when_meta_redelivers():

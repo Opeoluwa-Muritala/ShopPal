@@ -11,6 +11,12 @@ This document tracks significant architectural and technical decisions made for 
 - **Context, Decision & Consequences**: 
   While Meta's Cloud API provides native WhatsApp Business account integration without third-party transit costs, the formal business verification, phone number provisioning, and display name review process often take several business days to weeks—which is incompatible with the tight 4-day hackathon timeline. We chose the Twilio WhatsApp Sandbox because it offers instantaneous, zero-delay activation, pre-configured inbound/outbound webhooks, and predictable API abstractions for both messaging and media. The consequence is that demo testers must send a one-time join code (e.g. `join <sandbox-keyword>`) to interact with the bot during testing, which is fully acceptable for MVP demonstration while allowing seamless migration to production Meta Cloud API or Twilio WhatsApp Business profiles post-hackathon.
 
+### Amendment: Meta Cloud API support
+
+Meta WhatsApp Cloud API is now supported alongside Twilio. Twilio remains useful
+for sandbox testing. Meta uses `/webhooks/whatsapp`, raw-body signature checks,
+durable event persistence, message-ID deduplication, and direct Graph API replies.
+
 ---
 
 ## ADR 002: FastAPI Chosen for Backend Engine
