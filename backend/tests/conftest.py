@@ -5,6 +5,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.session import database_url
+from app.main import app
+from app.services.frontend_auth import require_frontend_api_key
+
+
+@pytest.fixture(autouse=True)
+def allow_test_frontend_client():
+    app.dependency_overrides[require_frontend_api_key] = lambda: None
+    yield
+    app.dependency_overrides.pop(require_frontend_api_key, None)
 
 
 @pytest.fixture(scope="session")
