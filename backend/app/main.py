@@ -4,7 +4,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.logging_conf import logger, setup_logging
-from app.routers import accounts, auth, health, logs, orders, products, vendors, webhook
+from app.routers import (
+    accounts,
+    auth,
+    health,
+    logs,
+    orders,
+    products,
+    vendors,
+    webhook,
+    whatsapp_webhook,
+)
 
 
 def create_app() -> FastAPI:
@@ -72,6 +82,7 @@ def create_app() -> FastAPI:
     application.include_router(health.router)
     application.include_router(logs.router)
     application.include_router(webhook.router)
+    application.include_router(whatsapp_webhook.router)
     application.include_router(vendors.router)
     application.include_router(auth.router)
     application.include_router(accounts.router)
