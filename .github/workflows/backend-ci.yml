@@ -2,6 +2,7 @@ name: Backend CI
 
 on:
   pull_request:
+
     branches: [main, 'feature/**']
 
 permissions:
@@ -11,6 +12,10 @@ jobs:
   lint-and-test:
     name: backend-ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
 
     defaults:
       run:
@@ -22,7 +27,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect Changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend-ci.yml'
+
       - name: Set up Python 3.11
+        if: steps.filter.outputs.backend == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -30,6 +45,7 @@ jobs:
           cache-dependency-path: 'backend/requirements.txt'
 
       - name: Install Dependencies
+        if: steps.filter.outputs.backend == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install ruff pytest pytest-cov httpx
@@ -38,6 +54,7 @@ jobs:
           fi
 
       - name: Run Linter (Ruff)
+        if: steps.filter.outputs.backend == 'true'
         run: |
           ruff check .
 
@@ -66,15 +83,7 @@ jobs:
           python ../scripts/check_coverage_floor.py "$BASE_SHA"
 
       - name: Run Tests with Coverage
-        env:
-          PYTEST_ADDOPTS: ''
+
         run: |
           pytest tests -o addopts= --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=${{ steps.coverage-floor.outputs.floor }}
 
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && hashFiles('backend/coverage.xml') != '' }}
-        with:
-          name: backend-coverage
-          path: backend/coverage.xml
-          if-no-files-found: error

@@ -44,9 +44,7 @@ def calculate_and_verify_item(
     return product, item_total
 
 
-def decrement_stock_atomic(
-    session: Session, product_id: UUID | str, quantity: int
-) -> None:
+def decrement_stock_atomic(session: Session, product_id: UUID | str, quantity: int) -> None:
     """
     ATOMIC STOCK DECREMENT:
     Decrements stock directly in the database with a conditional check:
@@ -130,15 +128,13 @@ def create_order_from_cart(
         decrement_stock_atomic(session, product.id, qty)
 
         order_total += item_total
-        validated_items.append(
-            {
-                "product_id": str(product.id),
-                "name": product.name,
-                "unit_price": str(product.price),
-                "qty": qty,
-                "subtotal": str(item_total),
-            }
-        )
+        validated_items.append({
+            "product_id": str(product.id),
+            "name": product.name,
+            "unit_price": str(product.price),
+            "qty": qty,
+            "subtotal": str(item_total),
+        })
 
     # 4. Generate unique order code and persist
     order_code = f"ORD-{uuid4().hex[:8].upper()}"

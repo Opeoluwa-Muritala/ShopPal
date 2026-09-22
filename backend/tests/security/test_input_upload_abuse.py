@@ -26,9 +26,7 @@ def test_csv_formula_injection_is_sanitized():
     ]
     for payload in dangerous_inputs:
         sanitized = sanitize_csv_cell(payload)
-        assert sanitized.startswith("'"), (
-            f"Payload {payload} was not escaped with single quote"
-        )
+        assert sanitized.startswith("'"), f"Payload {payload} was not escaped with single quote"
 
     safe_input = "Original Chelsea Boot"
     assert sanitize_csv_cell(safe_input) == "Original Chelsea Boot"
@@ -52,16 +50,14 @@ def test_media_url_ssrf_rejects_arbitrary_domains_and_internal_ips():
     """
     malicious_urls = [
         "http://169.254.169.254/latest/meta-data/",  # AWS metadata SSRF
-        "https://127.0.0.1:8000/internal-admin",  # Localhost SSRF
+        "https://127.0.0.1:8000/internal-admin",     # Localhost SSRF
         "https://localhost:9000/api",
         "https://192.168.1.1/router",
         "https://attacker-c2-server.com/malicious.ogg",
-        "http://api.twilio.com/payload.wav",  # Insecure HTTP scheme
+        "http://api.twilio.com/payload.wav",         # Insecure HTTP scheme
     ]
     for url in malicious_urls:
-        assert validate_media_url(url) is False, (
-            f"Malicious URL '{url}' should have been rejected"
-        )
+        assert validate_media_url(url) is False, f"Malicious URL '{url}' should have been rejected"
 
 
 def test_media_url_ssrf_accepts_verified_twilio_and_meta_domains():
@@ -73,6 +69,4 @@ def test_media_url_ssrf_accepts_verified_twilio_and_meta_domains():
         "https://pps.whatsapp.net/v/t61.24694-24/123_n.jpg",
     ]
     for url in legitimate_urls:
-        assert validate_media_url(url) is True, (
-            f"Legitimate URL '{url}' should have been accepted"
-        )
+        assert validate_media_url(url) is True, f"Legitimate URL '{url}' should have been accepted"

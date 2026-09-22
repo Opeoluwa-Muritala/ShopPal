@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     paystack_secret_key: SecretStr = SecretStr("")
     paystack_public_key: str = ""
 
+    # JWT Authentication
+    jwt_secret: SecretStr = SecretStr("default_demo_jwt_secret_32_chars_long_!")
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:

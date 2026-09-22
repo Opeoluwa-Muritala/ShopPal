@@ -67,6 +67,11 @@ ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
 PAYSTACK_PUBLIC_KEY=paystack_pk_test_placeholder_key
 PAYSTACK_WEBHOOK_SECRET=paystack_webhook_secret_hash
+
+# Authentication & Session Security (Stage 6)
+JWT_SECRET=super_secret_jwt_signing_key_at_least_32_chars
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
 ### 3. Twilio Sandbox Webhook Configuration
@@ -92,14 +97,17 @@ PAYSTACK_WEBHOOK_SECRET=paystack_webhook_secret_hash
 ```
 naija-marketplace/
 ├── backend/
+│   ├── alembic/                # Alembic database schema migrations
 │   ├── app/
 │   │   ├── db/                 # Database models and session connection
-│   │   ├── routers/            # FastAPI route handlers (health, logs, webhooks)
-│   │   ├── services/           # LLM agent, Twilio client, Paystack integrations
+│   │   ├── routers/            # FastAPI route handlers (auth, accounts, vendors, orders, products, webhooks)
+│   │   ├── services/           # Auth & JWT service, LLM agent, Twilio client, Paystack integrations
 │   │   ├── logging_conf.py     # Structured JSON logging & recent logs buffer
 │   │   └── main.py             # FastAPI entrypoint with error recovery middleware
 │   ├── tests/                  # Pytest test suite & conftest fixtures
+│   │   ├── security/           # Security & abuse tests (IDOR, rate-limiting, injection)
 │   │   ├── load/               # Async load testing scripts (10+ concurrent users)
+│   │   ├── test_auth.py        # Comprehensive Stage 6 auth & account structure tests
 │   │   ├── test_error_handling.py # Structured logging & webhook error recovery tests
 │   │   ├── test_load_smoke.py  # CI-runnable lightweight load test smoke check
 │   │   ├── test_config.py      # Configuration tests
