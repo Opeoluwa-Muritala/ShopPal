@@ -30,7 +30,6 @@ def test_cross_vendor_idor_attack_returns_403():
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
-        vendor_a_id = uuid4()
         vendor_b_id = uuid4()
 
         vendor_b = Vendor(
