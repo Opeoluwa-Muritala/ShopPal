@@ -1,16 +1,30 @@
-from typing import Generator
+import os
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
+from app.db.session import database_url
+
+
+@pytest.fixture(scope="session")
+def test_engine():
+    raw_url = os.environ.get("TEST_DATABASE_URL")
+    if not raw_url:
+        pytest.skip(
+            "TEST_DATABASE_URL not set; skipping live PostgreSQL database tests"
+        )
+    engine = create_engine(database_url(raw_url), hide_parameters=True)
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture
-def db_session() -> Generator:
-    """
-    Placeholder fixture stub for database test session.
-    No application or business logic. To be wired with a test database
-    or transactional rollback.
-    """
-    session = {"connected": True, "type": "mock_db_session"}
-    yield session
-    # Teardown logic stub
-    session["connected"] = False
+def db_session(test_engine):
+    with test_engine.connect() as connection:
+        transaction = connection.begin()
+        with Session(
+            bind=connection, join_transaction_mode="create_savepoint"
+        ) as session:
+            yield session
+        transaction.rollback()
