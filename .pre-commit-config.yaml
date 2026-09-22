@@ -1,0 +1,21 @@
+# Pre-commit configuration for Naija Marketplace
+# Backend uses ruff and pytest
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: backend-tests
+        name: backend pytest (on push)
+        entry: bash -c "cd backend && pytest -q"
+        language: system
+        stages: [push]
+        files: ^backend/
+        pass_filenames: false
