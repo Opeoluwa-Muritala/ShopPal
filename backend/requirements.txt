@@ -1,0 +1,2 @@
+# Naija Marketplace (EcomBot) - Backend Dependencies
+# Add project dependencies here during sprint implementation
