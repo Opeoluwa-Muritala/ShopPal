@@ -1,10 +1,16 @@
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-router = APIRouter(tags=["legal"])
+router = APIRouter(tags=["Legal"])
 
 
-@router.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+@router.get(
+    "/privacy",
+    response_class=HTMLResponse,
+    summary="View the ShopPal privacy policy",
+    description="Public privacy notice used by Meta app details and Login dialogs.",
+    response_description="The current ShopPal privacy policy as HTML.",
+)
 def privacy_policy() -> HTMLResponse:
     return HTMLResponse(
         """<!doctype html>
