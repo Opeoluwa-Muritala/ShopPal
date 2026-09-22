@@ -2,7 +2,11 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [main]
+
+    branches: [main, 'feature/**']
+
+permissions:
+  contents: read
 
 jobs:
   lint-and-test:
@@ -20,6 +24,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Detect Changes
         id: filter
@@ -52,20 +58,32 @@ jobs:
         run: |
           ruff check .
 
-      - name: Run Tests with Coverage
-        if: steps.filter.outputs.backend == 'true'
+      - name: Run Database Migrations (if configured)
         run: |
-          pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+          if [ -f alembic.ini ]; then
+            if ! command -v alembic >/dev/null 2>&1; then
+              echo "Error: alembic.ini found but Alembic CLI is not installed."
+              exit 1
+            fi
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "alembic.ini found but DATABASE_URL is not configured. Skipping migration step."
+            else
+              alembic upgrade head
+            fi
+          else
+            echo "No alembic.ini found. Skipping migration step."
+          fi
 
-      - name: Annotate Code Coverage
-        uses: orgoro/coverage@v3.1
-        if: steps.filter.outputs.backend == 'true'
-        continue-on-error: true
-        with:
-          coverageFile: backend/coverage.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          thresholdModified: 0
+      - name: Enforce non-decreasing coverage floor
+        id: coverage-floor
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python -m unittest discover -s ../scripts/tests -p test_coverage_floor.py
+          python ../scripts/check_coverage_floor.py "$BASE_SHA"
 
-      - name: Backend CI Skipped
-        if: steps.filter.outputs.backend != 'true'
-        run: echo "No backend files changed. Backend CI skipped successfully."
+      - name: Run Tests with Coverage
+
+        run: |
+          pytest tests -o addopts= --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=${{ steps.coverage-floor.outputs.floor }}
+
