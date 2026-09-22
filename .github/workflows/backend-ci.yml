@@ -11,6 +11,10 @@ jobs:
   lint-and-test:
     name: Backend Lint & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
 
     defaults:
       run:
@@ -46,6 +50,7 @@ jobs:
       - name: Annotate Code Coverage
         uses: orgoro/coverage@v3.1
         if: always()
+        continue-on-error: true
         with:
           coverageFile: backend/coverage.xml
           token: ${{ secrets.GITHUB_TOKEN }}
