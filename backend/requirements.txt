@@ -1,2 +1,2 @@
-# Naija Marketplace (EcomBot) - Backend Dependencies
-# Add project dependencies here during sprint implementation
+fastapi>=0.115,<1.0
+uvicorn>=0.34,<1.0
