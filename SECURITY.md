@@ -1,0 +1,3 @@
+# Security Policy — Naija Marketplace (EcomBot)
+
+All contributors must uphold strict security practices during development: under no circumstances should real secrets, private tokens, or credentials be committed to the repository—all environment variables must reside exclusively in local, gitignored `.env` files matching `.env.example`. When integrating payment flows, Paystack secret keys must never be exposed to client-side code, and any public keys or transaction credentials rendered in merchant UI dashboards must be properly masked. Following the conclusion of the hackathon demo, all active API keys (Twilio, Anthropic Claude, Paystack, and database connection strings) must be promptly revoked and rotated.
