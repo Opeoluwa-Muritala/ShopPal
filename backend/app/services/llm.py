@@ -3,7 +3,6 @@
 import json
 import re
 from typing import Any
-from uuid import UUID
 
 from app.logging_conf import logger
 

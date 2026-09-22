@@ -1,6 +1,7 @@
 """Admin inspection endpoint for live structured logs during hackathon demo, secured with API key."""
 
 from typing import Any
+
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from app.logging_conf import recent_logs_buffer

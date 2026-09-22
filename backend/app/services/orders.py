@@ -1,6 +1,6 @@
 """Order creation and checkout services with prompt injection defense, atomic stock decrement, and Decimal currency handling."""
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 

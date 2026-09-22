@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
-from fastapi import HTTPException, Security, status
+from fastapi import HTTPException, status
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.orm import Session

@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from app.logging_conf import log_external_call, logger, recent_logs_buffer
+from app.logging_conf import log_external_call, recent_logs_buffer
 from app.main import app
 
 
