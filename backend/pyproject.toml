@@ -14,14 +14,14 @@ minversion = "7.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "--cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=40"
+addopts = "--cov=app --cov-report=term-missing --cov-report=xml"
 
 [tool.coverage.run]
 source = ["app"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
-fail_under = 40
+fail_under = 100
 show_missing = true
 
 [tool.ruff]

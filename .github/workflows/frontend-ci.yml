@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   pull_request:
-    branches: [main]
+
 
 jobs:
   lint-typecheck-test-build:
@@ -58,13 +58,11 @@ jobs:
         run: |
           npm run test:coverage
 
-      - name: Annotate Code Coverage
-        uses: davelosert/vitest-coverage-report-action@v2
-        if: steps.filter.outputs.frontend == 'true'
+
         with:
-          json-summary-path: frontend/coverage/coverage-summary.json
-          json-final-path: frontend/coverage/coverage-final.json
-        continue-on-error: true
+          name: frontend-coverage
+          path: frontend/coverage/
+          if-no-files-found: error
 
       - name: Run Build (Next.js)
         if: steps.filter.outputs.frontend == 'true'
