@@ -2,9 +2,10 @@
 
 from unittest.mock import MagicMock
 from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
-from app.db.models import Order, Vendor
+from app.db.models import Vendor
 from app.db.session import get_db
 from app.main import app
 

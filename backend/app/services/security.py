@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
-from fastapi import HTTPException, Security, status
+from fastapi import HTTPException, status
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -45,6 +45,7 @@ admin_key_header = APIKeyHeader(name="X-Admin-API-Key", auto_error=False)
 # 1. PII & Secrets Masking
 # ============================================================================
 
+
 def mask_phone(phone: str | None) -> str:
     """Masks a phone number, preserving country code and last 4 digits (e.g. +23480****5678)."""
     if not phone:
@@ -62,7 +63,11 @@ def mask_secret(secret: str | None) -> str:
     s = str(secret)
     if len(s) <= 8:
         return "***"
-    prefix = s[:7] if s.startswith(("sk_live_", "sk_test_", "pk_live_", "pk_test_")) else s[:3]
+    prefix = (
+        s[:7]
+        if s.startswith(("sk_live_", "sk_test_", "pk_live_", "pk_test_"))
+        else s[:3]
+    )
     return f"{prefix}***{s[-4:]}"
 
 
@@ -82,6 +87,7 @@ def sanitize_log_context(context: dict[str, Any]) -> dict[str, Any]:
 # ============================================================================
 # 2. Webhook Authenticity & Signature Verification
 # ============================================================================
+
 
 def verify_twilio_signature(
     auth_token: str,
@@ -103,7 +109,9 @@ def verify_twilio_signature(
         data_to_sign += key + form_params[key]
 
     computed = base64.b64encode(
-        hmac.new(auth_token.encode("utf-8"), data_to_sign.encode("utf-8"), hashlib.sha1).digest()
+        hmac.new(
+            auth_token.encode("utf-8"), data_to_sign.encode("utf-8"), hashlib.sha1
+        ).digest()
     ).decode("utf-8")
 
     return hmac.compare_digest(computed, signature)
@@ -142,6 +150,7 @@ def mark_paystack_event_processed(event_id: str) -> None:
 # ============================================================================
 # 3. Media URL SSRF Protection
 # ============================================================================
+
 
 def validate_media_url(url: str) -> bool:
     """
@@ -259,6 +268,7 @@ def parse_and_sanitize_catalog_csv(content_bytes: bytes) -> list[dict[str, str]]
 # 5. Abuse / Rate Limiting (Per-Phone Number Sliding Window)
 # ============================================================================
 
+
 def check_phone_rate_limit(phone: str) -> bool:
     """
     Applies sliding window rate limit (30 requests/minute) per phone number.
@@ -285,6 +295,7 @@ def clear_rate_limits() -> None:
 # ============================================================================
 # 6. IDOR / Data Isolation (Vendor-Scoped API Key Verification)
 # ============================================================================
+
 
 def verify_vendor_access(
     vendor_id: UUID | str,

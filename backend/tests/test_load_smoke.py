@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -16,6 +17,7 @@ async def test_load_smoke_concurrency():
     auth_headers = {"X-Admin-API-Key": "demo_admin_secret_key"}
 
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+
         async def fetch_sequence(i: int):
             start = time.perf_counter()
             r1 = await client.get("/api/health")

@@ -4,7 +4,15 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,7 +27,9 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 class ProductCreateSchema(BaseModel):
     vendor_id: UUID
     name: str = Field(..., min_length=1, max_length=120)
-    price: Decimal = Field(..., gt=0, decimal_places=2)  # Strict > 0, rejects negative/zero
+    price: Decimal = Field(
+        ..., gt=0, decimal_places=2
+    )  # Strict > 0, rejects negative/zero
     stock: int = Field(default=0, ge=0)  # Rejects negative stock
     image_url: str = Field(..., max_length=500)
     description: str | None = Field(default=None, max_length=100)

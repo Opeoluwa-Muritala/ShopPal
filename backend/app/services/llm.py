@@ -3,7 +3,6 @@
 import json
 import re
 from typing import Any
-from uuid import UUID
 
 from app.logging_conf import logger
 
@@ -36,7 +35,9 @@ CRITICAL SECURITY RULES:
         }
 
         # Attempt to parse embedded JSON action block if present
-        json_match = re.search(r"```json\s*(\{.*?\})\s*```", llm_response_text, re.DOTALL)
+        json_match = re.search(
+            r"```json\s*(\{.*?\})\s*```", llm_response_text, re.DOTALL
+        )
         if json_match:
             try:
                 data = json.loads(json_match.group(1))
@@ -49,10 +50,12 @@ CRITICAL SECURITY RULES:
                         try:
                             qty = int(item.get("qty", 1))
                             if qty > 0:
-                                safe_items.append({
-                                    "product_id": str(item["product_id"]),
-                                    "qty": qty,
-                                })
+                                safe_items.append(
+                                    {
+                                        "product_id": str(item["product_id"]),
+                                        "qty": qty,
+                                    }
+                                )
                         except (ValueError, TypeError):
                             continue
                 parsed_action["items"] = safe_items

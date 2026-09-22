@@ -2,8 +2,18 @@
 
 import json
 from typing import Any
-from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response, status
-from sqlalchemy import select, update
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -47,11 +57,17 @@ async def twilio_whatsapp_webhook(
         form_data = await request.form()
         form_params = {k: str(v) for k, v in form_data.items()}
         full_url = str(request.url)
-        is_valid = verify_twilio_signature(auth_token, x_twilio_signature, full_url, form_params)
+        is_valid = verify_twilio_signature(
+            auth_token, x_twilio_signature, full_url, form_params
+        )
         if not is_valid:
             logger.warning(
                 f"Twilio webhook signature verification failed for sender {masked_phone}",
-                extra={"step": "twilio_signature_check", "status": "rejected", "customer_phone": masked_phone},
+                extra={
+                    "step": "twilio_signature_check",
+                    "status": "rejected",
+                    "customer_phone": masked_phone,
+                },
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -68,33 +84,45 @@ async def twilio_whatsapp_webhook(
             '<?xml version="1.0" encoding="UTF-8"?>'
             "<Response><Message>Hold on small! You dey send message too fast. Please wait a minute before sending another message.</Message></Response>"
         )
-        return Response(content=slow_down_twiml, media_type="application/xml", status_code=200)
+        return Response(
+            content=slow_down_twiml, media_type="application/xml", status_code=200
+        )
 
     # 3. Media URL SSRF Validation
     if MediaUrl0:
         if not validate_media_url(MediaUrl0):
             logger.error(
                 f"SSRF vector blocked: MediaUrl0 domain '{MediaUrl0}' is not allowlisted",
-                extra={"step": "media_url_validation", "status": "blocked", "customer_phone": masked_phone},
+                extra={
+                    "step": "media_url_validation",
+                    "status": "blocked",
+                    "customer_phone": masked_phone,
+                },
             )
             twiml = (
                 '<?xml version="1.0" encoding="UTF-8"?>'
                 "<Response><Message>Sorry, we cannot accept media from unverified external links.</Message></Response>"
             )
-            return Response(content=twiml, media_type="application/xml", status_code=200)
+            return Response(
+                content=twiml, media_type="application/xml", status_code=200
+            )
 
     # Return standard successful acknowledgement
     response_twiml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         "<Response><Message>Welcome to Naija Marketplace! Wetin you wan buy today?</Message></Response>"
     )
-    return Response(content=response_twiml, media_type="application/xml", status_code=200)
+    return Response(
+        content=response_twiml, media_type="application/xml", status_code=200
+    )
 
 
 @router.post("/paystack")
 async def paystack_webhook(
     request: Request,
-    x_paystack_signature: str | None = Header(default=None, alias="x-paystack-signature"),
+    x_paystack_signature: str | None = Header(
+        default=None, alias="x-paystack-signature"
+    ),
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_db),
 ):
@@ -108,7 +136,9 @@ async def paystack_webhook(
 
     # Signature verification
     if paystack_secret:
-        if not verify_paystack_signature(paystack_secret, x_paystack_signature, raw_body):
+        if not verify_paystack_signature(
+            paystack_secret, x_paystack_signature, raw_body
+        ):
             logger.warning(
                 "Paystack webhook signature verification failed",
                 extra={"step": "paystack_signature_check", "status": "rejected"},
@@ -135,7 +165,11 @@ async def paystack_webhook(
     if is_paystack_event_processed(event_id):
         logger.info(
             f"Paystack event '{event_id}' already processed; ignoring replay",
-            extra={"step": "paystack_idempotency", "status": "ignored_replay", "order_code": reference},
+            extra={
+                "step": "paystack_idempotency",
+                "status": "ignored_replay",
+                "order_code": reference,
+            },
         )
         return {"status": "ignored_duplicate", "event_id": event_id}
 

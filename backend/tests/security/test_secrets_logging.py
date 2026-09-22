@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from app.logging_conf import log_external_call, logger, recent_logs_buffer
+from app.logging_conf import log_external_call, recent_logs_buffer
 from app.main import app
 
 
@@ -45,6 +45,8 @@ def test_logs_recent_endpoint_is_secured_with_api_key():
     assert unauth_res.status_code == 403
 
     # Authenticated with X-Admin-API-Key -> 200 OK
-    auth_res = client.get("/api/logs/recent", headers={"X-Admin-API-Key": "demo_admin_secret_key"})
+    auth_res = client.get(
+        "/api/logs/recent", headers={"X-Admin-API-Key": "demo_admin_secret_key"}
+    )
     assert auth_res.status_code == 200
     assert "logs" in auth_res.json()
