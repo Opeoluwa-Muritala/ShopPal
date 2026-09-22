@@ -3,14 +3,15 @@ name: Frontend CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
 
 jobs:
   lint-typecheck-test-build:
-    name: Frontend Quality & Build
+    name: frontend-ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
 
     defaults:
       run:

@@ -3,13 +3,10 @@ name: Backend CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
 
 jobs:
   lint-and-test:
-    name: Backend Lint & Test
+    name: backend-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
