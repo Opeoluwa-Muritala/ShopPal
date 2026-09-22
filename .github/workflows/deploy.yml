@@ -1,8 +1,15 @@
-name: Deploy Pipeline
+name: Backend CI and Deploy
 
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-ci-check:
@@ -38,45 +45,8 @@ jobs:
         run: |
           pytest
 
-  frontend-ci-check:
-    name: Verify Frontend CI
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'frontend/package.json'
-
-      - name: Install Dependencies
-        run: |
-          npm install
-
-      - name: Run Linter
-        run: |
-          npm run lint
-
-      - name: Run Type Check
-        run: |
-          npm run type-check
-
-      - name: Run Tests
-        run: |
-          npm run test
-
-      - name: Run Build
-        run: |
-          npm run build
-
   deploy-backend:
-    name: Deploy Backend (Render / Railway)
+    name: Deploy Backend (Render)
     runs-on: ubuntu-latest
     needs: [backend-ci-check]
     steps:
@@ -89,20 +59,6 @@ jobs:
             exit 1
           fi
           echo "Triggering backend deploy hook..."
-          curl -s -S -X POST "$DEPLOY_HOOK"
-
-  deploy-frontend:
-    name: Deploy Frontend (Vercel)
-    runs-on: ubuntu-latest
-    needs: [frontend-ci-check]
-    steps:
-      - name: Trigger Frontend Deploy Hook
-        env:
-          DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-        run: |
-          if [ -z "$DEPLOY_HOOK" ]; then
-            echo "Error: VERCEL_DEPLOY_HOOK secret is not configured."
-            exit 1
-          fi
-          echo "Triggering frontend deploy hook..."
-          curl -s -S -X POST "$DEPLOY_HOOK"
+          curl --fail --silent --show-error --output /dev/null \
+            --connect-timeout 15 --max-time 60 \
+            --get --data-urlencode "ref=$GITHUB_SHA" "$DEPLOY_HOOK"
