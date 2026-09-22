@@ -8,10 +8,9 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
-from app.db.models import Cart, Product
+from app.db.models import Account, Cart, Product
 from app.main import app
-from app.services.auth import create_access_token
+from app.services.auth import get_current_account
 from app.services.orders import (
     calculate_and_verify_item,
     create_order_from_cart,
@@ -73,22 +72,30 @@ def test_negative_or_zero_product_price_rejected_with_422():
     """Verify creating a product with negative or zero price is rejected by schema with 422."""
     client = TestClient(app, raise_server_exceptions=False)
     vendor_id = uuid4()
-    settings = get_settings()
-    secret = settings.jwt_secret.get_secret_value()
-    token = create_access_token(uuid4(), vendor_id, "owner", secret)
-
-    for bad_price in ("0.00", "-50.00", "-0.01"):
-        response = client.post(
-            "/api/products",
-            json={
-                "name": "Invalid Price Item",
-                "price": bad_price,
-                "stock": 10,
-                "image_url": "https://example.com/item.png",
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert response.status_code == 422
+    account = Account(
+        id=uuid4(),
+        vendor_id=vendor_id,
+        email="owner@example.com",
+        phone="08012345678",
+        password_hash="unused",
+        role="owner",
+        is_active=True,
+    )
+    app.dependency_overrides[get_current_account] = lambda: account
+    try:
+        for bad_price in ("0.00", "-50.00", "-0.01"):
+            response = client.post(
+                "/api/products",
+                json={
+                    "name": "Invalid Price Item",
+                    "price": bad_price,
+                    "stock": 10,
+                    "image_url": "https://example.com/item.png",
+                },
+            )
+            assert response.status_code == 422
+    finally:
+        app.dependency_overrides.pop(get_current_account, None)
 
 
 def test_currency_calculations_use_strict_decimal_without_float_drift():
