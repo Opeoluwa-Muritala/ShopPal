@@ -25,8 +25,12 @@ class Settings(BaseSettings):
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
 
-    # LLM (Anthropic)
-    anthropic_api_key: SecretStr = SecretStr("")
+    # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
+    gemma_api_key: SecretStr = SecretStr("")
+    gemma_model: str = "gemma-3-27b-it"
+    gemma_api_url: str = ""
+    groq_api_key: SecretStr = SecretStr("")
+    groq_transcription_model: str = "whisper-large-v3-turbo"
 
     # Paystack Payments
     paystack_secret_key: SecretStr = SecretStr("")
