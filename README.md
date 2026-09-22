@@ -31,6 +31,62 @@ Ensure you have the following installed on your development machine (versions sp
 
 ---
 
+## Deployment Runbook (Render / Railway / Twilio)
+
+### 1. Backend Web Service Creation (Render / Railway)
+- **Environment**: Docker or Python 3.11 Runtime
+- **Root Directory**: `backend`
+- **Build Command**: `pip install -r requirements.txt` (or Docker automatic build from `backend/Dockerfile`)
+- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`
+- **Healthcheck Path**: `/api/health` (HTTP 200)
+- **Auto-Deploy**: Enabled via Git push to `main` gated by CI workflows.
+
+### 2. Environment Variables Configuration
+Set the following environment variables in your hosting platform dashboard:
+```bash
+# Application Runtime
+ENVIRONMENT=production
+PORT=8000
+DEBUG=false
+SECRET_KEY=<generated-32-char-random-key>
+
+# Database & Cache
+DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<dbname>?sslmode=require
+REDIS_URL=rediss://<user>:<password>@<host>:<port>
+
+# Twilio WhatsApp Gateway
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=<twilio-auth-token>
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+
+# Conversational AI (Anthropic Claude)
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+
+# Paystack Payment Gateway
+PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
+PAYSTACK_PUBLIC_KEY=paystack_pk_test_placeholder_key
+PAYSTACK_WEBHOOK_SECRET=paystack_webhook_secret_hash
+```
+
+### 3. Twilio Sandbox Webhook Configuration
+1. Open the **Twilio Console** and navigate to:
+   `Messaging` > `Try it out` > `Send a WhatsApp message` > `Sandbox Settings`.
+2. Under **"When a message comes in"**:
+   - Select **HTTP POST**.
+   - Set the URL to your live backend endpoint:
+     `https://<your-service-name>.onrender.com/webhook/whatsapp` (or local ngrok forwarding URL during staging).
+3. Under **"Status callback URL"**:
+   - Set to: `https://<your-service-name>.onrender.com/webhook/status`.
+4. Click **Save**.
+
+### 4. Live Demo Monitoring & Diagnostics
+- **Health Check Probe**: `GET /api/health`
+- **In-Memory Structured Logs**: `GET /api/logs/recent?limit=50`
+  Inspect recent incoming webhooks, Claude latency, Twilio deliveries, and DB writes without needing SSH access during the live judging presentation.
+
+---
+
 ## Repository Structure
 
 ```
@@ -38,14 +94,20 @@ naija-marketplace/
 ├── backend/
 │   ├── app/
 │   │   ├── db/                 # Database models and session connection
-│   │   ├── routers/            # FastAPI route handlers (webhooks, auth, products, orders)
+│   │   ├── routers/            # FastAPI route handlers (health, logs, webhooks)
 │   │   ├── services/           # LLM agent, Twilio client, Paystack integrations
-│   │   └── main.py             # FastAPI entrypoint
+│   │   ├── logging_conf.py     # Structured JSON logging & recent logs buffer
+│   │   └── main.py             # FastAPI entrypoint with error recovery middleware
 │   ├── tests/                  # Pytest test suite & conftest fixtures
+│   │   ├── load/               # Async load testing scripts (10+ concurrent users)
+│   │   ├── test_error_handling.py # Structured logging & webhook error recovery tests
+│   │   ├── test_load_smoke.py  # CI-runnable lightweight load test smoke check
+│   │   ├── test_config.py      # Configuration tests
+│   │   └── test_health.py      # Liveness health check tests
 │   ├── requirements.txt        # Backend dependencies
 │   ├── .env.example            # Backend environment variables template
 │   ├── pyproject.toml          # Ruff and Pytest coverage configuration
-│   └── Dockerfile              # Containerization definition
+│   └── Dockerfile              # Containerization definition with healthcheck probe
 ├── frontend/
 │   ├── app/                    # Next.js App Router (vendor onboarding & dashboards)
 │   ├── components/             # Reusable UI elements
