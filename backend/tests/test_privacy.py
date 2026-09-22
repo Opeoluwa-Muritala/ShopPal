@@ -11,3 +11,17 @@ def test_privacy_policy_is_public_and_contains_required_details():
     assert "ShopPal Privacy Policy" in response.text
     assert "Information we collect" in response.text
     assert "request access, correction, or deletion" in response.text
+
+
+def test_meta_and_privacy_routes_are_described_in_openapi():
+    schema = TestClient(app).get("/openapi.json").json()
+
+    assert schema["paths"]["/privacy"]["get"]["summary"] == (
+        "View the ShopPal privacy policy"
+    )
+    assert schema["paths"]["/webhooks/whatsapp"]["get"]["summary"] == (
+        "Verify the Meta WhatsApp webhook"
+    )
+    assert schema["paths"]["/webhooks/whatsapp"]["post"]["summary"] == (
+        "Receive Meta WhatsApp events"
+    )
