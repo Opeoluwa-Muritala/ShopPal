@@ -12,7 +12,7 @@
 | **Frontend Portal** | Next.js 14, React 18, Tailwind CSS | Vendor onboarding, product catalog management, orders dashboard |
 | **Database & Cache** | PostgreSQL 15, Redis | Relational data persistence, conversation state management, session cache |
 | **Messaging Gateway** | Twilio WhatsApp Business API / Sandbox | Bi-directional customer chat messaging interface |
-| **AI / Intelligence** | Anthropic Claude (via Claude 3.5 Sonnet / Haiku API) | Natural language product discovery, Nigerian Pidgin understanding, cart intent |
+| **AI / Intelligence** | Google Gemma (via Gemma 3 generateContent API) | Natural language product discovery, Nigerian Pidgin understanding, cart intent |
 | **Payments** | Paystack | Automated payment link generation, checkout, and webhook verification |
 | **Testing** | Pytest, Vitest, React Testing Library | Backend unit/integration tests and frontend UI component tests |
 | **CI / CD** | GitHub Actions | Automated linting, test suites, coverage checks, and deployment webhooks |
@@ -59,9 +59,9 @@ TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=<twilio-auth-token>
 TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 
-# Conversational AI (Anthropic Claude)
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
-ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+# Conversational AI (Google Gemma)
+GEMMA_API_KEY=your-google-ai-api-key
+GEMMA_MODEL=gemma-3-27b-it
 
 # Paystack Payment Gateway
 PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
@@ -88,7 +88,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 ### 4. Live Demo Monitoring & Diagnostics
 - **Health Check Probe**: `GET /api/health`
 - **In-Memory Structured Logs**: `GET /api/logs/recent?limit=50`
-  Inspect recent incoming webhooks, Claude latency, Twilio deliveries, and DB writes without needing SSH access during the live judging presentation.
+  Inspect recent incoming webhooks, Gemma latency, Twilio deliveries, and DB writes without needing SSH access during the live judging presentation.
 
 ---
 
