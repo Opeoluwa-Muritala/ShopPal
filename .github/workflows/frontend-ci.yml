@@ -2,16 +2,19 @@ name: Frontend CI
 
 on:
   pull_request:
+    branches: [main, 'feature/**']
 
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   lint-typecheck-test-build:
     name: frontend-ci
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      checks: write
 
     defaults:
       run:
@@ -21,54 +24,35 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Detect Changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            frontend:
-              - 'frontend/**'
-              - '.github/workflows/frontend-ci.yml'
-
       - name: Set up Node.js 20
-        if: steps.filter.outputs.frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: 'frontend/package.json'
+          cache-dependency-path: 'frontend/package-lock.json'
 
       - name: Install Dependencies
-        if: steps.filter.outputs.frontend == 'true'
-        run: |
-          npm install
+        run: npm ci
+
+      - name: Dependency Security Scan (npm audit)
+        run: npm audit --audit-level=high
 
       - name: Run Linter (ESLint)
-        if: steps.filter.outputs.frontend == 'true'
-        run: |
-          npm run lint
+        run: npm run lint
 
       - name: Run Type Check (TypeScript)
-        if: steps.filter.outputs.frontend == 'true'
-        run: |
-          npm run type-check
+        run: npm run type-check
 
       - name: Run Tests with Coverage
-        if: steps.filter.outputs.frontend == 'true'
-        run: |
-          npm run test:coverage
+        run: npm run test:coverage
 
-
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('frontend/coverage/**') != '' }}
         with:
           name: frontend-coverage
           path: frontend/coverage/
           if-no-files-found: error
 
       - name: Run Build (Next.js)
-        if: steps.filter.outputs.frontend == 'true'
-        run: |
-          npm run build
-
-      - name: Frontend CI Skipped
-        if: steps.filter.outputs.frontend != 'true'
-        run: echo "No frontend files changed. Frontend CI skipped successfully."
+        run: npm run build
