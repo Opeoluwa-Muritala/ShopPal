@@ -1,6 +1,6 @@
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.logging_conf import logger, setup_logging
@@ -15,6 +15,7 @@ from app.routers import (
     webhook,
     whatsapp_webhook,
 )
+from app.services.frontend_auth import require_frontend_api_key
 
 
 def create_app() -> FastAPI:
@@ -83,11 +84,12 @@ def create_app() -> FastAPI:
     application.include_router(logs.router)
     application.include_router(webhook.router)
     application.include_router(whatsapp_webhook.router)
-    application.include_router(vendors.router)
-    application.include_router(auth.router)
-    application.include_router(accounts.router)
-    application.include_router(orders.router)
-    application.include_router(products.router)
+    frontend_dependencies = [Depends(require_frontend_api_key)]
+    application.include_router(vendors.router, dependencies=frontend_dependencies)
+    application.include_router(auth.router, dependencies=frontend_dependencies)
+    application.include_router(accounts.router, dependencies=frontend_dependencies)
+    application.include_router(orders.router, dependencies=frontend_dependencies)
+    application.include_router(products.router, dependencies=frontend_dependencies)
     return application
 
 

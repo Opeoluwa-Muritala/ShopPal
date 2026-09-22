@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
+    frontend_api_key: SecretStr = SecretStr("")
 
     # Meta WhatsApp Cloud API webhook authentication
     whatsapp_verify_token: SecretStr = SecretStr("")
