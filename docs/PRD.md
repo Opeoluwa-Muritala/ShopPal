@@ -162,3 +162,49 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 - [Demo] Seed realistic product catalog (fashion, electronics, local groceries)
 - [Demo] Record 60-second backup demo video in case of network drops
 - [Presentation] Finalize slide deck and rehearse 5-minute pitch
+
+---
+
+## 8. Stage 6 — Real Auth & Account Structure Specification
+
+### 8.1 Data Model
+- **`accounts`**:
+  - `id`: UUID (Primary Key)
+  - `vendor_id`: UUID (Foreign Key `vendors.id` ON DELETE CASCADE)
+  - `email`: VARCHAR(255) UNIQUE NOT NULL
+  - `phone`: VARCHAR(20) NOT NULL
+  - `password_hash`: VARCHAR(255) NOT NULL (PBKDF2-HMAC-SHA256, 100k rounds)
+  - `role`: VARCHAR(20) NOT NULL (`owner` | `staff`)
+  - `is_active`: BOOLEAN DEFAULT true
+  - `last_login_at`: TIMESTAMPTZ
+  - `created_at`, `updated_at`: TIMESTAMPTZ
+- **`refresh_tokens`**:
+  - `id`: UUID (Primary Key)
+  - `account_id`: UUID (Foreign Key `accounts.id` ON DELETE CASCADE)
+  - `token_hash`: VARCHAR(255) UNIQUE NOT NULL (SHA-256 hash of opaque token)
+  - `device_label`: VARCHAR(120)
+  - `expires_at`: TIMESTAMPTZ NOT NULL (7-day validity)
+  - `revoked_at`: TIMESTAMPTZ
+  - `created_at`: TIMESTAMPTZ
+- **`password_reset_tokens`**:
+  - `id`: UUID (Primary Key)
+  - `account_id`: UUID (Foreign Key `accounts.id` ON DELETE CASCADE)
+  - `token_hash`: VARCHAR(255) UNIQUE NOT NULL (SHA-256 hash of reset token)
+  - `expires_at`: TIMESTAMPTZ NOT NULL (1-hour validity)
+  - `used_at`: TIMESTAMPTZ
+  - `created_at`: TIMESTAMPTZ
+
+### 8.2 Endpoints & Access Control
+- `POST /api/vendors/signup`: Public. Creates `Vendor` and linked `Account` with `role='owner'`. Requires `{ name, phone, whatsapp_number, email, password }`.
+- `POST /api/auth/login`: Public. Authenticates `{ email, password }`. Enforces 5 failed attempts / 15-min rate limit. Returns `{ access_token, refresh_token, token_type }`.
+- `POST /api/auth/refresh`: Public. Rotates refresh token. Implements **replay detection**: reusing a revoked token terminates all active sessions for the account.
+- `POST /api/auth/logout`: Authenticated. Revokes the provided refresh token session.
+- `POST /api/auth/logout-all`: Authenticated (`get_current_account`). Revokes all active refresh tokens for the account.
+- `POST /api/auth/forgot-password`: Public. Generates 1-hour secure reset token. Stubs and logs link for hackathon demonstration without account enumeration.
+- `POST /api/auth/reset-password`: Public. Validates reset token, updates password hash, marks token used, and invalidates all active sessions.
+- `POST /api/accounts/invite-staff`: Owner-only (`get_current_owner`). Creates an account with `role='staff'` bound to the caller's `vendor_id`.
+- Vendor-Scoped Routes (`GET /api/products`, `POST /api/products`, `POST /api/products/upload-csv`, `GET /api/orders`, `PATCH /api/orders/{id}`):
+  - Protected by `Authorization: Bearer <access_token>`.
+  - `vendor_id` is derived strictly from the authenticated JWT token. Any client-supplied `vendor_id` in URL or body is ignored.
+  - Cross-tenant modifications return `403 Forbidden`.
+
