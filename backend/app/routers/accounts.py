@@ -1,6 +1,7 @@
 """Accounts management router: staff invitations and team administration (owner-only)."""
 
 from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select

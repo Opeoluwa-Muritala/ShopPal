@@ -18,7 +18,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import Account, PasswordResetToken, RefreshToken
+from app.db.models import Account, RefreshToken
 from app.db.session import get_db
 from app.logging_conf import logger
 

@@ -22,7 +22,14 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.db.models import Account, Order, PasswordResetToken, Product, RefreshToken, Vendor
+from app.db.models import (
+    Account,
+    Order,
+    PasswordResetToken,
+    Product,
+    RefreshToken,
+    Vendor,
+)
 from app.db.session import get_db
 from app.main import app
 from app.services.auth import (
@@ -31,8 +38,6 @@ from app.services.auth import (
     decode_access_token,
     hash_password,
     hash_token,
-    issue_refresh_token,
-    rotate_refresh_token,
     validate_password_strength,
     verify_password,
 )

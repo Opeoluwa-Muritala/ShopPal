@@ -5,13 +5,14 @@ import hashlib
 import hmac
 import json
 from unittest.mock import MagicMock
+
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.main import app
-from app.services.security import verify_paystack_signature, verify_twilio_signature
+from app.services.security import verify_twilio_signature
 
 
 def get_test_settings():

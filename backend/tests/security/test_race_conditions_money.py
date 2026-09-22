@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db.models import Cart, Product
-from app.db.session import get_db
 from app.main import app
 from app.services.auth import create_access_token
 from app.services.orders import (

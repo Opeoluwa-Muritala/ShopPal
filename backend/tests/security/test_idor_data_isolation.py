@@ -2,10 +2,11 @@
 
 from unittest.mock import MagicMock
 from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
-from app.db.models import Account, Order
+from app.db.models import Order
 from app.db.session import get_db
 from app.main import app
 from app.services.auth import create_access_token

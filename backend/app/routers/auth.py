@@ -26,7 +26,6 @@ from app.services.auth import (
     rotate_refresh_token,
     verify_password,
 )
-from app.services.security import mask_phone
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 

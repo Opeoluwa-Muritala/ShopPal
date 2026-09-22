@@ -2,8 +2,18 @@
 
 import json
 from typing import Any
-from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response, status
-from sqlalchemy import select, update
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
