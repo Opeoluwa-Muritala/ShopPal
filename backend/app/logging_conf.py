@@ -37,7 +37,10 @@ class StructuredJsonFormatter(logging.Formatter):
 
     # Regex patterns for sensitive values in free-form messages
     PHONE_REGEX = re.compile(r"(\+?234\d{10}|\b0[789][01]\d{8}\b)")
-    SECRET_REGEX = re.compile(r"(paystack_secret_[a-zA-Z0-9_]+|sk_[a-zA-Z0-9_]{10,}|pk_[a-zA-Z0-9_]{10,}|[a-f0-9]{32})", re.IGNORECASE)
+    SECRET_REGEX = re.compile(
+        r"(paystack_secret_[a-zA-Z0-9_]+|sk_[a-zA-Z0-9_]{10,}|pk_[a-zA-Z0-9_]{10,}|[a-f0-9]{32})",
+        re.IGNORECASE,
+    )
 
     def _sanitize_message(self, message: str) -> str:
         # Mask phone numbers in text
@@ -94,7 +97,10 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     root_logger.setLevel(level)
 
     # Avoid duplicate handlers if setup is called multiple times
-    if not any(isinstance(h, logging.StreamHandler) and hasattr(h, "_is_structured") for h in root_logger.handlers):
+    if not any(
+        isinstance(h, logging.StreamHandler) and hasattr(h, "_is_structured")
+        for h in root_logger.handlers
+    ):
         handler = logging.StreamHandler()
         handler.setFormatter(StructuredJsonFormatter())
         setattr(handler, "_is_structured", True)

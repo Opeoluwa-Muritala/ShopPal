@@ -1,6 +1,7 @@
 """Admin inspection endpoint for live structured logs during hackathon demo, secured with API key."""
 
 from typing import Any
+
 from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from app.logging_conf import recent_logs_buffer
@@ -12,8 +13,12 @@ ADMIN_DEMO_KEY = "demo_admin_secret_key"
 
 @router.get("/recent")
 def get_recent_logs(
-    limit: int = Query(default=50, ge=1, le=200, description="Max number of log records to return"),
-    level: str | None = Query(default=None, description="Filter by log level (e.g. INFO, ERROR)"),
+    limit: int = Query(
+        default=50, ge=1, le=200, description="Max number of log records to return"
+    ),
+    level: str | None = Query(
+        default=None, description="Filter by log level (e.g. INFO, ERROR)"
+    ),
     x_admin_api_key: str | None = Header(default=None, alias="X-Admin-API-Key"),
     x_vendor_api_key: str | None = Header(default=None, alias="X-Vendor-API-Key"),
 ) -> dict[str, Any]:

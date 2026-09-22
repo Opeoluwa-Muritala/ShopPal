@@ -4,7 +4,6 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import pytest
 from app.db.models import Product
 from app.services.llm import LLMService
 from app.services.orders import calculate_and_verify_item

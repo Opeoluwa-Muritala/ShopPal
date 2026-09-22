@@ -1,6 +1,5 @@
 """Tests verifying structured logging, GET /api/logs/recent, and graceful webhook error recovery."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.logging_conf import log_db_write, log_external_call, recent_logs_buffer

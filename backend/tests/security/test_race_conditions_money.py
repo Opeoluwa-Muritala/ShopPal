@@ -9,7 +9,6 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.db.models import Cart, Product
-from app.db.session import get_db
 from app.main import app
 from app.services.orders import (
     calculate_and_verify_item,
