@@ -41,6 +41,20 @@ jobs:
         run: |
           ruff check .
 
+      - name: Run Database Migrations (if configured)
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: |
+          if [ -f alembic.ini ]; then
+            if ! command -v alembic >/dev/null 2>&1; then
+              echo "Error: alembic.ini found but Alembic CLI is not installed."
+              exit 1
+            fi
+            alembic upgrade head
+          else
+            echo "No alembic.ini found. Skipping migration step."
+          fi
+
       - name: Enforce non-decreasing coverage floor
         id: coverage-floor
         env:
