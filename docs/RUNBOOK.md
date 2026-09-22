@@ -63,7 +63,7 @@ Reference: https://render.com/docs/native-runtimes
    - Update Twilio Sandbox Webhook configuration with current `https://<subdomain>.ngrok-free.app/api/webhook/whatsapp`.
 
 2. **If LLM Fails or Returns Malformed Output**:
-   - Verify `ANTHROPIC_API_KEY` quota and rate limits.
+   - Verify `GEMMA_API_KEY` quota and rate limits.
    - Fall back to standard keyword-matching catalog search routine.
 
 3. **If Paystack Webhook Fails in Local Dev**:
