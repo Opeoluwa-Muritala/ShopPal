@@ -73,3 +73,26 @@ Commit messages must follow the [Conventional Commits](https://www.conventionalc
 - All PRs require at least **one approving review** before merging.
 - All CI checks (`backend-ci` and `frontend-ci`) must pass.
 - Squash and merge into `main` to maintain a clean git history.
+
+## 5. Test Failures
+
+A failing CI check means the code under test is wrong, not the test or the
+pipeline. Investigate and fix the implementation; do not weaken the check.
+
+Contributors must not:
+
+- Delete or skip a failing test to make CI pass.
+- Lower a coverage threshold to pass CI. The backend floor in
+  `backend/pyproject.toml` may only stay the same or increase; CI compares it
+  against the PR's base commit.
+- Add `continue-on-error`, soft-fail flags, or `|| true` to make a red check green.
+- Mark a test `xfail` or `skip` without an issue explaining why and a linked
+  follow-up. Such exceptions must not be used to hide a failing stage checkpoint.
+
+The only acceptable reason to change an existing test's expected behavior is
+that the test itself encodes incorrect behavior. Explain why in the PR
+description and link the requirement; never silently change an assertion.
+
+If a stage's checkpoint test cannot pass, that stage is not done. Do not move
+to the next stage's prompt until it is green. A stage with missing tests is
+not complete merely because the tests that exist pass.
