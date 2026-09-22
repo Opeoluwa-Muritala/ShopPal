@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     twilio_whatsapp_number: str = ""
     frontend_api_key: SecretStr = SecretStr("")
 
+    # Meta WhatsApp Cloud API webhook authentication
+    whatsapp_verify_token: SecretStr = SecretStr("")
+    whatsapp_app_secret: SecretStr = SecretStr("")
+
     # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
     gemma_api_key: SecretStr = SecretStr("")
     gemma_model: str = "gemma-3-27b-it"

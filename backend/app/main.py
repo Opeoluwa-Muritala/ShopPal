@@ -4,7 +4,18 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.logging_conf import logger, setup_logging
-from app.routers import accounts, auth, health, logs, orders, products, vendors, webhook
+from app.routers import (
+    accounts,
+    auth,
+    health,
+    logs,
+    orders,
+    privacy,
+    products,
+    vendors,
+    webhook,
+    whatsapp_webhook,
+)
 from app.services.frontend_auth import require_frontend_api_key
 
 
@@ -73,6 +84,8 @@ def create_app() -> FastAPI:
     application.include_router(health.router)
     application.include_router(logs.router)
     application.include_router(webhook.router)
+    application.include_router(whatsapp_webhook.router)
+    application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
