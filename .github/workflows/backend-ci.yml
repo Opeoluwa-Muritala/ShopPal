@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-test:
     name: backend-ci
@@ -15,6 +19,24 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_db
 
     steps:
       - name: Checkout Code
@@ -32,29 +54,31 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest pytest-cov httpx
+          pip install ruff pytest pytest-cov httpx pip-audit bandit
           if [ -s requirements.txt ]; then
             pip install -r requirements.txt
           fi
 
       - name: Run Linter (Ruff)
-        run: |
-          ruff check .
+        run: ruff check .
 
-      - name: Run Database Migrations (if configured)
+      - name: Dependency Security Scan (pip-audit)
+        run: pip-audit -r requirements.txt
+
+      - name: Static Security Scan (Bandit)
+        run: bandit -r app -ll
+
+      - name: Run Database Migrations
         run: |
           if [ -f alembic.ini ]; then
             if ! command -v alembic >/dev/null 2>&1; then
               echo "Error: alembic.ini found but Alembic CLI is not installed."
               exit 1
             fi
-            if [ -z "${DATABASE_URL:-}" ]; then
-              echo "alembic.ini found but DATABASE_URL is not configured. Skipping migration step."
-            else
-              alembic upgrade head
-            fi
+            alembic upgrade head
           else
-            echo "No alembic.ini found. Skipping migration step."
+            echo "Error: no alembic.ini found — cannot verify migrations."
+            exit 1
           fi
 
       - name: Enforce non-decreasing coverage floor
