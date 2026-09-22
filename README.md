@@ -80,10 +80,21 @@ naija-marketplace/
 
 ## Branch Protection & Merging Policy
 
-To ensure high stability across sprint days, the `main` branch is protected:
-- **Mandatory CI Status Checks**: `Backend Lint & Test` and `Frontend Quality & Build` must pass before any pull request can be merged.
+Configure `main` branch protection in GitHub repository Settings > Branches:
+- **Mandatory CI Status Checks**: require the exact checks `backend-ci` and `frontend-ci`, with branches up to date before merging.
 - **Code Review**: At least **one peer review approval** is required.
 - **No Direct Pushes**: Direct commits to `main` are restricted. All changes must originate from feature, fix, or chore branches via pull request.
+
+Required status checks are a GitHub repository setting. Workflow YAML and this
+README cannot enforce merge protection on their own. Both CI workflows run on
+every PR to `main` so a path filter cannot leave a required check pending.
+
+Backend CI runs the entire `backend/tests/` suite and fails on test failures or
+coverage below the floor in `backend/pyproject.toml`. The initial enforced floor
+is **100%**, measured from the currently merged health-only application (one test,
+five executable statements), rounded down to the nearest 5%. This measurement
+does not imply that Stages 1–3 are implemented or tested. Future PRs cannot lower
+the floor; see [Test Failures](CONTRIBUTING.md#5-test-failures).
 
 ---
 
