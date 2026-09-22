@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
+    frontend_api_key: SecretStr = SecretStr("")
 
     # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
     gemma_api_key: SecretStr = SecretStr("")
