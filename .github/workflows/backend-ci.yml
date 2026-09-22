@@ -2,14 +2,14 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+    branches: [main, 'feature/**']
+
+permissions:
+  contents: read
 
 jobs:
   lint-and-test:
-    name: Backend Lint & Test
+    name: backend-ci
     runs-on: ubuntu-latest
 
     defaults:
@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -39,14 +41,24 @@ jobs:
         run: |
           ruff check .
 
-      - name: Run Tests with Coverage
+      - name: Enforce non-decreasing coverage floor
+        id: coverage-floor
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+          python -m unittest discover -s ../scripts/tests -p test_coverage_floor.py
+          python ../scripts/check_coverage_floor.py "$BASE_SHA"
 
-      - name: Annotate Code Coverage
-        uses: orgoro/coverage@v3.1
-        if: always()
+      - name: Run Tests with Coverage
+        env:
+          PYTEST_ADDOPTS: ''
+        run: |
+          pytest tests -o addopts= --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=${{ steps.coverage-floor.outputs.floor }}
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('backend/coverage.xml') != '' }}
         with:
-          coverageFile: backend/coverage.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          thresholdModified: 0
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: error
