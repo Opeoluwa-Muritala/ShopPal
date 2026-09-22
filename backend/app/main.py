@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.logging_conf import logger, setup_logging
-from app.routers import health, logs, orders, products, webhook
+from app.routers import accounts, auth, health, logs, orders, products, vendors, webhook
 
 
 def create_app() -> FastAPI:
@@ -12,7 +12,7 @@ def create_app() -> FastAPI:
     application = FastAPI(
         title="Naija Marketplace API",
         description="WhatsApp e-commerce bot backend",
-        version="0.5.0",
+        version="0.6.0",
     )
 
     # Global timing and structured request logging middleware
@@ -72,6 +72,9 @@ def create_app() -> FastAPI:
     application.include_router(health.router)
     application.include_router(logs.router)
     application.include_router(webhook.router)
+    application.include_router(vendors.router)
+    application.include_router(auth.router)
+    application.include_router(accounts.router)
     application.include_router(orders.router)
     application.include_router(products.router)
     return application

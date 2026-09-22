@@ -135,3 +135,51 @@ class Conversation(Identity, Base):
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
+
+
+class Account(Identity, Timestamps, Base):
+    __tablename__ = "accounts"
+    __table_args__ = (Index("idx_accounts_vendor_id", "vendor_id"),)
+
+    vendor_id: Mapped[UUID] = mapped_column(
+        ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(20), server_default=text("'owner'"), nullable=False
+    )  # owner | staff
+    is_active: Mapped[bool | None] = mapped_column(Boolean, server_default=text("true"))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RefreshToken(Identity, Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (Index("idx_refresh_tokens_account_id", "account_id"),)
+
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    device_label: Mapped[str | None] = mapped_column(String(120))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class PasswordResetToken(Identity, Base):
+    __tablename__ = "password_reset_tokens"
+
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+

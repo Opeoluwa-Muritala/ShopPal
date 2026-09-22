@@ -48,9 +48,7 @@ def test_valid_twilio_signature_is_accepted():
     # Compute genuine signature per Twilio spec
     data_to_sign = url + "Body" + "Hello" + "From" + "whatsapp:+2348011112222"
     valid_sig = base64.b64encode(
-        hmac.new(
-            auth_token.encode("utf-8"), data_to_sign.encode("utf-8"), hashlib.sha1
-        ).digest()
+        hmac.new(auth_token.encode("utf-8"), data_to_sign.encode("utf-8"), hashlib.sha1).digest()
     ).decode("utf-8")
 
     assert verify_twilio_signature(auth_token, valid_sig, url, params) is True
@@ -62,9 +60,7 @@ def test_forged_paystack_signature_is_rejected():
     client = TestClient(app, raise_server_exceptions=False)
 
     try:
-        payload = json.dumps(
-            {"event": "charge.success", "data": {"reference": "ORD-1234"}}
-        ).encode("utf-8")
+        payload = json.dumps({"event": "charge.success", "data": {"reference": "ORD-1234"}}).encode("utf-8")
         response = client.post(
             "/webhook/paystack",
             content=payload,
@@ -93,9 +89,7 @@ def test_replayed_paystack_event_is_idempotent():
             "data": {"reference": "ORD-REPEAT-TEST"},
         }
         body_bytes = json.dumps(body_dict).encode("utf-8")
-        valid_sig = hmac.new(
-            secret.encode("utf-8"), body_bytes, hashlib.sha512
-        ).hexdigest()
+        valid_sig = hmac.new(secret.encode("utf-8"), body_bytes, hashlib.sha512).hexdigest()
 
         headers = {
             "x-paystack-signature": valid_sig,
