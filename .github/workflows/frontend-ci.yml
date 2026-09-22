@@ -21,7 +21,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Detect Changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-ci.yml'
+
       - name: Set up Node.js 20
+        if: steps.filter.outputs.frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -29,29 +39,38 @@ jobs:
           cache-dependency-path: 'frontend/package.json'
 
       - name: Install Dependencies
+        if: steps.filter.outputs.frontend == 'true'
         run: |
           npm install
 
       - name: Run Linter (ESLint)
+        if: steps.filter.outputs.frontend == 'true'
         run: |
           npm run lint
 
       - name: Run Type Check (TypeScript)
+        if: steps.filter.outputs.frontend == 'true'
         run: |
           npm run type-check
 
       - name: Run Tests with Coverage
+        if: steps.filter.outputs.frontend == 'true'
         run: |
           npm run test:coverage
 
       - name: Annotate Code Coverage
         uses: davelosert/vitest-coverage-report-action@v2
-        if: always()
+        if: steps.filter.outputs.frontend == 'true'
         with:
           json-summary-path: frontend/coverage/coverage-summary.json
           json-final-path: frontend/coverage/coverage-final.json
         continue-on-error: true
 
       - name: Run Build (Next.js)
+        if: steps.filter.outputs.frontend == 'true'
         run: |
           npm run build
+
+      - name: Frontend CI Skipped
+        if: steps.filter.outputs.frontend != 'true'
+        run: echo "No frontend files changed. Frontend CI skipped successfully."

@@ -21,7 +21,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Detect Changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend-ci.yml'
+
       - name: Set up Python 3.11
+        if: steps.filter.outputs.backend == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -29,6 +39,7 @@ jobs:
           cache-dependency-path: 'backend/requirements.txt'
 
       - name: Install Dependencies
+        if: steps.filter.outputs.backend == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install ruff pytest pytest-cov httpx
@@ -37,18 +48,24 @@ jobs:
           fi
 
       - name: Run Linter (Ruff)
+        if: steps.filter.outputs.backend == 'true'
         run: |
           ruff check .
 
       - name: Run Tests with Coverage
+        if: steps.filter.outputs.backend == 'true'
         run: |
           pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Annotate Code Coverage
         uses: orgoro/coverage@v3.1
-        if: always()
+        if: steps.filter.outputs.backend == 'true'
         continue-on-error: true
         with:
           coverageFile: backend/coverage.xml
           token: ${{ secrets.GITHUB_TOKEN }}
           thresholdModified: 0
+
+      - name: Backend CI Skipped
+        if: steps.filter.outputs.backend != 'true'
+        run: echo "No backend files changed. Backend CI skipped successfully."
