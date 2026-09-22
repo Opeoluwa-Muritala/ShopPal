@@ -10,6 +10,7 @@ from app.routers import (
     health,
     logs,
     orders,
+    privacy,
     products,
     vendors,
     webhook,
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     application.include_router(logs.router)
     application.include_router(webhook.router)
     application.include_router(whatsapp_webhook.router)
+    application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
