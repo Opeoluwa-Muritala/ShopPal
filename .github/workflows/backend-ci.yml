@@ -42,15 +42,17 @@ jobs:
           ruff check .
 
       - name: Run Database Migrations (if configured)
-        env:
-          DATABASE_URL: sqlite:///./ci.db
         run: |
           if [ -f alembic.ini ]; then
             if ! command -v alembic >/dev/null 2>&1; then
               echo "Error: alembic.ini found but Alembic CLI is not installed."
               exit 1
             fi
-            alembic upgrade head
+            if [ -z "${DATABASE_URL:-}" ]; then
+              echo "alembic.ini found but DATABASE_URL is not configured. Skipping migration step."
+            else
+              alembic upgrade head
+            fi
           else
             echo "No alembic.ini found. Skipping migration step."
           fi
