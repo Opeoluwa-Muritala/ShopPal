@@ -3,13 +3,13 @@ name: Frontend CI
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+
+permissions:
+  contents: read
 
 jobs:
   lint-typecheck-test-build:
-    name: Frontend Quality & Build
+    name: frontend-ci
     runs-on: ubuntu-latest
 
     defaults:
@@ -43,13 +43,13 @@ jobs:
         run: |
           npm run test:coverage
 
-      - name: Annotate Code Coverage
-        uses: davelosert/vitest-coverage-report-action@v2
-        if: always()
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('frontend/coverage/**') != '' }}
         with:
-          json-summary-path: frontend/coverage/coverage-summary.json
-          json-final-path: frontend/coverage/coverage-final.json
-        continue-on-error: true
+          name: frontend-coverage
+          path: frontend/coverage/
+          if-no-files-found: error
 
       - name: Run Build (Next.js)
         run: |
