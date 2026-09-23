@@ -3,13 +3,13 @@
 import hashlib
 import hmac
 import json
+from asyncio import to_thread
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     Header,
     HTTPException,
@@ -18,62 +18,18 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import Conversation, Vendor, WhatsAppMessage
+from app.db.models import ReplyJob, WhatsAppMessage
 from app.db.session import get_engine
 from app.logging_conf import logger
-from app.services.customer_tools import CustomerToolDispatcher
-from app.services.llm import GemmaError, LLMService
 from app.services.security import check_phone_rate_limit, mask_phone
-from app.services.transcription import TranscriptionError, transcribe_audio
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
-
-
-def _transcribe_meta_audio(media_id: str, settings: Settings) -> str:
-    """
-    Downloads a WhatsApp voice/audio message via the Meta Graph API and
-    transcribes it with Groq Whisper.
-
-    1. Resolve media_id → temporary download URL (GET /v23.0/{media_id})
-    2. Download audio bytes (with Bearer token)
-    3. Send to Groq Whisper via transcribe_audio()
-
-    Returns the transcript string, or raises TranscriptionError on failure.
-    """
-    access_token = settings.whatsapp_access_token.get_secret_value()
-    if not access_token:
-        raise TranscriptionError("WhatsApp access token not configured")
-
-    # Step 1: resolve media ID → URL
-    meta_resp = httpx.get(
-        f"https://graph.facebook.com/v23.0/{media_id}",
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=15,
-    )
-    meta_resp.raise_for_status()
-    audio_url = meta_resp.json().get("url", "")
-    if not audio_url:
-        raise TranscriptionError(f"No download URL returned for media ID {media_id!r}")
-
-    # Step 2: download audio
-    audio_resp = httpx.get(
-        audio_url,
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=30,
-        follow_redirects=True,
-    )
-    audio_resp.raise_for_status()
-    content_type = audio_resp.headers.get("content-type", "audio/ogg")
-
-    # Step 3: transcribe
-    return transcribe_audio(audio_resp.content, content_type, settings)
-
 
 
 def _verify_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
@@ -125,19 +81,19 @@ def verify_whatsapp_webhook(
     description=(
         "Receives batched incoming-message and delivery-status events from Meta. "
         "The request must carry a valid raw-body HMAC signature in "
-        "`X-Hub-Signature-256`. Accepted events are persisted in a background "
-        "task and incoming message IDs are deduplicated. Maximum payload: 3 MB."
+        "`X-Hub-Signature-256`. Accepted events and reply jobs are persisted before acknowledgement; "
+        "AI replies run separately with durable retries. Incoming IDs are deduplicated. Maximum payload: 3 MB."
     ),
-    response_description="Acknowledgement returned before background persistence.",
+    response_description="Acknowledgement after durable storage; AI and sending run separately.",
     responses={
         400: {"description": "The request body is not valid JSON."},
         403: {"description": "The Meta signature is missing or invalid."},
         413: {"description": "The payload exceeds 3 MB."},
+        503: {"description": "Persistence unavailable; Meta should retry."},
     },
 )
 async def receive_whatsapp_webhook(
     request: Request,
-    background_tasks: BackgroundTasks,
     x_hub_signature_256: str | None = Header(
         default=None, alias="X-Hub-Signature-256"
     ),
@@ -177,8 +133,48 @@ async def receive_whatsapp_webhook(
             detail="Malformed webhook payload",
         ) from exc
 
-    background_tasks.add_task(process_whatsapp_payload, payload, settings)
+    if not isinstance(payload, dict) or payload.get("object") != "whatsapp_business_account":
+        raise HTTPException(status_code=400, detail="Malformed webhook payload")
+    try:
+        _validate_payload(payload)
+        await to_thread(process_whatsapp_payload, payload, settings)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Malformed webhook payload") from None
+    except Exception:
+        logger.error("Meta event persistence unavailable", extra={"step": "whatsapp_webhook_persistence"})
+        raise HTTPException(status_code=503, detail="Please try again shortly") from None
     return {"status": "accepted"}
+
+
+def _validate_payload(payload):
+    def records(value):
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise ValueError("Malformed events")
+        return value
+
+    for entry in records(payload.get("entry", [])):
+        for change in records(entry.get("changes", [])):
+            if change.get("field") != "messages":
+                continue
+            value = change.get("value")
+            if not isinstance(value, dict):
+                raise ValueError("Malformed event")
+            metadata = value.get("metadata", {})
+            if not isinstance(metadata, dict):
+                raise ValueError("Malformed metadata")
+            for field in ("phone_number_id", "display_phone_number"):
+                if not isinstance(metadata.get(field, ""), str) or len(metadata.get(field, "")) > 40:
+                    raise ValueError("Malformed sender")
+            for event in records(value.get("messages", [])) + records(value.get("statuses", [])):
+                for field, limit in (("id", 255), ("from", 30), ("recipient_id", 30), ("type", 30), ("status", 30)):
+                    if not isinstance(event.get(field, ""), str) or len(event.get(field, "")) > limit:
+                        raise ValueError("Malformed event field")
+                if event.get("type") == "text":
+                    if not event.get("id") or not event.get("from"):
+                        raise ValueError("Missing message identity")
+                    content = event.get("text")
+                    if not isinstance(content, dict) or not isinstance(content.get("body"), str):
+                        raise ValueError("Malformed text")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
@@ -201,26 +197,24 @@ def _message_body(message: dict[str, Any]) -> str | None:
 def process_whatsapp_payload(
     payload: dict[str, Any], settings: Settings | None = None
 ) -> None:
-    """Persist every entry/change in a separate post-response DB session."""
+    """Commit incoming events and jobs before acknowledging; never call AI here."""
     settings = settings or get_settings()
     try:
         with Session(get_engine()) as session:
-            new_messages: list[tuple[dict[str, Any], dict[str, Any]]] = []
             for entry in payload.get("entry", []):
                 for change in entry.get("changes", []):
                     if change.get("field") != "messages":
                         continue
                     value = change.get("value", {})
-                    new_messages.extend(_persist_messages(session, value))
+                    _persist_messages(session, value)
                     _persist_statuses(session, value)
             session.commit()
-            for value, message in new_messages:
-                _process_customer_message(session, value, message, settings)
     except Exception:
-        logger.exception(
+        logger.error(
             "Meta WhatsApp background persistence failed",
             extra={"step": "whatsapp_webhook_persistence"},
         )
+        raise
 
 
 def _persist_messages(
@@ -243,120 +237,24 @@ def _persist_messages(
                 raw_payload=message,
             )
             .on_conflict_do_nothing(index_elements=[WhatsAppMessage.message_id])
+            .returning(WhatsAppMessage.message_id)
         )
-        result = session.execute(statement)
-        if result.rowcount == 1:
+        inserted_id = session.execute(statement).scalar_one_or_none()
+        if inserted_id is not None:
             inserted.append((value, message))
+            if message.get("type") == "text":
+                metadata = value.get("metadata", {})
+                phone = str(message.get("from", ""))
+                allowed = check_phone_rate_limit(phone)
+                session.add(ReplyJob(
+                    message_id=str(message_id), customer_phone=phone,
+                    display_number=str(metadata.get("display_phone_number", "")),
+                    phone_number_id=str(metadata.get("phone_number_id", "")),
+                    state="pending" if allowed else "needs_review",
+                    failure_category=None if allowed else "intake_rate_limit",
+                    attempts=0, transcript=[],
+                ))
     return inserted
-
-
-def _process_customer_message(
-    session: Session,
-    value: dict[str, Any],
-    message: dict[str, Any],
-    settings: Settings,
-) -> None:
-    msg_type = message.get("type", "")
-    phone = str(message.get("from", "")).strip()
-    if not phone:
-        return
-
-    text = ""
-
-    if msg_type == "text":
-        text = str(message.get("text", {}).get("body", "")).strip()
-    elif msg_type in ("audio", "voice"):
-        media_id = str(message.get(msg_type, {}).get("id", "")).strip()
-        if media_id:
-            try:
-                text = _transcribe_meta_audio(media_id, settings)
-            except Exception:
-                logger.exception(
-                    "Groq Whisper transcription failed for Meta audio",
-                    extra={"step": "meta_audio_transcription", "customer_phone": mask_phone(phone)},
-                )
-        if not text:
-            _send_meta_message(
-                phone,
-                "I couldn't understand that voice note. Please type your message instead.",
-                settings,
-            )
-            return
-    else:
-        # Unsupported message type — ignore silently
-        return
-
-    if not text:
-        return
-
-    if not check_phone_rate_limit(phone):
-        _send_meta_message(
-            phone,
-            "Hold on small! You dey send message too fast. Please wait a minute.",
-            settings,
-        )
-        return
-
-    display_number = str(value.get("metadata", {}).get("display_phone_number", ""))
-    normalized_number = display_number.replace("+", "").replace(" ", "")
-    vendor = session.scalar(
-        select(Vendor).where(
-            Vendor.bot_number.in_([display_number, normalized_number]),
-            Vendor.is_active.is_(True),
-        )
-    )
-    if vendor is None:
-        _send_meta_message(
-            phone,
-            "This shop assistant is unavailable right now. Please try again later.",
-            settings,
-        )
-        return
-
-    conversation = session.scalar(
-        select(Conversation).where(
-            Conversation.vendor_id == vendor.id,
-            Conversation.customer_phone == phone,
-        )
-    )
-    if conversation is None:
-        conversation = Conversation(
-            vendor_id=vendor.id,
-            customer_phone=phone,
-            message_history=[],
-            conversation_state="browsing",
-            messages_this_session=0,
-        )
-        session.add(conversation)
-        session.flush()
-
-    try:
-        history = list(conversation.message_history or [])[-12:]
-        dispatcher = CustomerToolDispatcher(session, vendor.id, phone)
-        reply, _calls = LLMService(settings).ask(text, dispatcher, history)
-    except (GemmaError, httpx.HTTPError):
-        logger.exception(
-            "Meta customer assistant provider failed",
-            extra={
-                "step": "meta_customer_ai",
-                "customer_phone": mask_phone(phone),
-            },
-        )
-        reply = "I can't complete that request right now. Please try again shortly."
-
-    history = list(conversation.message_history or [])
-    history.extend(
-        [
-            {"role": "user", "content": text},
-            {"role": "assistant", "content": reply},
-        ]
-    )
-    conversation.message_history = history[-40:]
-    conversation.messages_this_session = (
-        int(conversation.messages_this_session or 0) + 2
-    )
-    session.commit()
-    _send_meta_message(phone, reply, settings)
 
 
 def _send_meta_message(to: str, body: str, settings: Settings) -> None:
@@ -392,6 +290,7 @@ def _persist_statuses(session: Session, value: dict[str, Any]) -> None:
         message_id = item.get("id")
         if not message_id:
             continue
+        _update_reply_status(session, item)
         values = {
             "from_number": str(item.get("recipient_id", "")) or None,
             "message_type": "status",
@@ -399,16 +298,50 @@ def _persist_statuses(session: Session, value: dict[str, Any]) -> None:
             "wa_timestamp": _wa_datetime(item.get("timestamp")),
             "raw_payload": item,
         }
-        result = session.execute(
-            update(WhatsAppMessage)
-            .where(WhatsAppMessage.message_id == str(message_id))
-            .values(**values)
-        )
-        if result.rowcount == 0:
-            session.execute(
-                insert(WhatsAppMessage)
-                .values(message_id=str(message_id), body=None, **values)
-                .on_conflict_do_nothing(
-                    index_elements=[WhatsAppMessage.message_id]
-                )
-            )
+        statement = insert(WhatsAppMessage).values(message_id=str(message_id), body=None, **values)
+        session.execute(statement.on_conflict_do_update(
+            index_elements=[WhatsAppMessage.message_id], set_=values,
+            where=WhatsAppMessage.wa_timestamp.is_(None) | (WhatsAppMessage.wa_timestamp <= values["wa_timestamp"])
+            if values["wa_timestamp"] is not None else WhatsAppMessage.wa_timestamp.is_(None),
+        ))
+
+
+def _update_reply_status(session: Session, item: dict[str, Any]) -> None:
+    """Correlate accepted/delivered/read receipts without regressing final states."""
+    from uuid import UUID
+
+    job = session.scalar(select(ReplyJob).where(
+        ReplyJob.outbound_message_id == str(item["id"])
+    ).with_for_update())
+    if job is None and item.get("biz_opaque_callback_data"):
+        try:
+            identifier = UUID(item["biz_opaque_callback_data"])
+        except (ValueError, TypeError):
+            return
+        job = session.scalar(select(ReplyJob).where(ReplyJob.id == identifier).with_for_update())
+    if job is None or job.state not in ("sending", "delivery_unknown", "accepted", "delivered", "read", "needs_review"):
+        return
+    if job.customer_phone != str(item.get("recipient_id", "")):
+        return
+    if job.outbound_message_id and job.outbound_message_id != str(item["id"]):
+        return
+    state = item.get("status")
+    timestamp = _wa_datetime(item.get("timestamp")) or datetime.now(UTC)
+    if state not in ("sent", "delivered", "read", "failed"):
+        return
+    job.outbound_message_id = str(item["id"])
+    if state == "failed":
+        if job.state not in ("delivered", "read"):
+            job.state = "needs_review"
+            job.failure_category = "meta_delivery_failed"
+        return
+    rank = {"accepted": 1, "delivered": 2, "read": 3}
+    target = "accepted" if state == "sent" else state
+    if rank.get(target, 0) >= rank.get(job.state, 0):
+        job.state = target
+        job.failure_category = None
+    job.accepted_at = job.accepted_at or timestamp
+    if state in ("delivered", "read"):
+        job.delivered_at = job.delivered_at or timestamp
+    if state == "read":
+        job.read_at = job.read_at or timestamp
