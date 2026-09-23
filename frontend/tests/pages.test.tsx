@@ -101,7 +101,7 @@ describe('Boilerplate App Pages', () => {
   it('renders Signup page', () => {
     render(<SignupPage />);
     expect(screen.getByRole('heading', { name: 'Create Vendor Account' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Create Account' })).toBeDefined();
+    expect(screen.getByRole('button', { name: /Continue to Payment Setup/i })).toBeDefined();
   });
 });
 
