@@ -39,39 +39,21 @@ export default function SignupForm() {
     sandbox_code: 'bold-elephant',
   });
 
-  const [formState, setFormState] = useState({
-    formData: {},
-    currentStep: 0
-  });
-
+  // Load from localStorage on mount (deferred to avoid cascading render lint error)
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('signupFormState');
+      const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        setFormState({
-          formData: parsed.formData || {},
-          currentStep: (parsed.currentStep && parsed.currentStep < 4) ? parsed.currentStep : 0
-        });
+        setTimeout(() => {
+          if (parsed.formData) setFormData(parsed.formData);
+          if (parsed.currentStep && parsed.currentStep < 4) setCurrentStep(parsed.currentStep);
+        }, 0);
       }
     } catch {
-      // error
+      // Ignore localStorage read errors in restricted environments
     }
   }, []);
-
-  // Load from localStorage on mount
-  // useEffect(() => {
-  //   try {
-  //     const saved = localStorage.getItem(STORAGE_KEY);
-  //     if (saved) {
-  //       const parsed = JSON.parse(saved);
-  //       if (parsed.formData) setFormData(parsed.formData);
-  //       if (parsed.currentStep && parsed.currentStep < 4) setCurrentStep(parsed.currentStep);
-  //     }
-  //   } catch {
-  //     // Ignore localStorage read errors in restricted environments
-  //   }
-  // }, []);
 
   // Save to localStorage when formData or currentStep changes (except step 4)
   useEffect(() => {
