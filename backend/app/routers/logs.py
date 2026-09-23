@@ -6,7 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, status
 
 from app.logging_conf import recent_logs_buffer
 
-router = APIRouter(prefix="/api/logs", tags=["monitoring"])
+router = APIRouter(prefix="/api/logs", tags=["Frontend Diagnostics"])
 
 ADMIN_DEMO_KEY = "demo_admin_secret_key"
 

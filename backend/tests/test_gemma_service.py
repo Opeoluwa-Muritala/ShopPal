@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 from app.config import Settings
-from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, LLMService
+from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, GemmaError, LLMService
 from app.services.transcription import transcribe_audio
 
 
@@ -67,6 +67,111 @@ def test_gemma_tools_exclude_admin_and_dashboard_actions():
     }
     assert "dashboard" in MASTER_PROMPT
     assert "customer" in MASTER_PROMPT.lower()
+
+
+def test_gemma_selects_tools_for_natural_customer_commands():
+    service = LLMService(_settings())
+    service._post = Mock(side_effect=[
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"searchProducts","arguments":{"query":""}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+    ])
+    assert service.next_action("abeg wetin dey available for perfume?", [], []) == {"tool": "searchProducts", "arguments": {"query": ""}}
+    assert service.next_action("my cart", [], []) == {"tool": "viewCart", "arguments": {}}
+    assert service.next_action("checkout", [], []) == {"tool": "viewCart", "arguments": {}}
+
+
+def test_openrouter_native_tool_call_is_converted_to_validated_action():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            OPENROUTER_API_KEY="openrouter-test-key",
+            OPENROUTER_MODEL="google/gemma-3-27b-it",
+        )
+    )
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "viewCart",
+                            "arguments": "{}",
+                        }
+                    }]
+                }
+            }]
+        }
+    )
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    payload = service._post_openrouter.call_args.args[0]
+    assert payload["tools"][0]["type"] == "function"
+    assert payload["tool_choice"] == "auto"
+
+
+def test_google_gemma_has_priority_and_openrouter_is_failure_fallback():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            GEMMA_API_KEY="google-test-key",
+            OPENROUTER_API_KEY="openrouter-test-key",
+        )
+    )
+    service._post = Mock(side_effect=GemmaError("Google unavailable"))
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {"name": "viewCart", "arguments": "{}"}
+                    }]
+                }
+            }]
+        }
+    )
+    assert service.provider == "google"
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    service._post.assert_called_once()
+    service._post_openrouter.assert_called_once()
+
+
+def test_natural_product_selection_uses_latest_catalog_result():
+    service = LLMService(_settings())
+    transcript = [
+        {
+            "action": {"tool": "searchProducts", "arguments": {"query": ""}},
+            "result": {
+                "products": [
+                    {"product_id": "00000000-0000-0000-0000-000000000001", "name": "Oud perfume", "price": "12000"}
+                ]
+            },
+        }
+    ]
+    service._post = Mock(
+        return_value={
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": (
+                            '{"tool":"addToCart","arguments":{"productId":'
+                            '"00000000-0000-0000-0000-000000000001","quantity":2}}'
+                        )
+                    }]
+                }
+            }]
+        }
+    )
+    action = service.next_action("I want two bottles of the Oud perfume", [], transcript)
+    assert action == {
+        "tool": "addToCart",
+        "arguments": {"productId": "00000000-0000-0000-0000-000000000001", "quantity": 2},
+    }
 
 
 def test_image_match_uses_inline_image_and_catalog():

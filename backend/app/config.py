@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     whatsapp_app_secret: SecretStr = SecretStr("")
     whatsapp_access_token: SecretStr = SecretStr("")
     whatsapp_phone_number_id: str = ""
+    whatsapp_reengagement_template_name: str = ""
+    whatsapp_reengagement_template_language: str = "en_US"
     meta_reply_worker_enabled: bool = False
     meta_reply_worker_concurrency: int = Field(default=4, ge=1, le=16)
     meta_reply_worker_poll_seconds: float = Field(default=1.0, ge=0.5, le=30.0)
@@ -42,6 +44,8 @@ class Settings(BaseSettings):
     gemma_api_url: str = ""
     gemma_timeout_seconds: int = Field(default=90, ge=10, le=120)
     gemma_thinking_level: Literal["minimal", "high"] = "minimal"
+    openrouter_api_key: SecretStr = SecretStr("")
+    openrouter_model: str = "google/gemma-3-27b-it"
     groq_api_key: SecretStr = SecretStr("")
     groq_transcription_model: str = "whisper-large-v3-turbo"
 
