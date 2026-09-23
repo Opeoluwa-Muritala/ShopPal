@@ -1,10 +1,11 @@
 import React from 'react';
+import './globals.css';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 export const metadata = {
-  title: 'Naija Marketplace Vendor Portal',
-  description: 'Merchant portal for WhatsApp e-commerce bot',
+  title: 'Naija Marketplace — Sell on WhatsApp. Keep 98% of your sales.',
+  description: 'AI-powered WhatsApp e-commerce bot and merchant portal for Nigerian vendors.',
 };
 
 export default function RootLayout({
@@ -14,11 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+      <body className="min-h-screen flex flex-col bg-white text-slate-900 antialiased font-sans m-0">
         <Navbar />
-        <main style={{ flex: 1, maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '2rem' }}>
-          {children}
-        </main>
+        <main className="flex-1 w-full">{children}</main>
         <Footer />
       </body>
     </html>

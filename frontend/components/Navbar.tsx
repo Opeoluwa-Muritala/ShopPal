@@ -3,42 +3,48 @@ import Link from 'next/link';
 
 export default function Navbar() {
   return (
-    <header style={{ borderBottom: '1px solid #e5e7eb', padding: '1rem 2rem', backgroundColor: '#ffffff' }}>
-      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-          <Link href="/" style={{ fontSize: '1.25rem', fontWeight: 'bold', textDecoration: 'none', color: '#111827' }}>
-            Naija Marketplace
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm border-b border-slate-200">
+      <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        {/* Brand Logo */}
+        <div className="flex items-center gap-8">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-xl font-black text-slate-900 tracking-tight hover:text-emerald-700 transition"
+          >
+            <span className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-base shadow-sm">
+              🛍️
+            </span>
+            <span>Naija Marketplace</span>
           </Link>
-          <div style={{ display: 'flex', gap: '1.25rem' }}>
-            <Link href="/" style={{ textDecoration: 'none', color: '#4b5563', fontSize: '0.95rem' }}>
+
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+            <Link href="/dashboard" className="hover:text-emerald-600 transition">
               Dashboard
             </Link>
-            <Link href="/products" style={{ textDecoration: 'none', color: '#4b5563', fontSize: '0.95rem' }}>
+            <Link href="/products" className="hover:text-emerald-600 transition">
               Products
             </Link>
-            <Link href="/orders" style={{ textDecoration: 'none', color: '#4b5563', fontSize: '0.95rem' }}>
+            <Link href="/orders" className="hover:text-emerald-600 transition">
               Orders
             </Link>
-            <Link href="/settings" style={{ textDecoration: 'none', color: '#4b5563', fontSize: '0.95rem' }}>
+            <Link href="/settings" className="hover:text-emerald-600 transition">
               Settings
             </Link>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <Link href="/login" style={{ textDecoration: 'none', color: '#4b5563', fontSize: '0.95rem', padding: '0.5rem 1rem' }}>
+
+        {/* Right CTA / Auth buttons */}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="text-sm font-semibold text-slate-700 hover:text-emerald-700 px-3 py-2 rounded-lg transition"
+          >
             Log in
           </Link>
           <Link
             href="/signup"
-            style={{
-              textDecoration: 'none',
-              backgroundColor: '#16a34a',
-              color: '#ffffff',
-              fontSize: '0.95rem',
-              padding: '0.5rem 1rem',
-              borderRadius: '0.375rem',
-              fontWeight: 500,
-            }}
+            className="text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl shadow-sm hover:shadow transition"
           >
             Sign up
           </Link>
