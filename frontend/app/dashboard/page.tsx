@@ -327,6 +327,24 @@ export default function DashboardPage() {
             <ExternalLink size={16} /> Bulk CSV Upload
           </Link>
           <Link
+            href="/dashboard/analytics"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              border: '1px solid #bbf7d0',
+              backgroundColor: '#f0fdf4',
+              color: '#166534',
+              textDecoration: 'none',
+              fontSize: '0.825rem',
+              fontWeight: 600,
+            }}
+          >
+            <TrendingUp size={16} /> Business Analytics
+          </Link>
+          <Link
             href="/orders"
             style={{
               display: 'flex',
@@ -603,7 +621,7 @@ export default function DashboardPage() {
           </span>
         </div>
         <Link
-          href="/orders"
+          href="/dashboard/analytics"
           style={{
             backgroundColor: '#16a34a',
             color: '#ffffff',
