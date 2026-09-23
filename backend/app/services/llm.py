@@ -13,12 +13,12 @@ from app.config import Settings
 ToolDispatcher = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 TOOL_DECLARATIONS = [
-    {"name": "searchProducts", "description": "Search the current shop catalog.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-    {"name": "viewCart", "description": "Show the customer's cart using server prices.", "parameters": {"type": "object", "properties": {}}},
-    {"name": "addToCart", "description": "Add a catalog product to the cart.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}, "required": ["productId", "quantity"]}},
+    {"name": "searchProducts", "description": "Use for stock, catalog, availability, product, or price questions. Use an empty query to browse everything.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+    {"name": "viewCart", "description": "Use for 'my cart', 'show cart', or a bare 'checkout' before an address is supplied. Show server-calculated items and total.", "parameters": {"type": "object", "properties": {}}},
+    {"name": "addToCart", "description": "Use when the customer selects a catalog item. Resolve names or list numbers from the latest search result and copy its exact productId; quantity is required.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}, "required": ["productId", "quantity"]}},
     {"name": "updateCartItem", "description": "Set a cart item's quantity.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}, "required": ["productId", "quantity"]}},
     {"name": "removeCartItem", "description": "Remove a product from the cart.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}}, "required": ["productId"]}},
-    {"name": "checkoutCart", "description": "Create an order after the customer supplies a delivery address.", "parameters": {"type": "object", "properties": {"deliveryAddress": {"type": "string"}}, "required": ["deliveryAddress"]}},
+    {"name": "checkoutCart", "description": "Create an order only after the customer clearly requests checkout and supplies a delivery address. Never use this for a bare 'checkout'.", "parameters": {"type": "object", "properties": {"deliveryAddress": {"type": "string"}}, "required": ["deliveryAddress"]}},
 ]
 
 MASTER_PROMPT = """
@@ -60,12 +60,16 @@ class LLMService:
 
     def __init__(self, settings: Settings):
         self.api_key = settings.gemma_api_key.get_secret_value()
+        self.openrouter_api_key = settings.openrouter_api_key.get_secret_value()
+        self.provider = "openrouter" if self.openrouter_api_key else "google"
         self.timeout = settings.gemma_timeout_seconds
         self.thinking_level = settings.gemma_thinking_level if settings.gemma_model.startswith("gemma-4-") else None
         self.url = settings.gemma_api_url or (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{settings.gemma_model}:generateContent"
         )
+        self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
+        self.openrouter_model = settings.openrouter_model
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not self.api_key:
@@ -95,9 +99,6 @@ class LLMService:
         The worker validates every action before executing it. Conversation text
         and tool results are data; only the server supplies the tool allowlist.
         """
-        deterministic = self._deterministic_customer_action(message, transcript)
-        if deterministic is not None:
-            return deterministic
         instruction = (
             MASTER_PROMPT.replace('Return only the customer reply inside <answer>...</answer>.', '')
             + '\nFor this API return ONLY one JSON object: '
@@ -107,11 +108,14 @@ class LLMService:
             + 'Answer the latest customer message first, merge queued messages into one '
             + 'answer, and do not repeat an already answered question. Interpret natural '
             + 'phrasing such as "what do you have in stock", "show me perfumes", '
-            + '"add that one", and "I want two". Use the exact productId from the '
-            + 'latest catalog tool result; never invent an ID. Use query "" to browse '
-            + 'all products. Tools: '
+            + '"my cart", "checkout", "add that one", and "I want two". For bare '
+            + '"my cart" or "checkout", choose viewCart first; checkout requires an '
+            + 'address. Use the exact productId from the latest catalog tool result; '
+            + 'never invent an ID. Use query "" to browse all products. Tools: '
             + json.dumps(TOOL_DECLARATIONS)
         )
+        if self.provider == "openrouter":
+            return self._next_action_openrouter(instruction, message, history, transcript)
         context = json.dumps({
             "history": history,
             "latest_customer_message": message,
@@ -126,63 +130,64 @@ class LLMService:
             raise GemmaError("Invalid agent action")
         return action
 
-    @classmethod
-    def _deterministic_customer_action(
-        cls, message: str, transcript: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
-        """Handle common customer wording before a slower model call."""
-        lowered = message.casefold().strip()
-        if re.fullmatch(
-            r"(?:please\s+)?(?:show\s+)?(?:my\s+)?cart(?:\s+please)?[.!?]*",
-            lowered,
-        ):
-            return {"tool": "viewCart", "arguments": {}}
-        if re.fullmatch(r"(?:please\s+)?checkout[.!?]*", lowered):
-            # Checkout requires an address. Showing the cart first lets the
-            # model ask for the missing address without creating an order.
-            return {"tool": "viewCart", "arguments": {}}
-        browse_words = ("stock", "available", "catalog", "catalogue", "what do you have", "show me", "list")
-        if any(word in lowered for word in browse_words) and not any(
-            word in lowered for word in ("cart", "checkout", "pay")
-        ):
-            return {"tool": "searchProducts", "arguments": {"query": ""}}
+    def _next_action_openrouter(
+        self, instruction: str, message: str, history: list, transcript: list
+    ) -> dict[str, Any]:
+        messages = [{"role": "system", "content": instruction}]
+        for item in history:
+            role = "assistant" if item.get("role") == "assistant" else "user"
+            messages.append({"role": role, "content": str(item.get("content", ""))})
+        messages.append({
+            "role": "user",
+            "content": json.dumps({
+                "latest_customer_message": message,
+                "transcript": transcript,
+            }),
+        })
+        response = self._post_openrouter({
+            "model": self.openrouter_model,
+            "messages": messages,
+            "tools": [
+                {"type": "function", "function": declaration}
+                for declaration in TOOL_DECLARATIONS
+            ],
+            "tool_choice": "auto",
+        })
+        try:
+            choice = response["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise GemmaError("Customer assistant returned an invalid response") from exc
+        calls = choice.get("tool_calls") or []
+        if calls:
+            try:
+                function = calls[0]["function"]
+                arguments = json.loads(function.get("arguments", "{}"))
+                return {"tool": str(function["name"]), "arguments": arguments}
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise GemmaError("Customer assistant returned an invalid tool call") from exc
+        return self._decode_action(str(choice.get("content", "")))
 
-        products: list[dict[str, Any]] = []
-        for row in reversed(transcript):
-            result = row.get("result", {}) if isinstance(row, dict) else {}
-            if isinstance(result, dict) and isinstance(result.get("products"), list):
-                products = [item for item in result["products"] if isinstance(item, dict)]
-                break
-        if not products:
-            return None
-        index_match = re.search(r"(?:number|no\.?|#)\s*(\d+)", lowered)
-        if index_match is None and lowered.isdigit():
-            index_match = re.match(r"(\d+)", lowered)
-        selected = None
-        if index_match:
-            index = int(index_match.group(1)) - 1
-            if 0 <= index < len(products):
-                selected = products[index]
-        if selected is None:
-            selected = next(
-                (item for item in products if str(item.get("name", "")).casefold() in lowered),
-                None,
+    def _post_openrouter(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not self.openrouter_api_key:
+            raise GemmaError("Customer assistant is unavailable")
+        try:
+            response = httpx.post(
+                self.openrouter_url,
+                headers={
+                    "Authorization": f"Bearer {self.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=httpx.Timeout(self.timeout, connect=10),
             )
-        if selected is None or not any(
-            phrase in lowered for phrase in ("add", "want", "take", "buy", "pick", "that one", "yes")
-        ):
-            return None
-        quantity_match = re.search(
-            r"(?:qty|quantity|units?|pieces?|bottles?|x)\s*(\d+|one|two|three|four|five)|\b(\d+|one|two|three|four|five)\s+(?:bottles?|units?|pieces?)",
-            lowered,
-        )
-        quantity_words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
-        quantity_value = next((group for group in quantity_match.groups() if group), "1") if quantity_match else "1"
-        quantity = quantity_words.get(quantity_value, int(quantity_value) if quantity_value.isdigit() else 1)
-        return {
-            "tool": "addToCart",
-            "arguments": {"productId": str(selected.get("product_id", "")), "quantity": quantity},
-        }
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as exc:
+            error = GemmaError("Customer assistant request failed")
+            error.status_code = exc.response.status_code
+            raise error from None
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise GemmaError("Customer assistant request failed") from None
 
     @staticmethod
     def _decode_action(output: str) -> dict[str, Any]:

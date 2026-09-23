@@ -69,22 +69,47 @@ def test_gemma_tools_exclude_admin_and_dashboard_actions():
     assert "customer" in MASTER_PROMPT.lower()
 
 
-def test_natural_stock_question_selects_catalog_tool_without_exact_words():
+def test_gemma_selects_tools_for_natural_customer_commands():
     service = LLMService(_settings())
-    action = service.next_action("abeg wetin dey available for perfume?", [], [])
-    assert action == {"tool": "searchProducts", "arguments": {"query": ""}}
+    service._post = Mock(side_effect=[
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"searchProducts","arguments":{"query":""}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+    ])
+    assert service.next_action("abeg wetin dey available for perfume?", [], []) == {"tool": "searchProducts", "arguments": {"query": ""}}
+    assert service.next_action("my cart", [], []) == {"tool": "viewCart", "arguments": {}}
+    assert service.next_action("checkout", [], []) == {"tool": "viewCart", "arguments": {}}
 
 
-def test_bare_cart_and_checkout_commands_are_safe_tools():
-    service = LLMService(_settings())
+def test_openrouter_native_tool_call_is_converted_to_validated_action():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            OPENROUTER_API_KEY="openrouter-test-key",
+            OPENROUTER_MODEL="google/gemma-3-27b-it",
+        )
+    )
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "viewCart",
+                            "arguments": "{}",
+                        }
+                    }]
+                }
+            }]
+        }
+    )
     assert service.next_action("my cart", [], []) == {
         "tool": "viewCart",
         "arguments": {},
     }
-    assert service.next_action("checkout", [], []) == {
-        "tool": "viewCart",
-        "arguments": {},
-    }
+    payload = service._post_openrouter.call_args.args[0]
+    assert payload["tools"][0]["type"] == "function"
+    assert payload["tool_choice"] == "auto"
 
 
 def test_natural_product_selection_uses_latest_catalog_result():
@@ -99,6 +124,20 @@ def test_natural_product_selection_uses_latest_catalog_result():
             },
         }
     ]
+    service._post = Mock(
+        return_value={
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": (
+                            '{"tool":"addToCart","arguments":{"productId":'
+                            '"00000000-0000-0000-0000-000000000001","quantity":2}}'
+                        )
+                    }]
+                }
+            }]
+        }
+    )
     action = service.next_action("I want two bottles of the Oud perfume", [], transcript)
     assert action == {
         "tool": "addToCart",
