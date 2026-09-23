@@ -129,6 +129,43 @@ def verify_paystack_signature(
     return hmac.compare_digest(computed.lower(), signature.lower())
 
 
+def verify_meta_signature(
+    app_secret: str,
+    signature_header: str | None,
+    raw_body: bytes,
+) -> None:
+    """
+    Validates the X-Hub-Signature-256 header from Meta WhatsApp Cloud API webhooks.
+    Uses HMAC-SHA256 with the app secret.
+
+    Raises:
+        HTTPException 403 if the signature is missing or invalid.
+    """
+    if not app_secret:
+        # No secret configured – skip verification (dev/test mode)
+        return
+
+    if not signature_header:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing X-Hub-Signature-256 header",
+        )
+
+    expected = "sha256=" + hmac.new(
+        app_secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, signature_header):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid Meta webhook signature",
+        )
+
+
+
+
 def is_paystack_event_processed(event_id: str) -> bool:
     """Checks whether an event reference or ID has already been handled (idempotency)."""
     return event_id in _processed_events

@@ -6,7 +6,7 @@ from app.services.frontend_auth import require_frontend_api_key
 
 
 def _settings():
-    return Settings(_env_file=None, FRONTEND_API_KEY="frontend-test-secret")
+    return Settings(_env_file=None, frontend_api_key="frontend-test-secret")
 
 
 def test_frontend_api_key_is_checked_before_route_validation():
