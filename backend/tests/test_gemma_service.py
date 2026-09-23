@@ -1,0 +1,223 @@
+from unittest.mock import Mock, patch
+
+from app.config import Settings
+from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, GemmaError, LLMService
+from app.services.transcription import transcribe_audio
+
+
+def _settings():
+    return Settings(
+        _env_file=None,
+        gemma_api_key="gemma-test-key",
+        groq_api_key="groq-test-key",
+    )
+
+
+def test_gemma_executes_allowlisted_customer_tool_then_returns_reply():
+    service = LLMService(_settings())
+    service._post = Mock(
+        side_effect=[
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "functionCall": {
+                                        "name": "searchProducts",
+                                        "args": {"query": "shoe"},
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": "<answer>I found one black shoe for you.</answer>"}
+                            ]
+                        }
+                    }
+                ]
+            },
+        ]
+    )
+    dispatcher = Mock(return_value={"products": [{"name": "Black shoe"}]})
+
+    reply, calls = service.ask("You get black shoe?", dispatcher)
+
+    assert reply == "I found one black shoe for you."
+    assert calls == [{"name": "searchProducts", "arguments": {"query": "shoe"}}]
+    dispatcher.assert_called_once_with("searchProducts", {"query": "shoe"})
+
+
+def test_gemma_tools_exclude_admin_and_dashboard_actions():
+    names = {tool["name"] for tool in TOOL_DECLARATIONS}
+    assert names == {
+        "searchProducts",
+        "viewCart",
+        "addToCart",
+        "updateCartItem",
+        "removeCartItem",
+        "checkoutCart",
+    }
+    assert "dashboard" in MASTER_PROMPT
+    assert "customer" in MASTER_PROMPT.lower()
+
+
+def test_gemma_selects_tools_for_natural_customer_commands():
+    service = LLMService(_settings())
+    service._post = Mock(side_effect=[
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"searchProducts","arguments":{"query":""}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+        {"candidates": [{"content": {"parts": [{"text": '{"tool":"viewCart","arguments":{}}'}]}}]},
+    ])
+    assert service.next_action("abeg wetin dey available for perfume?", [], []) == {"tool": "searchProducts", "arguments": {"query": ""}}
+    assert service.next_action("my cart", [], []) == {"tool": "viewCart", "arguments": {}}
+    assert service.next_action("checkout", [], []) == {"tool": "viewCart", "arguments": {}}
+
+
+def test_openrouter_native_tool_call_is_converted_to_validated_action():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            OPENROUTER_API_KEY="openrouter-test-key",
+            OPENROUTER_MODEL="google/gemma-3-27b-it",
+        )
+    )
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {
+                            "name": "viewCart",
+                            "arguments": "{}",
+                        }
+                    }]
+                }
+            }]
+        }
+    )
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    payload = service._post_openrouter.call_args.args[0]
+    assert payload["tools"][0]["type"] == "function"
+    assert payload["tool_choice"] == "auto"
+
+
+def test_google_gemma_has_priority_and_openrouter_is_failure_fallback():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            GEMMA_API_KEY="google-test-key",
+            OPENROUTER_API_KEY="openrouter-test-key",
+        )
+    )
+    service._post = Mock(side_effect=GemmaError("Google unavailable"))
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {"name": "viewCart", "arguments": "{}"}
+                    }]
+                }
+            }]
+        }
+    )
+    assert service.provider == "google"
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    service._post.assert_called_once()
+    service._post_openrouter.assert_called_once()
+
+
+def test_natural_product_selection_uses_latest_catalog_result():
+    service = LLMService(_settings())
+    transcript = [
+        {
+            "action": {"tool": "searchProducts", "arguments": {"query": ""}},
+            "result": {
+                "products": [
+                    {"product_id": "00000000-0000-0000-0000-000000000001", "name": "Oud perfume", "price": "12000"}
+                ]
+            },
+        }
+    ]
+    service._post = Mock(
+        return_value={
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": (
+                            '{"tool":"addToCart","arguments":{"productId":'
+                            '"00000000-0000-0000-0000-000000000001","quantity":2}}'
+                        )
+                    }]
+                }
+            }]
+        }
+    )
+    action = service.next_action("I want two bottles of the Oud perfume", [], transcript)
+    assert action == {
+        "tool": "addToCart",
+        "arguments": {"productId": "00000000-0000-0000-0000-000000000001", "quantity": 2},
+    }
+
+
+def test_image_match_uses_inline_image_and_catalog():
+    service = LLMService(_settings())
+    service._post = Mock(
+        return_value={
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": (
+                                    "<answer>Is this what you're looking for? "
+                                    "Looks like our Bag (₦5000). Reply '1' if yes "
+                                    "or tell me what you're actually looking for!</answer>"
+                                )
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+
+    reply = service.match_product_image(
+        b"image-bytes",
+        "image/jpeg",
+        [{"name": "Bag", "price": "5000.00"}],
+    )
+
+    payload = service._post.call_args.args[0]
+    inline = payload["contents"][0]["parts"][1]["inlineData"]
+    assert inline["mimeType"] == "image/jpeg"
+    assert inline["data"]
+    assert "Looks like our Bag (₦5000)" in reply
+
+
+@patch("app.services.transcription.httpx.post")
+def test_voice_uses_groq_whisper(mock_post):
+    response = Mock()
+    response.json.return_value = {"text": "I want two bags"}
+    response.raise_for_status.return_value = None
+    mock_post.return_value = response
+
+    text = transcribe_audio(b"voice", "audio/ogg", _settings())
+
+    assert text == "I want two bags"
+    assert "audio/transcriptions" in mock_post.call_args.args[0]
+    assert mock_post.call_args.kwargs["data"]["model"] == "whisper-large-v3-turbo"

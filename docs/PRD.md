@@ -35,7 +35,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
           │
           ▼  (HTTP POST /api/webhook/whatsapp)
 [ FastAPI Backend Application ]
-    ├── LLM Engine (Anthropic Claude 3.5 - Pidgin/English + System Prompt)
+    ├── LLM Engine (Google Gemma 3 - Pidgin/English + System Prompt)
     ├── Inventory & Session Cache (Redis)
     ├── Relational Database (PostgreSQL)
     └── Payment Gateway (Paystack API & Webhooks)
@@ -54,7 +54,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 | **Customer Interface** | User conversational messaging interface | WhatsApp via Twilio Messaging API |
 | **Messaging Gateway** | Inbound/outbound WhatsApp message delivery & webhooks | Twilio Sandbox for WhatsApp |
 | **Backend Engine** | Webhook intake, session state, business rules, DB transactions | Python 3.11, FastAPI, SQLAlchemy / SQLModel |
-| **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Anthropic Claude API (Claude 3.5 Sonnet) |
+| **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Google Gemma API (Gemma 3 27B) |
 | **Data Persistence** | Relational store for merchants, products, orders, and logs | PostgreSQL 15 |
 | **Session & State Cache** | Multi-turn chat context, cart state, rate limits | Redis 7 |
 | **Payment Gateway** | Generation of checkout links, payment verification, webhook callbacks | Paystack Payments API |
@@ -76,7 +76,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 
 ### 4.2 WhatsApp Conversational Bot Flow
 1. **Greetings & Shop Discovery**: Bot welcomes user, explains capabilities in friendly tone (English + Pidgin).
-2. **Product Inquiries & Catalog Browsing**: Claude LLM queries product database, answering queries such as *"You get black Chelsea boots size 43?"*.
+2. **Product Inquiries & Catalog Browsing**: Gemma LLM queries product database, answering queries such as *"You get black Chelsea boots size 43?"*.
 3. **Cart Management**: Add, update quantity, and remove items with dynamic total calculation.
 4. **Paystack Checkout Generation**: Generates a secure Paystack payment link and sends it directly in the chat.
 5. **Post-Payment Confirmation**: Paystack webhook triggers automatic WhatsApp confirmation message with order details and receipt summary.
@@ -115,7 +115,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 ### Backend
 - [ ] FastAPI `/api/health` returns status 200
 - [ ] Twilio webhook receiver successfully ingests incoming WhatsApp messages
-- [ ] Claude LLM integration parses intent and returns catalog answers with system prompt
+- [ ] Gemma LLM integration parses intent and returns catalog answers with system prompt
 - [ ] Paystack payment link generation and webhook verification functional
 - [ ] PostgreSQL database relationships and Redis session state working
 
@@ -146,7 +146,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 - [Frontend] Products Dashboard with single item creation form
 - [Frontend] CSV catalog upload parser and error reporting modal
 - [Frontend] Orders Dashboard with live status badges
-- [Backend] LLM integration (Claude + system prompt) for catalog query and Pidgin English
+- [Backend] LLM integration (Gemma + system prompt) for catalog query and Pidgin English
 - [Backend] WhatsApp messaging flow (greeting, catalog search, cart state in Redis)
 - [Backend] Paystack payment link creation and transaction verification endpoints
 

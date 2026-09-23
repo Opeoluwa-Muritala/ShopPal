@@ -69,6 +69,8 @@ class StructuredJsonFormatter(logging.Formatter):
             "status_code",
             "paystack_key",
             "api_key",
+            "job_id",
+            "failure_category",
         ]
         raw_extra: dict[str, Any] = {}
         for key in context_keys:
@@ -116,7 +118,7 @@ def log_external_call(
     error: Exception | None = None,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    """Helper to log external API calls (Twilio, Claude, Whisper, Paystack) with latency and status."""
+    """Helper to log external API calls (Twilio, Gemma, Groq Whisper, Paystack) with latency and status."""
     latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
     context: dict[str, Any] = {
         "service": service,

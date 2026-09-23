@@ -12,7 +12,7 @@ from app.db.models import Account, Order
 from app.db.session import get_db
 from app.services.auth import get_current_account
 
-router = APIRouter(prefix="/api/orders", tags=["orders"])
+router = APIRouter(prefix="/api/orders", tags=["Frontend Orders"])
 
 
 class OrderUpdateSchema(BaseModel):
