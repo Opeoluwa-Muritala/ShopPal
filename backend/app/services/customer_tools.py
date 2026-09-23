@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Cart, Product
+from app.db.models import Cart, Product, Vendor
 from app.services.orders import create_order_from_cart
 
 
@@ -184,10 +184,17 @@ class CustomerToolDispatcher:
             ],
             commit=self.commit,
         )
+        vendor = self.session.get(Vendor, self.vendor_id)
         return {
             "order_code": order.order_code,
             "total": str(order.total),
             "status": order.status,
             "payment_status": order.payment_status,
             "delivery_address": order.delivery_address,
+            "payment_account": vendor.bank_account if vendor else None,
+            "payment_instruction": (
+                "Transfer the exact total to the vendor account shown, then wait for verified confirmation."
+                if vendor and vendor.bank_account
+                else "Payment details are not configured yet; please ask the vendor."
+            ),
         }
