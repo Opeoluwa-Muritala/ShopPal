@@ -3,7 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
-import DashboardPage from '../app/page';
+import LandingPage from '../app/page';
+import DashboardPage from '../app/dashboard/page';
 import ProductsPage from '../app/products/page';
 import OrdersPage from '../app/orders/page';
 import SettingsPage from '../app/settings/page';
@@ -25,6 +26,44 @@ describe('Navigation and Components', () => {
   it('renders Footer with copyright', () => {
     render(<Footer />);
     expect(screen.getByText(/Naija Marketplace \(EcomBot\)/i)).toBeDefined();
+  });
+});
+
+describe('Landing Page', () => {
+  it('renders Hero section with value proposition', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/Sell on WhatsApp\./i)).toBeDefined();
+    expect(screen.getAllByText(/Keep 98%/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Start Selling in 2 Minutes/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders Problem comparison section', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/The Harsh Reality of Nigerian Retail/i)).toBeDefined();
+    expect(screen.getByText(/Big Marketplaces/i)).toBeDefined();
+  });
+
+  it('renders Solution section with 3 key benefits', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/Upload Products in 2 Minutes/i)).toBeDefined();
+    expect(screen.getByText(/Customers Shop Like Texting/i)).toBeDefined();
+    expect(screen.getByText(/Keep 98% of Sales/i)).toBeDefined();
+  });
+
+  it('renders How It Works timeline', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/How it works in 3 simple steps/i)).toBeDefined();
+  });
+
+  it('renders Testimonials section', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/Mrs\. Chidinma Okafor/i)).toBeDefined();
+  });
+
+  it('renders FAQ section', () => {
+    render(<LandingPage />);
+    expect(screen.getByText(/Frequently Asked Questions/i)).toBeDefined();
+    expect(screen.getByText(/How do I sign up\?/i)).toBeDefined();
   });
 });
 
