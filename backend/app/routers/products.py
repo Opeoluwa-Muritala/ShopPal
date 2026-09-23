@@ -14,7 +14,7 @@ from app.db.session import get_db
 from app.services.auth import get_current_account
 from app.services.security import parse_and_sanitize_catalog_csv
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+router = APIRouter(prefix="/api/products", tags=["Frontend Products"])
 
 
 class ProductCreateSchema(BaseModel):

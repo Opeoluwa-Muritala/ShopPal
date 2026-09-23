@@ -48,6 +48,16 @@ def create_app() -> FastAPI:
         version="0.6.0",
         lifespan=lifespan,
         openapi_tags=[
+            {"name": "Frontend Auth", "description": "Login, token lifecycle, and password recovery used by the vendor dashboard."},
+            {"name": "Frontend Accounts", "description": "Current account and staff administration for the dashboard."},
+            {"name": "Vendor Onboarding", "description": "Vendor signup and initial catalog import."},
+            {"name": "Frontend Products", "description": "Vendor product catalog operations used by the dashboard."},
+            {"name": "Frontend Orders", "description": "Vendor order listing and status management."},
+            {"name": "Frontend Diagnostics", "description": "Authenticated recent application logs for dashboard diagnostics."},
+            {"name": "System", "description": "Service health checks."},
+            {"name": "Provider Webhooks", "description": "Inbound provider callbacks; these are not frontend dashboard calls."},
+            {"name": "Twilio WhatsApp", "description": "Signed Twilio WhatsApp customer messages."},
+            {"name": "Paystack", "description": "Signed Paystack payment callbacks."},
             {
                 "name": "Meta WhatsApp",
                 "description": (
