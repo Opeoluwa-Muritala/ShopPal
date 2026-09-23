@@ -1,18 +1,47 @@
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.logging_conf import logger, setup_logging
-from app.routers import accounts, auth, health, logs, orders, products, vendors, webhook
+from app.routers import (
+    accounts,
+    auth,
+    health,
+    logs,
+    orders,
+    privacy,
+    products,
+    vendors,
+    webhook,
+    whatsapp_webhook,
+)
+from app.services.frontend_auth import require_frontend_api_key
 
 
 def create_app() -> FastAPI:
     setup_logging()
     application = FastAPI(
         title="Naija Marketplace API",
-        description="WhatsApp e-commerce bot backend",
+        description=(
+            "ShopPal backend for vendor commerce and customer conversations over "
+            "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
+            "the configured frontend API key and applicable account credentials; "
+            "provider webhooks use provider-specific signature verification."
+        ),
         version="0.6.0",
+        openapi_tags=[
+            {
+                "name": "Meta WhatsApp",
+                "description": (
+                    "Public Meta Cloud API verification and signed event callbacks."
+                ),
+            },
+            {
+                "name": "Legal",
+                "description": "Public legal pages required by connected platforms.",
+            },
+        ],
     )
 
     # Global timing and structured request logging middleware
@@ -72,11 +101,14 @@ def create_app() -> FastAPI:
     application.include_router(health.router)
     application.include_router(logs.router)
     application.include_router(webhook.router)
-    application.include_router(vendors.router)
-    application.include_router(auth.router)
-    application.include_router(accounts.router)
-    application.include_router(orders.router)
-    application.include_router(products.router)
+    application.include_router(whatsapp_webhook.router)
+    application.include_router(privacy.router)
+    frontend_dependencies = [Depends(require_frontend_api_key)]
+    application.include_router(vendors.router, dependencies=frontend_dependencies)
+    application.include_router(auth.router, dependencies=frontend_dependencies)
+    application.include_router(accounts.router, dependencies=frontend_dependencies)
+    application.include_router(orders.router, dependencies=frontend_dependencies)
+    application.include_router(products.router, dependencies=frontend_dependencies)
     return application
 
 

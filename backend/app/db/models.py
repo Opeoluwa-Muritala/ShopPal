@@ -183,3 +183,18 @@ class PasswordResetToken(Identity, Base):
         DateTime(timezone=True), server_default=text("now()")
     )
 
+
+class WhatsAppMessage(Identity, Base):
+    __tablename__ = "whatsapp_messages"
+
+    message_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    from_number: Mapped[str | None] = mapped_column(String(30))
+    message_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(30))
+    wa_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    received_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
