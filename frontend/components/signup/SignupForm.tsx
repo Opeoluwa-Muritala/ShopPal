@@ -39,19 +39,39 @@ export default function SignupForm() {
     sandbox_code: 'bold-elephant',
   });
 
-  // Load from localStorage on mount
+  const [formState, setFormState] = useState({
+    formData: {},
+    currentStep: 0
+  });
+
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem('signupFormState');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.formData) setFormData(parsed.formData);
-        if (parsed.currentStep && parsed.currentStep < 4) setCurrentStep(parsed.currentStep);
+        setFormState({
+          formData: parsed.formData || {},
+          currentStep: (parsed.currentStep && parsed.currentStep < 4) ? parsed.currentStep : 0
+        });
       }
     } catch {
-      // Ignore localStorage read errors in restricted environments
+      // error
     }
   }, []);
+
+  // Load from localStorage on mount
+  // useEffect(() => {
+  //   try {
+  //     const saved = localStorage.getItem(STORAGE_KEY);
+  //     if (saved) {
+  //       const parsed = JSON.parse(saved);
+  //       if (parsed.formData) setFormData(parsed.formData);
+  //       if (parsed.currentStep && parsed.currentStep < 4) setCurrentStep(parsed.currentStep);
+  //     }
+  //   } catch {
+  //     // Ignore localStorage read errors in restricted environments
+  //   }
+  // }, []);
 
   // Save to localStorage when formData or currentStep changes (except step 4)
   useEffect(() => {
@@ -153,20 +173,18 @@ export default function SignupForm() {
               return (
                 <div key={s.num} className="flex items-center gap-1.5 sm:gap-2">
                   <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                      isPassed
-                        ? 'bg-emerald-600 text-white'
-                        : isCurrent
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition ${isPassed
+                      ? 'bg-emerald-600 text-white'
+                      : isCurrent
                         ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-600'
                         : 'bg-slate-100 text-slate-400'
-                    }`}
+                      }`}
                   >
                     {isPassed ? <CheckCircle2 className="w-4 h-4" /> : s.num}
                   </div>
                   <span
-                    className={`hidden sm:inline text-xs font-semibold ${
-                      isCurrent ? 'text-slate-900' : 'text-slate-400'
-                    }`}
+                    className={`hidden sm:inline text-xs font-semibold ${isCurrent ? 'text-slate-900' : 'text-slate-400'
+                      }`}
                   >
                     {s.title}
                   </span>
