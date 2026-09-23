@@ -100,9 +100,11 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 5. Set the vendor's `bot_number` to Meta's display phone number so incoming
    customers are routed to the correct shop.
 
-Meta POST callbacks are signature-verified, acknowledged before background work,
-deduplicated by message ID, and persisted in PostgreSQL. New text messages use
-the existing ShopPal customer agent and reply through Meta's Graph API.
+Meta POST callbacks are signature-verified and acknowledged after PostgreSQL
+commits the event and durable reply job. Apply migration `0004` and set
+`META_REPLY_WORKER_ENABLED=true` to process new text messages through Gemma and
+Meta's Graph API. Failed work resumes from saved tool results and replies.
+See [reply recovery and rollout](docs/REPLY_RECOVERY.md) for operational details.
 
 - API documentation: `https://shoppal.onrender.com/docs`
 - Privacy policy: `https://shoppal.onrender.com/privacy`

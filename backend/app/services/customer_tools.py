@@ -12,10 +12,17 @@ from app.services.orders import create_order_from_cart
 
 
 class CustomerToolDispatcher:
-    def __init__(self, session: Session, vendor_id: UUID, customer_phone: str):
+    def __init__(self, session: Session, vendor_id: UUID, customer_phone: str, *, commit: bool = True):
         self.session = session
         self.vendor_id = vendor_id
         self.customer_phone = customer_phone
+        self.commit = commit
+
+    def _save(self):
+        if self.commit:
+            self.session.commit()
+        else:
+            self.session.flush()
 
     def __call__(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handler = {
@@ -40,7 +47,10 @@ class CustomerToolDispatcher:
                 Cart.customer_phone == self.customer_phone,
             )
         )
-        if cart is None or cart.state == "checked_out":
+        if cart is not None and cart.state == "checked_out":
+            cart.items = []
+            cart.state = "active"
+        if cart is None:
             cart = Cart(
                 vendor_id=self.vendor_id,
                 customer_phone=self.customer_phone,
@@ -128,7 +138,7 @@ class CustomerToolDispatcher:
                 }
             )
         cart.items = items
-        self.session.commit()
+        self._save()
         return self.view_cart({})
 
     def update_cart_item(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -146,7 +156,7 @@ class CustomerToolDispatcher:
             return {"error": "That product is not in the cart"}
         item["qty"] = quantity
         cart.items = items
-        self.session.commit()
+        self._save()
         return self.view_cart({})
 
     def remove_cart_item(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -155,7 +165,7 @@ class CustomerToolDispatcher:
         cart.items = [
             item for item in (cart.items or []) if item["product_id"] != product_id
         ]
-        self.session.commit()
+        self._save()
         return self.view_cart({})
 
     def checkout_cart(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -172,6 +182,7 @@ class CustomerToolDispatcher:
                 {"product_id": item["product_id"], "qty": item["qty"]}
                 for item in cart.items
             ],
+            commit=self.commit,
         )
         return {
             "order_code": order.order_code,

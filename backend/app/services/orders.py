@@ -71,6 +71,8 @@ def create_order_from_cart(
     customer_phone: str,
     delivery_address: str,
     item_requests: list[dict[str, Any]],
+    *,
+    commit: bool = True,
 ) -> Order:
     """
     Creates an order while enforcing:
@@ -123,6 +125,8 @@ def create_order_from_cart(
             quantity=qty,
             untrusted_llm_price=req.get("claimed_price"),
         )
+        if str(product.vendor_id) != str(vendor_id):
+            raise HTTPException(status_code=404, detail="Product unavailable")
 
         # 3. Atomic stock decrement
         decrement_stock_atomic(session, product.id, qty)
@@ -163,6 +167,9 @@ def create_order_from_cart(
         )
         session.add(cart)
 
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(new_order)
     return new_order
