@@ -12,7 +12,7 @@ from app.db.models import Account, Vendor
 from app.db.session import get_db
 from app.services.auth import hash_password
 
-router = APIRouter(prefix="/api/vendors", tags=["vendors"])
+router = APIRouter(prefix="/api/vendors", tags=["Vendor Onboarding"])
 
 
 class VendorSignupRequest(BaseModel):
