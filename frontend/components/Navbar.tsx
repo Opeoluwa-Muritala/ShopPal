@@ -22,6 +22,9 @@ export default function Navbar() {
             <Link href="/dashboard" className="hover:text-emerald-600 transition">
               Dashboard
             </Link>
+            <Link href="/dashboard/analytics" className="hover:text-emerald-600 transition">
+              Analytics
+            </Link>
             <Link href="/products" className="hover:text-emerald-600 transition">
               Products
             </Link>
