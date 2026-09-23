@@ -19,7 +19,7 @@ This document details the architectural layout, data flow, and core component re
     │
     ├── 3. Retrieve or store multi-turn chat session & cart ──────────► [ Redis 7 Cache ]
     │
-    ├── 4. Grounded product query & intent extraction (Pidgin/EN) ────► [ Anthropic Claude 3.5 API ]
+    ├── 4. Grounded product query & intent extraction (Pidgin/EN) ────► [ Google Gemma 3 API ]
     │
     ├── 5. Query / Update products, vendors, and orders ──────────────► [ PostgreSQL Database ]
     │
@@ -41,9 +41,9 @@ This document details the architectural layout, data flow, and core component re
 | Component | Responsibility | Tech Stack | Communication |
 | --- | --- | --- | --- |
 | **Customer Interface** | Conversational chat interface for Nigerian shoppers | WhatsApp Client | Mobile network / WhatsApp Protocol |
-| **Messaging Gateway** | Inbound message webhook delivery and outbound message sending | Twilio WhatsApp Sandbox / API | HTTPS Webhooks & REST |
+| **Messaging Gateway** | Inbound delivery and outbound messaging | Twilio WhatsApp and Meta Cloud API | Signed HTTPS webhooks and REST |
 | **Backend API Engine** | Handles webhook ingestion, business logic, routing, auth | FastAPI (Python 3.11), Uvicorn | REST, Async I/O |
-| **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Anthropic Claude API (Claude 3.5 Sonnet) | HTTPS REST API |
+| **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Google Gemma API (Gemma 3 27B) | HTTPS REST API |
 | **Data Persistence** | Relational store for merchants, products, orders, and transaction records | PostgreSQL 15, SQLAlchemy / SQLModel | TCP / Connection Pool |
 | **Session & State Cache** | Multi-turn chat context, cart state, rate limits | Redis 7 | In-memory key-value |
 | **Payment Gateway** | Generation of checkout links, payment verification, webhook callbacks | Paystack Payments API | HTTPS REST & Signed Webhooks |
@@ -57,9 +57,14 @@ This document details the architectural layout, data flow, and core component re
 1. **Inbound Message**: Customer sends a message on WhatsApp (e.g., *"How far, you get Nike sneakers size 43?"*).
 2. **Webhook Ingestion**: Twilio delivers the payload to `POST /api/webhook/whatsapp`.
 3. **Context & State Retrieval**: Backend retrieves conversation history and cart state from Redis.
-4. **LLM Grounding**: Backend formats the prompt with the vendor's catalog and queries Claude 3.5.
-5. **Catalog Match & Response**: Claude returns a natural language response with matching product items and prices in NGN.
+4. **LLM Grounding**: Backend formats the prompt with the vendor's catalog and queries Gemma 3.
+5. **Catalog Match & Response**: Gemma returns a natural language response with matching product items and prices in NGN.
 6. **Outbound Message**: Twilio sends the WhatsApp message back to the customer.
+
+Meta Cloud API follows the same customer-agent path through
+`POST /webhooks/whatsapp`. Meta callbacks are authenticated with
+`X-Hub-Signature-256`, deduplicated and stored in `whatsapp_messages`, then
+processed in a background task. Replies are sent through Meta's Graph API.
 
 ### B. Checkout & Payment Flow
 1. **Checkout Trigger**: Customer confirms purchase intent (*"I wan buy"*).

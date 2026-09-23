@@ -11,8 +11,8 @@
 | **Backend API** | FastAPI (Python 3.11) | High-performance asynchronous API, webhooks, and core services |
 | **Frontend Portal** | Next.js 14, React 18, Tailwind CSS | Vendor onboarding, product catalog management, orders dashboard |
 | **Database & Cache** | PostgreSQL 15, Redis | Relational data persistence, conversation state management, session cache |
-| **Messaging Gateway** | Twilio WhatsApp Business API / Sandbox | Bi-directional customer chat messaging interface |
-| **AI / Intelligence** | Anthropic Claude (via Claude 3.5 Sonnet / Haiku API) | Natural language product discovery, Nigerian Pidgin understanding, cart intent |
+| **Messaging Gateway** | Twilio WhatsApp and Meta Cloud API | Bi-directional customer chat messaging interface |
+| **AI / Intelligence** | Google Gemma (via Gemma 3 generateContent API) | Natural language product discovery, Nigerian Pidgin understanding, cart intent |
 | **Payments** | Paystack | Automated payment link generation, checkout, and webhook verification |
 | **Testing** | Pytest, Vitest, React Testing Library | Backend unit/integration tests and frontend UI component tests |
 | **CI / CD** | GitHub Actions | Automated linting, test suites, coverage checks, and deployment webhooks |
@@ -59,9 +59,15 @@ TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=<twilio-auth-token>
 TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 
-# Conversational AI (Anthropic Claude)
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
-ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+# Meta WhatsApp Cloud API
+WHATSAPP_VERIFY_TOKEN=<random-webhook-verification-token>
+WHATSAPP_APP_SECRET=<meta-app-secret>
+WHATSAPP_ACCESS_TOKEN=<permanent-system-user-token>
+WHATSAPP_PHONE_NUMBER_ID=<meta-phone-number-id>
+
+# Conversational AI (Google Gemma)
+GEMMA_API_KEY=your-google-ai-api-key
+GEMMA_MODEL=gemma-3-27b-it
 
 # Paystack Payment Gateway
 PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
@@ -85,10 +91,27 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
    - Set to: `https://<your-service-name>.onrender.com/webhook/status`.
 4. Click **Save**.
 
-### 4. Live Demo Monitoring & Diagnostics
+### 4. Meta WhatsApp Cloud API Configuration
+
+1. Set the callback to `https://shoppal.onrender.com/webhooks/whatsapp`.
+2. Use the same verification token in Meta and `WHATSAPP_VERIFY_TOKEN`.
+3. Subscribe the WhatsApp Business Account to the `messages` field.
+4. Set the four Meta environment variables above in Render.
+5. Set the vendor's `bot_number` to Meta's display phone number so incoming
+   customers are routed to the correct shop.
+
+Meta POST callbacks are signature-verified, acknowledged before background work,
+deduplicated by message ID, and persisted in PostgreSQL. New text messages use
+the existing ShopPal customer agent and reply through Meta's Graph API.
+
+- API documentation: `https://shoppal.onrender.com/docs`
+- Privacy policy: `https://shoppal.onrender.com/privacy`
+- Setup guide: [`docs/META_WHATSAPP_SETUP.md`](docs/META_WHATSAPP_SETUP.md)
+
+### 5. Live Demo Monitoring & Diagnostics
 - **Health Check Probe**: `GET /api/health`
 - **In-Memory Structured Logs**: `GET /api/logs/recent?limit=50`
-  Inspect recent incoming webhooks, Claude latency, Twilio deliveries, and DB writes without needing SSH access during the live judging presentation.
+  Inspect recent incoming webhooks, Gemma latency, Twilio deliveries, and DB writes without needing SSH access during the live judging presentation.
 
 ---
 

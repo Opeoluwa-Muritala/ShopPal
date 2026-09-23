@@ -30,12 +30,12 @@ def test_logs_helpers_record_external_calls_and_db_writes():
 
     # Log external call success & failure
     log_external_call(
-        service="claude",
+        service="gemma",
         operation="generate_reply",
         start_time=0.0,
         success=True,
         customer_phone="+2348012345678",
-        extra={"model": "claude-3-5-sonnet"},
+        extra={"model": "gemma-3-27b-it"},
     )
     log_external_call(
         service="twilio",
@@ -57,7 +57,7 @@ def test_logs_helpers_record_external_calls_and_db_writes():
 
     logs = recent_logs_buffer.get_recent(limit=10)
     services = [log.get("service") for log in logs]
-    assert "claude" in services
+    assert "gemma" in services
     assert "twilio" in services
     assert "database" in services
 
@@ -72,7 +72,7 @@ def test_webhook_unhandled_exception_returns_graceful_twilio_response():
     # Add a temporary failing webhook route to the app
     @app.post("/webhook/test-failing-webhook")
     def failing_webhook():
-        raise RuntimeError("Simulated crash in webhook handler (e.g. Claude timeout)")
+        raise RuntimeError("Simulated crash in webhook handler (e.g. Gemma timeout)")
 
     # Execute request through client (with raise_server_exceptions=False)
     response = client.post("/webhook/test-failing-webhook")

@@ -24,9 +24,20 @@ class Settings(BaseSettings):
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
+    frontend_api_key: SecretStr = SecretStr("")
 
-    # LLM (Anthropic)
-    anthropic_api_key: SecretStr = SecretStr("")
+    # Meta WhatsApp Cloud API webhook authentication
+    whatsapp_verify_token: SecretStr = SecretStr("")
+    whatsapp_app_secret: SecretStr = SecretStr("")
+    whatsapp_access_token: SecretStr = SecretStr("")
+    whatsapp_phone_number_id: str = ""
+
+    # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
+    gemma_api_key: SecretStr = SecretStr("")
+    gemma_model: str = "gemma-3-27b-it"
+    gemma_api_url: str = ""
+    groq_api_key: SecretStr = SecretStr("")
+    groq_transcription_model: str = "whisper-large-v3-turbo"
 
     # Paystack Payments
     paystack_secret_key: SecretStr = SecretStr("")
