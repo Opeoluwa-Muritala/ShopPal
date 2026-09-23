@@ -11,7 +11,7 @@ from app.db.models import Account
 from app.db.session import get_db
 from app.services.auth import get_current_owner, hash_password
 
-router = APIRouter(prefix="/api/accounts", tags=["accounts"])
+router = APIRouter(prefix="/api/accounts", tags=["Frontend Accounts"])
 
 
 class InviteStaffRequest(BaseModel):
