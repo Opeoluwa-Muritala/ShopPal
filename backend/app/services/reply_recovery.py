@@ -284,7 +284,7 @@ def send_reply(session, job, owner, settings):
     checkpoint(session, job, owner)
     try:
         response = httpx.post(
-            f"https://graph.facebook.com/v23.0/{settings.whatsapp_phone_number_id}/messages",
+            f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
             headers={
                 "Authorization": "Bearer "
                 + settings.whatsapp_access_token.get_secret_value()
