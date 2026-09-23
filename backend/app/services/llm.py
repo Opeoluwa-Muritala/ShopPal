@@ -132,6 +132,15 @@ class LLMService:
     ) -> dict[str, Any] | None:
         """Handle common customer wording before a slower model call."""
         lowered = message.casefold().strip()
+        if re.fullmatch(
+            r"(?:please\s+)?(?:show\s+)?(?:my\s+)?cart(?:\s+please)?[.!?]*",
+            lowered,
+        ):
+            return {"tool": "viewCart", "arguments": {}}
+        if re.fullmatch(r"(?:please\s+)?checkout[.!?]*", lowered):
+            # Checkout requires an address. Showing the cart first lets the
+            # model ask for the missing address without creating an order.
+            return {"tool": "viewCart", "arguments": {}}
         browse_words = ("stock", "available", "catalog", "catalogue", "what do you have", "show me", "list")
         if any(word in lowered for word in browse_words) and not any(
             word in lowered for word in ("cart", "checkout", "pay")
