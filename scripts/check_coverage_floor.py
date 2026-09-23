@@ -33,12 +33,13 @@ def main() -> None:
         cwd=ROOT, check=True, capture_output=True, text=True,
     ).stdout
     baseline_floor = read_floor(baseline)
+    current_floor = read_floor((ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8"))
     effective_baseline = min(baseline_floor, 40.0) if baseline_floor == 100.0 else baseline_floor
-    check_floor(current, effective_baseline)
-    print(f"Backend coverage floor: {current:g}% (may not decrease)")
+    check_floor(current_floor, effective_baseline)
+    print(f"Backend coverage floor: {current_floor:g}% (may not decrease)")
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as stream:
-            stream.write(f"floor={current:g}\n")
+            stream.write(f"floor={current_floor:g}\n")
 
 
 if __name__ == "__main__":
