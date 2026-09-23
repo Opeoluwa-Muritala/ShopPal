@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -445,8 +446,22 @@ def recover_once(engine, settings):
             .order_by(ReplyJob.created_at, ReplyJob.id)
             .limit(20)
         ).all()
-    for identifier in ids:
-        process_claim(engine, identifier, settings)
+    if not ids:
+        return
+    # Different customers can be processed in parallel. process_claim still holds
+    # a per-phone PostgreSQL advisory lock, so messages for one customer remain
+    # ordered while one slow Gemma call cannot block every other customer.
+    workers = min(len(ids), int(settings.meta_reply_worker_concurrency))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="reply") as pool:
+        futures = [pool.submit(process_claim, engine, identifier, settings) for identifier in ids]
+        for future in futures:
+            try:
+                future.result()
+            except Exception:
+                logger.error(
+                    "Reply job thread failed",
+                    extra={"step": "reply_recovery", "status": "worker_error"},
+                )
 
 
 async def recovery_loop(stop):
@@ -456,6 +471,8 @@ async def recovery_loop(stop):
         except Exception:
             logger.error("Reply recovery poll failed", extra={"step": "reply_recovery"})
         try:
-            await asyncio.wait_for(stop.wait(), timeout=5)
+            await asyncio.wait_for(
+                stop.wait(), timeout=get_settings().meta_reply_worker_poll_seconds
+            )
         except TimeoutError:
             pass
