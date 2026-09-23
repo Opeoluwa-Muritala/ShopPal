@@ -251,11 +251,36 @@ def send_reply(session, job, owner, settings):
             ReplyJob.phone_number_id == job.phone_number_id,
         )
     )
-    if last_inbound is None or now() - last_inbound >= timedelta(hours=24):
+    outside_window = last_inbound is None or now() - last_inbound >= timedelta(hours=24)
+    use_template = outside_window and job.attempts > 1
+    if outside_window and not use_template:
         fail(session, job, "messaging_window", permanent=True)
         return
+    template_name = settings.whatsapp_reengagement_template_name.strip()
+    if use_template and not template_name:
+        fail(session, job, "messaging_window_template_missing", permanent=True)
+        return
     job.state = "sending"
-    body, recipient, identifier = job.reply_text, job.customer_phone, str(job.id)
+    recipient, identifier = job.customer_phone, str(job.id)
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient,
+    }
+    if use_template:
+        payload.update({
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": settings.whatsapp_reengagement_template_language},
+            },
+        })
+    else:
+        payload.update({
+            "type": "text",
+            "text": {"preview_url": False, "body": job.reply_text},
+            "biz_opaque_callback_data": identifier,
+        })
     checkpoint(session, job, owner)
     try:
         response = httpx.post(
@@ -264,14 +289,7 @@ def send_reply(session, job, owner, settings):
                 "Authorization": "Bearer "
                 + settings.whatsapp_access_token.get_secret_value()
             },
-            json={
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": recipient,
-                "type": "text",
-                "text": {"preview_url": False, "body": body},
-                "biz_opaque_callback_data": identifier,
-            },
+            json=payload,
             timeout=20,
         )
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
@@ -318,7 +336,12 @@ def send_reply(session, job, owner, settings):
     job.lease_until = None
     session.commit()
     logger.info(
-        "Meta reply accepted", extra={"step": "meta_message_send", "job_id": identifier}
+        "Meta reply accepted",
+        extra={
+            "step": "meta_message_send",
+            "job_id": identifier,
+            "delivery_mode": "template" if use_template else "text",
+        },
     )
 
 
