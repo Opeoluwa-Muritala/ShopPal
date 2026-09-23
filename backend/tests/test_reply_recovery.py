@@ -252,6 +252,31 @@ def test_expired_window_and_missing_vendor_require_review(
     send.assert_not_called()
 
 
+def test_expired_retry_uses_reengagement_template(
+    test_engine, setup_job, settings, monkeypatch
+):
+    settings.whatsapp_reengagement_template_name = "3p_direct_integration_test_template"
+    with Session(test_engine) as session:
+        msg = session.scalar(
+            select(WhatsAppMessage).where(WhatsAppMessage.message_id == setup_job[3])
+        )
+        msg.wa_timestamp = recovery.now() - timedelta(days=2)
+        job = session.get(ReplyJob, setup_job[0])
+        job.attempts = 2
+        job.reply_text = "A previous reply was interrupted."
+        session.commit()
+    send = Mock(return_value=accepted())
+    monkeypatch.setattr(recovery.httpx, "post", send)
+    recovery.process_claim(test_engine, setup_job[0], settings)
+    assert row(test_engine, setup_job[0]).state == "accepted"
+    payload = send.call_args.kwargs["json"]
+    assert payload["type"] == "template"
+    assert payload["template"] == {
+        "name": "3p_direct_integration_test_template",
+        "language": {"code": "en_US"},
+    }
+
+
 def test_intake_failure_returns_retryable_503(monkeypatch):
     from app.config import get_settings
     from tests.test_whatsapp_webhook import (
