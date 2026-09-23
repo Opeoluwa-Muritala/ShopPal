@@ -468,8 +468,17 @@ async def recovery_loop(stop):
     while not stop.is_set():
         try:
             await asyncio.to_thread(recover_once, get_engine(), get_settings())
-        except Exception:
-            logger.error("Reply recovery poll failed", extra={"step": "reply_recovery"})
+        except Exception as exc:
+            # Keep diagnostics useful without logging provider responses, tokens,
+            # customer text, or database URLs.
+            logger.error(
+                "Reply recovery poll failed",
+                extra={
+                    "step": "reply_recovery",
+                    "status": "poll_error",
+                    "error_type": type(exc).__name__,
+                },
+            )
         try:
             await asyncio.wait_for(
                 stop.wait(), timeout=get_settings().meta_reply_worker_poll_seconds
