@@ -160,7 +160,42 @@ def generate_reply(session, job, owner, settings):
     message = session.scalar(
         select(WhatsAppMessage).where(WhatsAppMessage.message_id == job.message_id)
     )
-    customer_text = message.body
+    if message is None or not message.body:
+        fail(session, job, "missing_customer_message", permanent=True)
+        return
+
+    # The newest message wins. Older pending messages are folded into this one
+    # request so a burst does not produce stale, duplicate answers.
+    older_jobs = session.scalars(
+        select(ReplyJob)
+        .where(
+            ReplyJob.customer_phone == job.customer_phone,
+            ReplyJob.phone_number_id == job.phone_number_id,
+            ReplyJob.state.in_(ACTIVE),
+            ReplyJob.created_at < job.created_at,
+        )
+        .order_by(ReplyJob.created_at)
+        .with_for_update()
+    ).all()
+    queued_messages = []
+    for older in older_jobs:
+        older_message = session.scalar(
+            select(WhatsAppMessage).where(
+                WhatsAppMessage.message_id == older.message_id
+            )
+        )
+        if older_message and older_message.body:
+            queued_messages.append((older.message_id, older_message.body))
+        older.state = "superseded"
+        older.failure_category = f"merged_into:{job.id}"
+        older.lease_owner = None
+        older.lease_until = None
+    customer_text = "\n".join(
+        [
+            *(f"Earlier queued customer message: {body}" for _, body in queued_messages),
+            f"Latest customer message: {message.body}",
+        ]
+    )
     checkpoint(session, job, owner)
     service = LLMService(settings)
     for _ in range(9):
@@ -181,24 +216,28 @@ def generate_reply(session, job, owner, settings):
         if "reply" in action:
             job.reply_text = action["reply"]
             job.pending_action = None
+            history_rows = [
+                *[
+                    {"role": "user", "content": body, "message_id": message_id}
+                    for message_id, body in queued_messages
+                ],
+                {
+                    "role": "user",
+                    "content": message.body,
+                    "message_id": job.message_id,
+                },
+                {
+                    "role": "assistant",
+                    "content": job.reply_text,
+                    "reply_job_id": str(job.id),
+                },
+            ]
             conversation.message_history = (
-                list(conversation.message_history or [])
-                + [
-                    {
-                        "role": "user",
-                        "content": customer_text,
-                        "message_id": job.message_id,
-                    },
-                    {
-                        "role": "assistant",
-                        "content": job.reply_text,
-                        "reply_job_id": str(job.id),
-                    },
-                ]
+                list(conversation.message_history or []) + history_rows
             )[-40:]
-            conversation.messages_this_session = (
-                int(conversation.messages_this_session or 0) + 2
-            )
+            conversation.messages_this_session = int(
+                conversation.messages_this_session or 0
+            ) + len(history_rows)
             conversation.last_touched = now()
             checkpoint(session, job, owner)
             return
@@ -251,27 +290,45 @@ def send_reply(session, job, owner, settings):
             ReplyJob.phone_number_id == job.phone_number_id,
         )
     )
-    if last_inbound is None or now() - last_inbound >= timedelta(hours=24):
+    outside_window = last_inbound is None or now() - last_inbound >= timedelta(hours=24)
+    use_template = outside_window and job.attempts > 1
+    if outside_window and not use_template:
         fail(session, job, "messaging_window", permanent=True)
         return
+    template_name = settings.whatsapp_reengagement_template_name.strip()
+    if use_template and not template_name:
+        fail(session, job, "messaging_window_template_missing", permanent=True)
+        return
     job.state = "sending"
-    body, recipient, identifier = job.reply_text, job.customer_phone, str(job.id)
+    recipient, identifier = job.customer_phone, str(job.id)
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient,
+    }
+    if use_template:
+        payload.update({
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": settings.whatsapp_reengagement_template_language},
+            },
+        })
+    else:
+        payload.update({
+            "type": "text",
+            "text": {"preview_url": False, "body": job.reply_text},
+            "biz_opaque_callback_data": identifier,
+        })
     checkpoint(session, job, owner)
     try:
         response = httpx.post(
-            f"https://graph.facebook.com/v23.0/{settings.whatsapp_phone_number_id}/messages",
+            f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
             headers={
                 "Authorization": "Bearer "
                 + settings.whatsapp_access_token.get_secret_value()
             },
-            json={
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": recipient,
-                "type": "text",
-                "text": {"preview_url": False, "body": body},
-                "biz_opaque_callback_data": identifier,
-            },
+            json=payload,
             timeout=20,
         )
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
@@ -318,20 +375,25 @@ def send_reply(session, job, owner, settings):
     job.lease_until = None
     session.commit()
     logger.info(
-        "Meta reply accepted", extra={"step": "meta_message_send", "job_id": identifier}
+        "Meta reply accepted",
+        extra={
+            "step": "meta_message_send",
+            "job_id": identifier,
+            "delivery_mode": "template" if use_template else "text",
+        },
     )
 
 
-def earlier_pending(job):
-    earlier = aliased(ReplyJob)
+def newer_pending(job):
+    newer = aliased(ReplyJob)
     return exists(
-        select(earlier.id).where(
-            earlier.customer_phone == job.customer_phone,
-            earlier.phone_number_id == job.phone_number_id,
-            earlier.state.in_(ACTIVE),
+        select(newer.id).where(
+            newer.customer_phone == job.customer_phone,
+            newer.phone_number_id == job.phone_number_id,
+            newer.state.in_(ACTIVE),
             or_(
-                earlier.created_at < job.created_at,
-                (earlier.created_at == job.created_at) & (earlier.id < job.id),
+                newer.created_at > job.created_at,
+                (newer.created_at == job.created_at) & (newer.id > job.id),
             ),
         )
     )
@@ -364,7 +426,7 @@ def process_claim(engine, job_id, settings):
                     return False
                 if job.lease_until and job.lease_until > now():
                     return False
-                if session.scalar(select(earlier_pending(job))):
+                if session.scalar(select(newer_pending(job))):
                     return False
                 if job.state == "sending":
                     job.state = "delivery_unknown"
@@ -441,7 +503,7 @@ def recover_once(engine, settings):
                 ReplyJob.state.in_(ACTIVE),
                 ReplyJob.next_attempt_at <= now(),
                 or_(ReplyJob.lease_until.is_(None), ReplyJob.lease_until <= now()),
-                ~earlier_pending(ReplyJob),
+                ~newer_pending(ReplyJob),
             )
             .order_by(ReplyJob.created_at, ReplyJob.id)
             .limit(20)

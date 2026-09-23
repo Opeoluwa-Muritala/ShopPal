@@ -27,7 +27,7 @@ from app.services.auth import (
     verify_password,
 )
 
-router = APIRouter(prefix="/api/auth", tags=["authentication"])
+router = APIRouter(prefix="/api/auth", tags=["Frontend Auth"])
 
 
 class LoginRequest(BaseModel):

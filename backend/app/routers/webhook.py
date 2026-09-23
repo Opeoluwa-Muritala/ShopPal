@@ -36,10 +36,10 @@ from app.services.security import (
 )
 from app.services.transcription import TranscriptionError, transcribe_audio
 
-router = APIRouter(prefix="/webhook", tags=["webhooks"])
+router = APIRouter(prefix="/webhook", tags=["Provider Webhooks"])
 
 
-@router.post("/whatsapp")
+@router.post("/whatsapp", tags=["Twilio WhatsApp"])
 async def twilio_whatsapp_webhook(
     request: Request,
     From: str = Form(default=""),
@@ -228,7 +228,7 @@ def _persist_exchange(
     session.commit()
 
 
-@router.post("/paystack")
+@router.post("/paystack", tags=["Paystack"])
 async def paystack_webhook(
     request: Request,
     x_paystack_signature: str | None = Header(default=None, alias="x-paystack-signature"),
