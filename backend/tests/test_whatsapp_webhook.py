@@ -56,8 +56,8 @@ SAMPLE_MESSAGE_PAYLOAD = {
 def _settings():
     return Settings(
         _env_file=None,
-        WHATSAPP_VERIFY_TOKEN=VERIFY_TOKEN,
-        WHATSAPP_APP_SECRET=APP_SECRET,
+        whatsapp_verify_token=VERIFY_TOKEN,
+        whatsapp_app_secret=APP_SECRET,
     )
 
 
@@ -67,6 +67,7 @@ def _signed_body(payload):
         APP_SECRET.encode(), body, hashlib.sha256
     ).hexdigest()
     return body, signature
+
 
 
 def test_verification_handshake_accepts_valid_and_rejects_invalid_token():
@@ -122,8 +123,8 @@ def test_send_meta_message_calls_graph_api_without_exposing_token(monkeypatch):
     monkeypatch.setattr("app.routers.whatsapp_webhook.httpx.post", post)
     settings = Settings(
         _env_file=None,
-        WHATSAPP_ACCESS_TOKEN="secret-meta-token",
-        WHATSAPP_PHONE_NUMBER_ID="123456789",
+        whatsapp_access_token="secret-meta-token",
+        whatsapp_phone_number_id="123456789",
     )
 
     _send_meta_message("2348012345678", "Hello from ShopPal", settings)

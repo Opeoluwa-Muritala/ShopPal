@@ -53,14 +53,27 @@ async def twilio_whatsapp_webhook(
 ):
     """
     Twilio WhatsApp inbound webhook:
-    1. Enforces Twilio X-Twilio-Signature validation.
-    2. Enforces per-phone rate limiting (prevents cost & LLM abuse).
+    1. Enforces per-phone rate limiting (prevents cost & LLM abuse).
+    2. Enforces Twilio X-Twilio-Signature validation.
     3. Enforces media URL allowlisting (SSRF protection).
     """
     phone = From.replace("whatsapp:", "").strip()
     masked_phone = mask_phone(phone)
 
-    # 1. Twilio Signature Verification
+    # 1. Rate Limiting Check — runs first to short-circuit abusive senders
+    #    before any crypto work or DB access.
+    if not check_phone_rate_limit(phone):
+        logger.warning(
+            f"Rate limit exceeded for sender {masked_phone}; dropping LLM execution",
+            extra={"step": "rate_limit_exceeded", "customer_phone": masked_phone},
+        )
+        slow_down_twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response><Message>Hold on small! You dey send message too fast. Please wait a minute before sending another message.</Message></Response>"
+        )
+        return Response(content=slow_down_twiml, media_type="application/xml", status_code=200)
+
+    # 2. Twilio Signature Verification
     auth_token = settings.twilio_auth_token.get_secret_value()
     if auth_token:
         form_data = await request.form()
@@ -76,18 +89,6 @@ async def twilio_whatsapp_webhook(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid Twilio signature header",
             )
-
-    # 2. Rate Limiting Check (Cost & abuse control)
-    if not check_phone_rate_limit(phone):
-        logger.warning(
-            f"Rate limit exceeded for sender {masked_phone}; dropping LLM execution",
-            extra={"step": "rate_limit_exceeded", "customer_phone": masked_phone},
-        )
-        slow_down_twiml = (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            "<Response><Message>Hold on small! You dey send message too fast. Please wait a minute before sending another message.</Message></Response>"
-        )
-        return Response(content=slow_down_twiml, media_type="application/xml", status_code=200)
 
     # 3. Media URL SSRF Validation
     if MediaUrl0:
