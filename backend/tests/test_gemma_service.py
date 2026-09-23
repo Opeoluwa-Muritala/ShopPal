@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 from app.config import Settings
-from app.services.llm import GemmaError, MASTER_PROMPT, TOOL_DECLARATIONS, LLMService
+from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, GemmaError, LLMService
 from app.services.transcription import transcribe_audio
 
 
