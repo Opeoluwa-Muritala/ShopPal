@@ -75,6 +75,18 @@ def test_natural_stock_question_selects_catalog_tool_without_exact_words():
     assert action == {"tool": "searchProducts", "arguments": {"query": ""}}
 
 
+def test_bare_cart_and_checkout_commands_are_safe_tools():
+    service = LLMService(_settings())
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    assert service.next_action("checkout", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+
+
 def test_natural_product_selection_uses_latest_catalog_result():
     service = LLMService(_settings())
     transcript = [
