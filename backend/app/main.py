@@ -43,7 +43,8 @@ def create_app() -> FastAPI:
             "ShopPal backend for vendor commerce and customer conversations over "
             "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
             "the configured frontend API key and applicable account credentials; "
-            "provider webhooks use provider-specific signature verification."
+            "provider webhooks use provider-specific signature verification. "
+            "Frontend endpoint mapping is documented in docs/FRONTEND_API.md."
         ),
         version="0.6.0",
         lifespan=lifespan,
