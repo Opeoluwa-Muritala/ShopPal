@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,11 +32,14 @@ class Settings(BaseSettings):
     whatsapp_app_secret: SecretStr = SecretStr("")
     whatsapp_access_token: SecretStr = SecretStr("")
     whatsapp_phone_number_id: str = ""
+    meta_reply_worker_enabled: bool = False
 
     # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
     gemma_api_key: SecretStr = SecretStr("")
     gemma_model: str = "gemma-3-27b-it"
     gemma_api_url: str = ""
+    gemma_timeout_seconds: int = Field(default=90, ge=10, le=120)
+    gemma_thinking_level: Literal["minimal", "high"] = "minimal"
     groq_api_key: SecretStr = SecretStr("")
     groq_transcription_model: str = "whisper-large-v3-turbo"
 
