@@ -426,7 +426,7 @@ def process_claim(engine, job_id, settings):
                     return False
                 if job.lease_until and job.lease_until > now():
                     return False
-                if session.scalar(select(earlier_pending(job))):
+                if session.scalar(select(newer_pending(job))):
                     return False
                 if job.state == "sending":
                     job.state = "delivery_unknown"
