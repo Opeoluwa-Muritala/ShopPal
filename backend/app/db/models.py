@@ -183,3 +183,54 @@ class PasswordResetToken(Identity, Base):
         DateTime(timezone=True), server_default=text("now()")
     )
 
+
+class WhatsAppMessage(Identity, Base):
+    __tablename__ = "whatsapp_messages"
+
+    message_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    from_number: Mapped[str | None] = mapped_column(String(30))
+    message_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(30))
+    wa_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    received_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class ReplyJob(Identity, Timestamps, Base):
+    __tablename__ = "whatsapp_reply_jobs"
+    __table_args__ = (Index("idx_reply_jobs_due", "state", "next_attempt_at"),)
+
+    message_id: Mapped[str] = mapped_column(
+        ForeignKey("whatsapp_messages.message_id", ondelete="CASCADE"), unique=True
+    )
+    vendor_id: Mapped[UUID | None] = mapped_column(ForeignKey("vendors.id"))
+    customer_phone: Mapped[str] = mapped_column(String(30))
+    phone_number_id: Mapped[str] = mapped_column(String(40))
+    display_number: Mapped[str] = mapped_column(String(40))
+    state: Mapped[str] = mapped_column(String(30), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    lease_owner: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transcript: Mapped[list] = mapped_column(JSONB, default=list)
+    pending_action: Mapped[dict | None] = mapped_column(JSONB)
+    reply_text: Mapped[str | None] = mapped_column(Text)
+    outbound_message_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    failure_category: Mapped[str | None] = mapped_column(String(60))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReplyToolResult(Identity, Base):
+    __tablename__ = "whatsapp_reply_tool_results"
+    __table_args__ = (UniqueConstraint("job_id", "call_index"),)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("whatsapp_reply_jobs.id", ondelete="CASCADE"))
+    call_index: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(40))
+    arguments: Mapped[dict] = mapped_column(JSONB)
+    result: Mapped[dict] = mapped_column(JSONB)
+

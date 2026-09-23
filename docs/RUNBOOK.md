@@ -43,6 +43,17 @@ the backend.
 
 Reference: https://render.com/docs/native-runtimes
 
+## Meta WhatsApp checks
+
+- Callback: `https://shoppal.onrender.com/webhooks/whatsapp`
+- Privacy policy: `https://shoppal.onrender.com/privacy`
+- Swagger UI: `https://shoppal.onrender.com/docs`
+- Required Render variables: `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`,
+  `WHATSAPP_ACCESS_TOKEN`, and `WHATSAPP_PHONE_NUMBER_ID`.
+- Ensure the vendor's `bot_number` matches Meta's display phone number.
+- A successful GET verification proves only the callback token. Outbound replies
+  also require a valid access token, phone number ID, Gemma key, and vendor mapping.
+
 ## Critical Path Risks & Mitigations
 
 | Risk | Impact | One-Line Mitigation |
@@ -63,7 +74,7 @@ Reference: https://render.com/docs/native-runtimes
    - Update Twilio Sandbox Webhook configuration with current `https://<subdomain>.ngrok-free.app/api/webhook/whatsapp`.
 
 2. **If LLM Fails or Returns Malformed Output**:
-   - Verify `ANTHROPIC_API_KEY` quota and rate limits.
+   - Verify `GEMMA_API_KEY` quota and rate limits.
    - Fall back to standard keyword-matching catalog search routine.
 
 3. **If Paystack Webhook Fails in Local Dev**:
