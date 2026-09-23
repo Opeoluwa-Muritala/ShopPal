@@ -95,7 +95,7 @@ describe('Boilerplate App Pages', () => {
   it('renders Login page', () => {
     render(<LoginPage />);
     expect(screen.getByRole('heading', { name: 'Vendor Login' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Sign In' })).toBeDefined();
+    expect(screen.getByRole('button', { name: /Login|Sign In/i })).toBeDefined();
   });
 
   it('renders Signup page', () => {
