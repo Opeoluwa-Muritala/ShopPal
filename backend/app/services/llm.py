@@ -61,7 +61,10 @@ class LLMService:
     def __init__(self, settings: Settings):
         self.api_key = settings.gemma_api_key.get_secret_value()
         self.openrouter_api_key = settings.openrouter_api_key.get_secret_value()
-        self.provider = "openrouter" if self.openrouter_api_key else "google"
+        self.provider = "google" if self.api_key else "openrouter"
+        self.fallback_provider = (
+            "openrouter" if self.provider == "google" and self.openrouter_api_key else None
+        )
         self.timeout = settings.gemma_timeout_seconds
         self.thinking_level = settings.gemma_thinking_level if settings.gemma_model.startswith("gemma-4-") else None
         self.url = settings.gemma_api_url or (
@@ -121,11 +124,21 @@ class LLMService:
             "latest_customer_message": message,
             "transcript": transcript,
         })
-        parts = self._parts(self._post({"contents": [{"role": "user", "parts": [
-            {"text": instruction}, {"text": "Conversation data:\n" + context}
-        ]}]}))
+        try:
+            parts = self._parts(self._post({"contents": [{"role": "user", "parts": [
+                {"text": instruction}, {"text": "Conversation data:\n" + context}
+            ]}]}))
+        except GemmaError:
+            if self.fallback_provider != "openrouter":
+                raise
+            return self._next_action_openrouter(instruction, message, history, transcript)
         output = "".join(part.get("text", "") for part in parts).strip()
-        action = self._decode_action(output)
+        try:
+            action = self._decode_action(output)
+        except GemmaError:
+            if self.fallback_provider != "openrouter":
+                raise
+            return self._next_action_openrouter(instruction, message, history, transcript)
         if not isinstance(action, dict):
             raise GemmaError("Invalid agent action")
         return action
