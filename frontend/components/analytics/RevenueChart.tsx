@@ -60,6 +60,20 @@ function formatCompactCurrency(val: number): string {
   return `₦${val}`;
 }
 
+function getProcessedData(
+  data: RevenueDataPoint[],
+  chartMode: 'daily' | 'cumulative'
+): Array<RevenueDataPoint & { displayRevenue: number }> {
+  let running = 0;
+  return data.map((d) => {
+    running += d.revenue;
+    return {
+      ...d,
+      displayRevenue: chartMode === 'cumulative' ? running : d.revenue,
+    };
+  });
+}
+
 export default function RevenueChart({
   data = [],
   isLoading = false,
@@ -90,15 +104,7 @@ export default function RevenueChart({
     );
   }
 
-  // Calculate cumulative data if mode is active
-  let accumulated = 0;
-  const processedData = data.map((d) => {
-    accumulated += d.revenue;
-    return {
-      ...d,
-      displayRevenue: chartMode === 'cumulative' ? accumulated : d.revenue,
-    };
-  });
+  const processedData = getProcessedData(data, chartMode);
 
   const totalPeriodRevenue = data.reduce((acc, curr) => acc + curr.revenue, 0);
 
