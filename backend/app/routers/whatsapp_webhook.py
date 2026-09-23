@@ -29,9 +29,51 @@ from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService
 from app.services.security import check_phone_rate_limit, mask_phone
+from app.services.transcription import TranscriptionError, transcribe_audio
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
+
+
+def _transcribe_meta_audio(media_id: str, settings: Settings) -> str:
+    """
+    Downloads a WhatsApp voice/audio message via the Meta Graph API and
+    transcribes it with Groq Whisper.
+
+    1. Resolve media_id → temporary download URL (GET /v23.0/{media_id})
+    2. Download audio bytes (with Bearer token)
+    3. Send to Groq Whisper via transcribe_audio()
+
+    Returns the transcript string, or raises TranscriptionError on failure.
+    """
+    access_token = settings.whatsapp_access_token.get_secret_value()
+    if not access_token:
+        raise TranscriptionError("WhatsApp access token not configured")
+
+    # Step 1: resolve media ID → URL
+    meta_resp = httpx.get(
+        f"https://graph.facebook.com/v23.0/{media_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=15,
+    )
+    meta_resp.raise_for_status()
+    audio_url = meta_resp.json().get("url", "")
+    if not audio_url:
+        raise TranscriptionError(f"No download URL returned for media ID {media_id!r}")
+
+    # Step 2: download audio
+    audio_resp = httpx.get(
+        audio_url,
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30,
+        follow_redirects=True,
+    )
+    audio_resp.raise_for_status()
+    content_type = audio_resp.headers.get("content-type", "audio/ogg")
+
+    # Step 3: transcribe
+    return transcribe_audio(audio_resp.content, content_type, settings)
+
 
 
 def _verify_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
@@ -214,12 +256,39 @@ def _process_customer_message(
     message: dict[str, Any],
     settings: Settings,
 ) -> None:
-    if message.get("type") != "text":
-        return
+    msg_type = message.get("type", "")
     phone = str(message.get("from", "")).strip()
-    text = str(message.get("text", {}).get("body", "")).strip()
-    if not phone or not text:
+    if not phone:
         return
+
+    text = ""
+
+    if msg_type == "text":
+        text = str(message.get("text", {}).get("body", "")).strip()
+    elif msg_type in ("audio", "voice"):
+        media_id = str(message.get(msg_type, {}).get("id", "")).strip()
+        if media_id:
+            try:
+                text = _transcribe_meta_audio(media_id, settings)
+            except Exception:
+                logger.exception(
+                    "Groq Whisper transcription failed for Meta audio",
+                    extra={"step": "meta_audio_transcription", "customer_phone": mask_phone(phone)},
+                )
+        if not text:
+            _send_meta_message(
+                phone,
+                "I couldn't understand that voice note. Please type your message instead.",
+                settings,
+            )
+            return
+    else:
+        # Unsupported message type — ignore silently
+        return
+
+    if not text:
+        return
+
     if not check_phone_rate_limit(phone):
         _send_meta_message(
             phone,
