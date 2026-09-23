@@ -1,8 +1,11 @@
+import asyncio
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from app.config import get_settings
 from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
@@ -17,6 +20,19 @@ from app.routers import (
     whatsapp_webhook,
 )
 from app.services.frontend_auth import require_frontend_api_key
+from app.services.reply_recovery import recovery_loop
+
+
+@asynccontextmanager
+async def lifespan(application):
+    stop = asyncio.Event()
+    task = asyncio.create_task(recovery_loop(stop)) if get_settings().meta_reply_worker_enabled else None
+    try:
+        yield
+    finally:
+        stop.set()
+        if task is not None:
+            await task
 
 
 def create_app() -> FastAPI:
@@ -30,6 +46,7 @@ def create_app() -> FastAPI:
             "provider webhooks use provider-specific signature verification."
         ),
         version="0.6.0",
+        lifespan=lifespan,
         openapi_tags=[
             {
                 "name": "Meta WhatsApp",
@@ -83,7 +100,7 @@ def create_app() -> FastAPI:
             )
 
             # Webhook graceful handling: never return 500 to Twilio to prevent retry-storms
-            if "webhook" in route.lower():
+            if route.startswith("/webhook/"):
                 return Response(
                     content='<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
                     media_type="application/xml",

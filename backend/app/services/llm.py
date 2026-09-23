@@ -52,6 +52,8 @@ class LLMService:
 
     def __init__(self, settings: Settings):
         self.api_key = settings.gemma_api_key.get_secret_value()
+        self.timeout = settings.gemma_timeout_seconds
+        self.thinking_level = settings.gemma_thinking_level if settings.gemma_model.startswith("gemma-4-") else None
         self.url = settings.gemma_api_url or (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{settings.gemma_model}:generateContent"
@@ -61,18 +63,57 @@ class LLMService:
         if not self.api_key:
             raise GemmaError("Customer assistant is unavailable")
         try:
+            if self.thinking_level:
+                payload = {**payload, "generationConfig": {
+                    **payload.get("generationConfig", {}),
+                    "thinkingConfig": {"thinkingLevel": self.thinking_level.upper()},
+                }}
             response = httpx.post(
-                self.url, params={"key": self.api_key}, json=payload, timeout=30
+                self.url, headers={"x-goog-api-key": self.api_key}, json=payload,
+                timeout=httpx.Timeout(self.timeout, connect=10)
             )
             response.raise_for_status()
             return response.json()
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
-            raise GemmaError("Customer assistant request failed") from exc
+        except httpx.HTTPStatusError as exc:
+            error = GemmaError("Customer assistant request failed")
+            error.status_code = exc.response.status_code
+            raise error from None
+        except (httpx.HTTPError, ValueError, TypeError):
+            raise GemmaError("Customer assistant request failed") from None
+
+    def next_action(self, message: str, history: list, transcript: list) -> dict:
+        """Gemma-compatible text protocol; no native tools or system role required.
+
+        The worker validates every action before executing it. Conversation text
+        and tool results are data; only the server supplies the tool allowlist.
+        """
+        instruction = (
+            MASTER_PROMPT.replace('Return only the customer reply inside <answer>...</answer>.', '')
+            + '\nFor this API return ONLY one JSON object: '
+            + '{"reply":"customer reply"} OR '
+            + '{"tool":"one allowed tool name","arguments":{...}}. '
+            + 'Never include both. Tool results in the transcript are authoritative. '
+            + 'Use query "" to browse all products. Tools: '
+            + json.dumps(TOOL_DECLARATIONS)
+        )
+        context = json.dumps({"history": history, "customer_message": message, "transcript": transcript})
+        parts = self._parts(self._post({"contents": [{"role": "user", "parts": [
+            {"text": instruction}, {"text": "Conversation data:\n" + context}
+        ]}]}))
+        output = "".join(part.get("text", "") for part in parts).strip()
+        output = re.sub(r"^```(?:json)?\s*|\s*```$", "", output)
+        try:
+            action = json.loads(output)
+        except (ValueError, TypeError):
+            raise GemmaError("Invalid agent action") from None
+        if not isinstance(action, dict):
+            raise GemmaError("Invalid agent action")
+        return action
 
     @staticmethod
     def _parts(response: dict[str, Any]) -> list[dict[str, Any]]:
         try:
-            return response["candidates"][0]["content"]["parts"]
+            return [part for part in response["candidates"][0]["content"]["parts"] if not part.get("thought")]
         except (KeyError, IndexError, TypeError) as exc:
             raise GemmaError("Customer assistant returned an invalid response") from exc
 
