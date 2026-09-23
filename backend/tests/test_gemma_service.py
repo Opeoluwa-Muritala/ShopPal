@@ -8,8 +8,8 @@ from app.services.transcription import transcribe_audio
 def _settings():
     return Settings(
         _env_file=None,
-        GEMMA_API_KEY="gemma-test-key",
-        GROQ_API_KEY="groq-test-key",
+        gemma_api_key="gemma-test-key",
+        groq_api_key="groq-test-key",
     )
 
 
