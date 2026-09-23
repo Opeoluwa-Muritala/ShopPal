@@ -12,8 +12,9 @@ insert. Intake now uses `RETURNING message_id`, covered by PostgreSQL tests.
 
 1. Apply `python -m alembic upgrade head` from `backend` before deploying this
    code. Revision `0004` adds jobs and tool receipts; it does not replay history.
-2. Keep the existing Meta and Gemma credentials. Set
-   `META_REPLY_WORKER_ENABLED=true` on Render after the migration.
+2. Keep the existing Meta and Google Gemma credentials. Set
+   `META_REPLY_WORKER_ENABLED=true` on Render after the migration. OpenRouter is
+   optional and is used only as a fallback when Google fails.
 3. Deploy the updated native Python service. No extra service or Docker is needed.
 4. Send a new text message and inspect `python -m app.services.reply_review` in a
    trusted backend shell using the production DATABASE_URL.
@@ -25,7 +26,9 @@ cannot run while Render is asleep. It resumes durable jobs when the service wake
 
 ## Processing and retry policy
 
-The worker polls every five seconds. PostgreSQL transaction advisory locks
+The worker polls every second by default (`META_REPLY_WORKER_POLL_SECONDS`) and
+processes up to four different customers concurrently
+(`META_REPLY_WORKER_CONCURRENCY`). PostgreSQL transaction advisory locks
 serialize each sender/customer pair, including across multiple app instances and
 transaction-pooling connections. A five-minute lease is renewed at checkpoints;
 each provider request is bounded to 30 seconds for Gemma or 20 seconds for Meta.
@@ -33,10 +36,18 @@ The coordination connection holds the advisory lock while data transactions use
 a separate connection. This requires two pool connections per active worker.
 
 States: `pending`, `processing`, `retry`, `sending`, `accepted`, `delivered`,
-`read`, `delivery_unknown`, `needs_review`. API acceptance is not delivery.
+`read`, `delivery_unknown`, `superseded`, `needs_review`. API acceptance is not delivery.
+
+When several messages from one customer arrive before processing completes, the
+newest job is selected first. Older active jobs are folded into that request and
+marked `superseded`, so the bot answers the current question once while retaining
+each message ID in conversation history.
 
 Transient failures retry after 10s, 30s, 2m, 5m, and 15m. The sixth failure requires
-review. Configuration failures and expired 24-hour message windows require review.
+review. Configuration failures and expired 24-hour message windows on a first
+attempt require review. A retry that crosses the 24-hour window can use an
+approved Meta template when `WHATSAPP_REENGAGEMENT_TEMPLATE_NAME` and
+`WHATSAPP_REENGAGEMENT_TEMPLATE_LANGUAGE` are configured.
 Incoming rate limiting is applied once per new event; retries do not consume it.
 
 Every selected AI action is saved before execution. The tool's database writes,
@@ -52,12 +63,20 @@ Expired `sending` leases also require reconciliation instead of blind resending.
 Explicit delivery failures become `needs_review`. This is not an exactly-once
 delivery guarantee from Meta.
 
-## Gemma and diagnostics
+## Gemma, tools, and diagnostics
 
-Recovery uses a validated text JSON action protocol with the configured Gemma
-model: either one customer tool and arguments or a customer reply. It does not
-depend on native `functionCall` or `systemInstruction` support. The allowlist
-excludes all dashboard/admin tasks. Native Twilio behavior is retained.
+Google Gemma is primary whenever `GEMMA_API_KEY` is configured. It receives the
+allowlisted customer tools and chooses one tool or a customer reply. OpenRouter is
+optional; when configured it receives the same tools through its native
+OpenAI-compatible `tools` and `tool_choice=auto` format, but is called only after
+Google fails or returns unusable output. The backend validates every returned tool
+name and argument before execution. Dashboard and admin actions are not exposed.
+
+The prompt directs Gemma to answer the latest message first, merge queued messages
+without repeating prior answers, mirror Nigerian Pidgin or English, use `viewCart`
+for a bare cart or checkout request, and use `checkoutCart` only after receiving a
+delivery address. Checkout returns the configured vendor transfer account; payment
+remains pending until the signed Paystack webhook.
 
 Gemma credentials now travel in the `x-goog-api-key` header rather than URL query
 parameters. Logs contain job IDs and failure categories, never provider bodies,

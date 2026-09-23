@@ -68,6 +68,12 @@ WHATSAPP_PHONE_NUMBER_ID=<meta-phone-number-id>
 # Conversational AI (Google Gemma)
 GEMMA_API_KEY=your-google-ai-api-key
 GEMMA_MODEL=gemma-3-27b-it
+# Optional fallback; Google is primary whenever GEMMA_API_KEY is set.
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MODEL=google/gemma-3-27b-it
+META_REPLY_WORKER_ENABLED=true
+META_REPLY_WORKER_CONCURRENCY=4
+META_REPLY_WORKER_POLL_SECONDS=1
 
 # Paystack Payment Gateway
 PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
