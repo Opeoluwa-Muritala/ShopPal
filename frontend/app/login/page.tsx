@@ -1,56 +1,22 @@
 import React from 'react';
-import Link from 'next/link';
+import LoginCard from '../../components/auth/LoginCard';
+
+export const metadata = {
+  title: 'Vendor Login — Naija Marketplace',
+  description: 'Access your Naija Marketplace merchant dashboard and manage your WhatsApp bot storefront.',
+};
 
 export default function LoginPage() {
   return (
-    <section style={{ maxWidth: '400px', margin: '3rem auto', padding: '2rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', backgroundColor: '#ffffff' }}>
-      <h2>Vendor Login</h2>
-      <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Access your merchant dashboard</p>
-      <form style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
-        <div>
-          <label htmlFor="email" style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            placeholder="merchant@example.com"
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxSizing: 'border-box' }}
-          />
-        </div>
-        <div>
-          <label htmlFor="password" style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', boxSizing: 'border-box' }}
-          />
-        </div>
-        <button
-          type="button"
-          style={{
-            padding: '0.625rem',
-            backgroundColor: '#16a34a',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '0.375rem',
-            fontWeight: 500,
-            cursor: 'pointer',
-            marginTop: '0.5rem',
-          }}
-        >
-          Sign In
-        </button>
-      </form>
-      <p style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
-        Don&apos;t have an account?{' '}
-        <Link href="/signup" style={{ color: '#16a34a', textDecoration: 'none', fontWeight: 500 }}>
-          Sign up
-        </Link>
-      </p>
+    <section className="min-h-[calc(100vh-8rem)] py-12 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-emerald-50/50 via-slate-50 to-white flex flex-col justify-center items-center">
+      <div className="max-w-md mx-auto text-center mb-6">
+        <span className="text-emerald-700 bg-emerald-100/80 border border-emerald-300/60 text-[11px] font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-xs">
+          <span>⚡</span>
+          <span>WhatsApp Merchant Portal</span>
+        </span>
+      </div>
+
+      <LoginCard />
     </section>
   );
 }
