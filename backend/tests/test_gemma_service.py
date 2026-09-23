@@ -69,6 +69,31 @@ def test_gemma_tools_exclude_admin_and_dashboard_actions():
     assert "customer" in MASTER_PROMPT.lower()
 
 
+def test_natural_stock_question_selects_catalog_tool_without_exact_words():
+    service = LLMService(_settings())
+    action = service.next_action("abeg wetin dey available for perfume?", [], [])
+    assert action == {"tool": "searchProducts", "arguments": {"query": ""}}
+
+
+def test_natural_product_selection_uses_latest_catalog_result():
+    service = LLMService(_settings())
+    transcript = [
+        {
+            "action": {"tool": "searchProducts", "arguments": {"query": ""}},
+            "result": {
+                "products": [
+                    {"product_id": "00000000-0000-0000-0000-000000000001", "name": "Oud perfume", "price": "12000"}
+                ]
+            },
+        }
+    ]
+    action = service.next_action("I want two bottles of the Oud perfume", [], transcript)
+    assert action == {
+        "tool": "addToCart",
+        "arguments": {"productId": "00000000-0000-0000-0000-000000000001", "quantity": 2},
+    }
+
+
 def test_image_match_uses_inline_image_and_catalog():
     service = LLMService(_settings())
     service._post = Mock(
