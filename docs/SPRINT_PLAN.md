@@ -9,7 +9,7 @@ This document contains the complete sprint plan, milestones, issue breakdown, an
 | Milestone Title | Target Due Date (Relative) | Description / Checkpoint Text |
 | --- | --- | --- |
 | **Day 1 — Foundation & Setup** | Today + 1 Day | Establish project foundation: DB schema, Twilio WhatsApp sandbox integration, FastAPI scaffolding, Next.js portal setup, and CI/CD pipelines. |
-| **Day 2 — Core Commerce** | Today + 2 Days | Build end-to-end commerce loop: Products & Orders dashboard, Claude LLM conversational engine, WhatsApp order flow, and Paystack payments. |
+| **Day 2 — Core Commerce** | Today + 2 Days | Build end-to-end commerce loop: Products & Orders dashboard, Gemma LLM conversational engine, WhatsApp order flow, and Paystack payments. |
 | **Day 3 — Polish & Optimization** | Today + 3 Days | Refine and stabilize: Paystack webhooks, LLM error handling and retries, UI polishing, mobile responsiveness, and test coverage. |
 | **Day 4 — Demo Readiness** | Today + 4 Days | Final verification: End-to-end demo testing, sample catalog seeding, offline backup video recording, and pitch presentation rehearsal. |
 
@@ -84,9 +84,9 @@ This document contains the complete sprint plan, milestones, issue breakdown, an
    - **Labels**: `day-2`, `frontend`
    - **Body**: Implement vendor orders table showing order details, customer phone, totals, and colored status badges.
    - **Assignee**: *Unassigned (claimable)*
-10. **LLM integration (Claude + system prompt) for catalog query and Pidgin English**
+10. **LLM integration (Gemma + system prompt) for catalog query and Pidgin English**
     - **Labels**: `day-2`, `backend`, `demo-critical`
-    - **Body**: Integrate Anthropic Claude API with grounding prompt to answer product inquiries in Nigerian Pidgin and standard English.
+    - **Body**: Integrate Google Gemma API with grounding prompt to answer product inquiries in Nigerian Pidgin and standard English.
     - **Assignee**: *Unassigned (claimable)*
 11. **WhatsApp messaging flow (greeting, catalog search, cart state in Redis)**
     - **Labels**: `day-2`, `backend`, `demo-critical`
@@ -104,7 +104,7 @@ This document contains the complete sprint plan, milestones, issue breakdown, an
     - **Assignee**: *Unassigned (claimable)*
 14. **Error handling, retries, and rate limiting on LLM and WhatsApp calls**
     - **Labels**: `day-3`, `backend`
-    - **Body**: Add exponential backoff retries and fallback responses for Claude API and Twilio messaging timeouts.
+    - **Body**: Add exponential backoff retries and fallback responses for Gemma API and Twilio messaging timeouts.
     - **Assignee**: *Unassigned (claimable)*
 15. **Polish Vendor Dashboard UI, stats cards (total revenue, order count)**
     - **Labels**: `day-3`, `frontend`

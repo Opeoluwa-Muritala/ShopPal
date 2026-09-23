@@ -12,7 +12,11 @@ def test_settings_load_stage1_environment(monkeypatch):
         "TWILIO_ACCOUNT_SID": "ACtest",
         "TWILIO_AUTH_TOKEN": "test-token",
         "TWILIO_WHATSAPP_NUMBER": "whatsapp:+14155238886",
-        "ANTHROPIC_API_KEY": "test-anthropic-key",
+        "GEMMA_API_KEY": "test-gemma-key",
+        "OPENROUTER_API_KEY": "test-openrouter-key",
+        "GROQ_API_KEY": "test-groq-key",
+        "WHATSAPP_ACCESS_TOKEN": "test-meta-token",
+        "WHATSAPP_PHONE_NUMBER_ID": "123456789",
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
@@ -24,8 +28,12 @@ def test_settings_load_stage1_environment(monkeypatch):
     assert settings.twilio_account_sid == "ACtest"
     assert settings.twilio_auth_token.get_secret_value() == "test-token"
     assert settings.twilio_whatsapp_number == values["TWILIO_WHATSAPP_NUMBER"]
-    assert settings.anthropic_api_key.get_secret_value() == "test-anthropic-key"
-    for secret in ("test-password", "test-token", "test-anthropic-key"):
+    assert settings.gemma_api_key.get_secret_value() == "test-gemma-key"
+    assert settings.openrouter_api_key.get_secret_value() == "test-openrouter-key"
+    assert settings.groq_api_key.get_secret_value() == "test-groq-key"
+    assert settings.whatsapp_access_token.get_secret_value() == "test-meta-token"
+    assert settings.whatsapp_phone_number_id == "123456789"
+    for secret in ("test-password", "test-token", "test-gemma-key", "test-openrouter-key", "test-groq-key"):
         assert secret not in repr(settings)
 
 

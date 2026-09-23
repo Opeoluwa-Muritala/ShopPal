@@ -16,7 +16,7 @@ This checklist tracks readiness for the final hackathon demo and presentation. A
 ## 2. Backend
 - [ ] FastAPI `/api/health` returns status 200
 - [ ] Twilio webhook receiver successfully ingests incoming WhatsApp messages
-- [ ] Claude LLM integration parses intent and returns catalog answers with system prompt
+- [ ] Gemma LLM integration parses intent and returns catalog answers with system prompt
 - [ ] Paystack payment link generation and webhook verification functional
 - [ ] PostgreSQL database relationships and Redis session state working
 
