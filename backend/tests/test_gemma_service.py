@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 from app.config import Settings
-from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, LLMService
+from app.services.llm import GemmaError, MASTER_PROMPT, TOOL_DECLARATIONS, LLMService
 from app.services.transcription import transcribe_audio
 
 
@@ -110,6 +110,35 @@ def test_openrouter_native_tool_call_is_converted_to_validated_action():
     payload = service._post_openrouter.call_args.args[0]
     assert payload["tools"][0]["type"] == "function"
     assert payload["tool_choice"] == "auto"
+
+
+def test_google_gemma_has_priority_and_openrouter_is_failure_fallback():
+    service = LLMService(
+        Settings(
+            _env_file=None,
+            GEMMA_API_KEY="google-test-key",
+            OPENROUTER_API_KEY="openrouter-test-key",
+        )
+    )
+    service._post = Mock(side_effect=GemmaError("Google unavailable"))
+    service._post_openrouter = Mock(
+        return_value={
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "function": {"name": "viewCart", "arguments": "{}"}
+                    }]
+                }
+            }]
+        }
+    )
+    assert service.provider == "google"
+    assert service.next_action("my cart", [], []) == {
+        "tool": "viewCart",
+        "arguments": {},
+    }
+    service._post.assert_called_once()
+    service._post_openrouter.assert_called_once()
 
 
 def test_natural_product_selection_uses_latest_catalog_result():
