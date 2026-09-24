@@ -7,132 +7,137 @@ export async function GET(request: NextRequest) {
   const customFrom = searchParams.get('from');
   const customTo = searchParams.get('to');
 
-  // Realistic Hackathon Demo Data tailored for Nigerian Merchants
-  if (dateRange === '7days') {
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiKey = process.env.NEXT_PUBLIC_FRONTEND_API_KEY || 'nm_frontend_key_prod_v06';
+
+  let liveOrders: any[] = [];
+
+  try {
+    const ordersRes = await fetch(`${backendUrl}/api/orders`, {
+      headers: {
+        'X-API-Key': apiKey,
+      },
+      cache: 'no-store',
+    });
+
+    if (ordersRes.ok) {
+      const data = await ordersRes.json();
+      if (Array.isArray(data.orders)) {
+        liveOrders = data.orders;
+      }
+    }
+  } catch {
+    // Backend offline or unreachable
+  }
+
+  // If live orders exist, dynamically aggregate performance metrics
+  if (liveOrders.length > 0) {
+    const total_orders = liveOrders.length;
+    let total_revenue = 0;
+    let paid_orders = 0;
+    let pending_orders = 0;
+    let failed_orders = 0;
+    const phoneMap: Record<string, number> = {};
+    const productMap: Record<string, { name: string; orders: number; revenue: number }> = {};
+
+    liveOrders.forEach((o) => {
+      const amount = typeof o.total === 'string' ? parseFloat(o.total) || 0 : Number(o.total) || 0;
+      const status = (o.payment_status || 'paid').toLowerCase();
+      if (status === 'paid') {
+        total_revenue += amount;
+        paid_orders += 1;
+      } else if (status === 'pending') {
+        pending_orders += 1;
+      } else {
+        failed_orders += 1;
+      }
+
+      if (o.customer_phone) {
+        phoneMap[o.customer_phone] = (phoneMap[o.customer_phone] || 0) + 1;
+      }
+
+      if (Array.isArray(o.items)) {
+        o.items.forEach((item: any) => {
+          const name = item.name || 'WhatsApp Product';
+          if (!productMap[name]) {
+            productMap[name] = { name, orders: 0, revenue: 0 };
+          }
+          productMap[name].orders += Number(item.quantity) || 1;
+          productMap[name].revenue += (Number(item.quantity) || 1) * (Number(item.unit_price) || 0);
+        });
+      }
+    });
+
+    const uniqueCustomers = Object.keys(phoneMap).length;
+    const repeatCustomers = Object.values(phoneMap).filter((count) => count > 1).length;
+    const repeat_purchase_rate = uniqueCustomers > 0 ? Number((repeatCustomers / uniqueCustomers).toFixed(2)) : 0;
+    const avg_order_value = total_orders > 0 ? Math.round(total_revenue / total_orders) : 0;
+    const commission = Math.round(total_revenue * 0.02);
+
+    const top_products = Object.entries(productMap)
+      .map(([id, p]) => ({
+        product_id: id,
+        name: p.name,
+        orders: p.orders,
+        revenue: p.revenue,
+      }))
+      .slice(0, 5);
+
     return NextResponse.json({
       vendor_id: vendorId,
-      date_range: '7days',
-      total_orders: 18,
-      total_revenue: 165000,
-      commission: 3300, // 2% of 165,000
-      avg_order_value: 9166,
-      repeat_customers: 5,
+      date_range: dateRange,
+      custom_from: customFrom,
+      custom_to: customTo,
+      total_orders,
+      total_revenue,
+      commission,
+      avg_order_value,
+      repeat_customers: repeatCustomers,
       revenue_by_date: [
-        { date: 'Sep 17', revenue: 18000, orders: 2 },
-        { date: 'Sep 18', revenue: 24000, orders: 3 },
-        { date: 'Sep 19', revenue: 15000, orders: 1 },
-        { date: 'Sep 20', revenue: 32000, orders: 3 },
-        { date: 'Sep 21', revenue: 42000, orders: 5 },
-        { date: 'Sep 22', revenue: 21000, orders: 2 },
-        { date: 'Sep 23', revenue: 13000, orders: 2 },
+        { date: 'Recent', revenue: total_revenue, orders: total_orders },
       ],
-      top_products: [
-        { product_id: 'prod_001', name: 'Blue Sneaker', orders: 6, revenue: 90000 },
-        { product_id: 'prod_002', name: 'Red Kicks', orders: 4, revenue: 48000 },
-        { product_id: 'prod_003', name: 'Black Formal', orders: 3, revenue: 54000 },
-        { product_id: 'prod_004', name: 'Casual Shirt', orders: 3, revenue: 45000 },
-        { product_id: 'prod_005', name: 'Denim Jeans', orders: 2, revenue: 48000 },
-      ],
+      top_products,
       payment_status: {
-        paid: 16,
-        pending: 1,
-        failed: 1,
+        paid: paid_orders,
+        pending: pending_orders,
+        failed: failed_orders,
       },
-      unique_customers: 20,
-      repeat_purchase_rate: 0.25,
-      customer_acquisition: 3,
-      avg_customer_lifetime_value: 12500,
-      orders_trend: { value: 4, is_positive: true },
-      revenue_trend: { value: 25000, is_positive: true },
-      aov_trend: { value: 300, is_positive: true },
-      repeat_customers_trend: { value: 1, is_positive: true },
+      unique_customers: uniqueCustomers,
+      repeat_purchase_rate,
+      customer_acquisition: uniqueCustomers,
+      avg_customer_lifetime_value: avg_order_value,
+      orders_trend: { value: total_orders, is_positive: true },
+      revenue_trend: { value: total_revenue, is_positive: true },
+      aov_trend: { value: avg_order_value, is_positive: true },
+      repeat_customers_trend: { value: repeatCustomers, is_positive: true },
     });
   }
 
-  if (dateRange === 'all_time') {
-    return NextResponse.json({
-      vendor_id: vendorId,
-      date_range: 'all_time',
-      total_orders: 142,
-      total_revenue: 1450000,
-      commission: 29000,
-      avg_order_value: 10211,
-      repeat_customers: 38,
-      revenue_by_date: [
-        { date: 'May', revenue: 180000, orders: 19 },
-        { date: 'Jun', revenue: 240000, orders: 24 },
-        { date: 'Jul', revenue: 310000, orders: 30 },
-        { date: 'Aug', revenue: 380000, orders: 36 },
-        { date: 'Sep', revenue: 340000, orders: 33 },
-      ],
-      top_products: [
-        { product_id: 'prod_001', name: 'Blue Sneaker', orders: 42, revenue: 630000 },
-        { product_id: 'prod_002', name: 'Red Kicks', orders: 32, revenue: 384000 },
-        { product_id: 'prod_003', name: 'Black Formal', orders: 26, revenue: 468000 },
-        { product_id: 'prod_004', name: 'Casual Shirt', orders: 24, revenue: 360000 },
-        { product_id: 'prod_005', name: 'Denim Jeans', orders: 18, revenue: 432000 },
-      ],
-      payment_status: {
-        paid: 124,
-        pending: 12,
-        failed: 6,
-      },
-      unique_customers: 168,
-      repeat_purchase_rate: 0.28,
-      customer_acquisition: 38,
-      avg_customer_lifetime_value: 24500,
-      orders_trend: { value: 35, is_positive: true },
-      revenue_trend: { value: 180000, is_positive: true },
-      aov_trend: { value: 1200, is_positive: true },
-      repeat_customers_trend: { value: 8, is_positive: true },
-    });
-  }
-
-  // Default: '30days', 'this_month', or 'custom'
+  // When unseeded / 0 live orders, return clean 0-state analytics
   return NextResponse.json({
     vendor_id: vendorId,
     date_range: dateRange,
     custom_from: customFrom,
     custom_to: customTo,
-    total_orders: 45,
-    total_revenue: 450000,
-    commission: 9000, // 2% of 450,000
-    avg_order_value: 10000,
-    repeat_customers: 12,
-    revenue_by_date: [
-      { date: 'Sep 01', revenue: 15000, orders: 2 },
-      { date: 'Sep 03', revenue: 22000, orders: 2 },
-      { date: 'Sep 05', revenue: 35000, orders: 3 },
-      { date: 'Sep 08', revenue: 18000, orders: 1 },
-      { date: 'Sep 10', revenue: 28000, orders: 3 },
-      { date: 'Sep 12', revenue: 42000, orders: 4 },
-      { date: 'Sep 14', revenue: 31000, orders: 3 },
-      { date: 'Sep 16', revenue: 49000, orders: 5 },
-      { date: 'Sep 18', revenue: 38000, orders: 4 },
-      { date: 'Sep 20', revenue: 45000, orders: 4 },
-      { date: 'Sep 21', revenue: 42000, orders: 4 },
-      { date: 'Sep 22', revenue: 65000, orders: 6 },
-      { date: 'Sep 23', revenue: 20000, orders: 2 },
-    ],
-    top_products: [
-      { product_id: 'prod_001', name: 'Blue Sneaker', orders: 12, revenue: 180000 },
-      { product_id: 'prod_002', name: 'Red Kicks', orders: 8, revenue: 96000 },
-      { product_id: 'prod_003', name: 'Black Formal', orders: 6, revenue: 108000 },
-      { product_id: 'prod_004', name: 'Casual Shirt', orders: 5, revenue: 75000 },
-      { product_id: 'prod_005', name: 'Denim Jeans', orders: 3, revenue: 72000 },
-    ],
+    total_orders: 0,
+    total_revenue: 0,
+    commission: 0,
+    avg_order_value: 0,
+    repeat_customers: 0,
+    revenue_by_date: [],
+    top_products: [],
     payment_status: {
-      paid: 38,
-      pending: 5,
-      failed: 2,
+      paid: 0,
+      pending: 0,
+      failed: 0,
     },
-    unique_customers: 52,
-    repeat_purchase_rate: 0.23,
-    customer_acquisition: 8,
-    avg_customer_lifetime_value: 18500,
-    orders_trend: { value: 12, is_positive: true },
-    revenue_trend: { value: 50000, is_positive: true },
-    aov_trend: { value: 500, is_positive: true },
-    repeat_customers_trend: { value: 3, is_positive: true },
+    unique_customers: 0,
+    repeat_purchase_rate: 0,
+    customer_acquisition: 0,
+    avg_customer_lifetime_value: 0,
+    orders_trend: { value: 0, is_positive: true },
+    revenue_trend: { value: 0, is_positive: true },
+    aov_trend: { value: 0, is_positive: true },
+    repeat_customers_trend: { value: 0, is_positive: true },
   });
 }

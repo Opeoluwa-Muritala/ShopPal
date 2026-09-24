@@ -11,3 +11,8 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useSearchParams: () => new URLSearchParams(),
 }));
+
+vi.mock('next/font/google', () => ({
+  Inter: () => ({ className: 'font-sans' }),
+}));
+

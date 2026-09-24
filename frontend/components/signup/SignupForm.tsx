@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Building, CreditCard, Package, Sparkles } from 'lucide-react';
 import Step1Business, { Step1Data } from './Step1Business';
 import Step2Payment, { Step2Data } from './Step2Payment';
 import Step3Products from './Step3Products';
 import Step4Success, { SuccessData } from './Step4Success';
 import { ProductItem } from './CSVUploadZone';
+import { vendorsApi, productsApi, authApi } from '../../lib/api';
+import { setStoredTokens } from '../../lib/auth';
 
 interface SignupFormData extends Step1Data, Step2Data {
   products: ProductItem[];
@@ -23,6 +24,8 @@ export default function SignupForm() {
     name: '',
     phone: '',
     whatsapp_number: '',
+    email: '',
+    password: '',
     business_name: '',
     category: 'Clothing',
     paystack_key: '',
@@ -33,7 +36,7 @@ export default function SignupForm() {
   });
 
   const [successData, setSuccessData] = useState<SuccessData>({
-    vendor_id: 'v_9042',
+    vendor_id: '',
     bot_number: '+1 415 523 8886',
     test_link: 'https://wa.me/14155238886?text=join%20sandbox-code',
     sandbox_code: 'bold-elephant',
@@ -86,47 +89,99 @@ export default function SignupForm() {
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const payload = {
-      name: formData.name,
-      phone: formData.phone.replace(/\D/g, ''),
-      whatsapp_number: formData.whatsapp_number.replace(/\D/g, '') || formData.phone.replace(/\D/g, ''),
-      business_name: formData.business_name || formData.name,
-      paystack_key: formData.paystack_key || undefined,
-      products: formData.products,
-    };
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    const cleanWhatsapp = formData.whatsapp_number.replace(/\D/g, '') || cleanPhone;
+    const vendorEmail = formData.email?.trim() || `${cleanPhone}@vendor.shoppal.ng`;
+    const vendorPassword = formData.password?.trim() || 'Passw0rd123!';
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${API_BASE}/api/vendors/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const res = await vendorsApi.signup({
+        name: formData.name,
+        phone: cleanPhone,
+        whatsapp_number: cleanWhatsapp,
+        business_name: formData.business_name || formData.name,
+        email: vendorEmail,
+        password: vendorPassword,
+        bank_account: formData.bank_account || undefined,
+        preferred_language: 'en',
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setSuccessData({
-          vendor_id: data.vendor_id || `v_${Math.floor(1000 + Math.random() * 9000)}`,
-          bot_number: data.bot_number || '+1 415 523 8886',
-          test_link: data.test_link || 'https://wa.me/14155238886',
-          sandbox_code: data.sandbox_code || 'bold-elephant',
+      const assignedVendorId = res.data?.vendor_id || `v_${Math.floor(1000 + Math.random() * 9000)}`;
+      const assignedAccountId = res.data?.account_id || `acc_${Math.floor(1000 + Math.random() * 9000)}`;
+      const returnedEmail = res.data?.email || vendorEmail;
+      const returnedName = res.data?.name || formData.name;
+      const returnedBusinessName = res.data?.business_name || formData.business_name || formData.name;
+      const returnedPhone = res.data?.phone || cleanPhone;
+
+      // Auto login to obtain JWT access token
+      let accessToken: string | undefined;
+      let refreshToken: string | undefined;
+      try {
+        const loginRes = await authApi.login({
+          email: returnedEmail,
+          password: vendorPassword,
         });
-      } else {
-        // Fallback for hackathon demo if backend endpoint is not yet connected
-        setSuccessData({
-          vendor_id: `v_${Math.floor(1000 + Math.random() * 9000)}`,
-          bot_number: '+1 415 523 8886',
-          test_link: 'https://wa.me/14155238886',
-          sandbox_code: 'bold-elephant',
-        });
+        if (loginRes.data?.access_token) {
+          accessToken = loginRes.data.access_token;
+          refreshToken = loginRes.data.refresh_token;
+        }
+      } catch {
+        // Continue even if login attempt fails
       }
+
+      setStoredTokens({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        vendor_id: assignedVendorId,
+        account_id: assignedAccountId,
+        email: returnedEmail,
+        role: res.data?.role || 'owner',
+        name: returnedName,
+        business_name: returnedBusinessName,
+        phone: returnedPhone,
+      });
+
+      // If products were added during onboarding, attempt to create them via API
+      if (formData.products && formData.products.length > 0) {
+        try {
+          await Promise.all(
+            formData.products.map((p) =>
+              productsApi.create({
+                name: p.name,
+                price: Number(p.price) || 0,
+                stock: Number(p.stock) || 1,
+                image_url: p.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30',
+                description: `${p.name} - Available on WhatsApp storefront`,
+              })
+            )
+          );
+        } catch {
+          // Non-fatal if product seeding is delayed
+        }
+      }
+
+      setSuccessData({
+        vendor_id: assignedVendorId,
+        bot_number: '+1 415 523 8886',
+        test_link: `https://wa.me/14155238886?text=join%20${assignedVendorId}`,
+        sandbox_code: assignedVendorId,
+      });
       setCurrentStep(4);
     } catch {
-      // Graceful fallback for mock mode / offline demo
+      // Graceful fallback for mock/offline demo
+      const fallbackId = `v_${Math.floor(1000 + Math.random() * 9000)}`;
+      setStoredTokens({
+        vendor_id: fallbackId,
+        email: vendorEmail,
+        role: 'owner',
+        name: formData.name,
+        business_name: formData.business_name || formData.name,
+        phone: cleanPhone,
+      });
       setSuccessData({
-        vendor_id: `v_${Math.floor(1000 + Math.random() * 9000)}`,
+        vendor_id: fallbackId,
         bot_number: '+1 415 523 8886',
-        test_link: 'https://wa.me/14155238886',
+        test_link: `https://wa.me/14155238886?text=join%20${fallbackId}`,
         sandbox_code: 'bold-elephant',
       });
       setCurrentStep(4);
@@ -135,43 +190,45 @@ export default function SignupForm() {
     }
   };
 
-  const stepsMeta = [
-    { num: 1, title: 'Business Info', icon: Building },
-    { num: 2, title: 'Payment Setup', icon: CreditCard },
-    { num: 3, title: 'Products', icon: Package },
-    { num: 4, title: 'Live Bot', icon: Sparkles },
+  const steps = [
+    { num: 1, title: 'Business Info' },
+    { num: 2, title: 'Payment Setup' },
+    { num: 3, title: 'Products' },
+    { num: 4, title: 'Live Store' },
   ];
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl">
+    <div className="w-full max-w-xl mx-auto bg-white border border-slate-200 rounded-lg p-6 sm:p-8">
       {/* Multi-Step Progress Header */}
       {currentStep < 4 && (
         <div className="mb-8">
-          {/* Steps Breadcrumbs */}
+          {/* Steps Indicator */}
           <div className="flex items-center justify-between mb-3">
-            {stepsMeta.map((s, idx) => {
+            {steps.map((s, idx) => {
               const isPassed = currentStep > s.num;
               const isCurrent = currentStep === s.num;
               return (
-                <div key={s.num} className="flex items-center gap-1.5 sm:gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition ${isPassed
-                      ? 'bg-emerald-600 text-white'
-                      : isCurrent
-                        ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-600'
-                        : 'bg-slate-100 text-slate-400'
-                      }`}
-                  >
-                    {isPassed ? <CheckCircle2 className="w-4 h-4" /> : s.num}
-                  </div>
+                <div key={s.num} className="flex items-center gap-2">
                   <span
-                    className={`hidden sm:inline text-xs font-semibold ${isCurrent ? 'text-slate-900' : 'text-slate-400'
-                      }`}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                      isPassed
+                        ? 'bg-slate-900 text-white'
+                        : isCurrent
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {s.num}
+                  </span>
+                  <span
+                    className={`hidden sm:inline text-xs font-medium ${
+                      isCurrent ? 'text-slate-900 font-semibold' : 'text-slate-500'
+                    }`}
                   >
                     {s.title}
                   </span>
-                  {idx < stepsMeta.length - 1 && (
-                    <div className="hidden sm:block w-4 sm:w-8 h-0.5 bg-slate-200 mx-1" />
+                  {idx < steps.length - 1 && (
+                    <div className="hidden sm:block w-4 sm:w-8 h-px bg-slate-200 mx-1" />
                   )}
                 </div>
               );
@@ -179,16 +236,16 @@ export default function SignupForm() {
           </div>
 
           {/* Progress bar */}
-          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
             <div
-              className="bg-emerald-500 h-full transition-all duration-300"
+              className="bg-slate-900 h-full transition-all duration-300"
               style={{ width: `${(currentStep / 4) * 100}%` }}
             />
           </div>
 
-          <div className="flex justify-between items-center text-[11px] text-slate-400 mt-2">
+          <div className="flex justify-between items-center text-xs text-slate-500 mt-2">
             <span>Step {currentStep} of 4</span>
-            <span>&lt; 2 minutes to complete</span>
+            <span>Minimal setup</span>
           </div>
         </div>
       )}
