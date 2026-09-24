@@ -27,6 +27,7 @@ describe('Signup Flow Components', () => {
             whatsapp_number: '',
             business_name: '',
             category: 'Clothing',
+            email: '',
           }}
           onChange={mockChange}
           onNext={mockNext}
@@ -49,6 +50,7 @@ describe('Signup Flow Components', () => {
             whatsapp_number: '',
             business_name: '',
             category: 'Clothing',
+            email: '',
           }}
           onChange={() => {}}
           onNext={() => {
@@ -75,6 +77,8 @@ describe('Signup Flow Components', () => {
             whatsapp_number: '0803 123 4567',
             business_name: 'Tunde Stores',
             category: 'Clothing',
+            email: 'tunde@example.com',
+            password: 'Passw0rd123!',
           }}
           onChange={(fields) => {
             updatedData = { ...updatedData, ...fields };

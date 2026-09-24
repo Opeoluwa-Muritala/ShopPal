@@ -1,18 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  User,
-  ShieldCheck,
-  Copy,
-  Check,
-  Calendar,
-  Smartphone,
-  Store,
-  Hash,
-} from 'lucide-react';
 import EditableField from '../common/EditableField';
 import { PersonalInfo, AccountStatusInfo } from './types';
+import { accountsApi } from '../../lib/api';
 
 export interface AccountSettingsProps {
   personalInfo: PersonalInfo;
@@ -49,7 +40,7 @@ export const validateBusinessName = (val: string): string | null => {
 };
 
 export const validateEmail = (val: string): string | null => {
-  if (!val.trim()) return null; // optional
+  if (!val.trim()) return null;
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(val.trim()) ? null : 'Please enter a valid email address';
 };
@@ -79,20 +70,81 @@ export default function AccountSettings({
     }
   };
 
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPhone, setStaffPhone] = useState('');
+  const [staffPassword, setStaffPassword] = useState('StaffTemp2025!');
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<
+    Array<{
+      id: string;
+      email: string;
+      phone: string;
+      role: string;
+      status: string;
+    }>
+  >([]);
+
+  const handleInviteStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staffEmail.trim() || !staffPhone.trim() || !staffPassword.trim()) {
+      setInviteError('Please fill in all staff details');
+      return;
+    }
+    const cleanPhone = staffPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 11) {
+      setInviteError('Staff phone must be an 11-digit Nigerian number');
+      return;
+    }
+    setIsInviting(true);
+    setInviteError(null);
+    setInviteSuccess(null);
+
+    try {
+      const res = await accountsApi.inviteStaff({
+        email: staffEmail.trim(),
+        phone: cleanPhone,
+        temp_password: staffPassword.trim(),
+      });
+
+      if (res.data?.account_id || res.status === 200 || res.status === 201) {
+        const newMember = {
+          id: res.data?.account_id || `acc_${Date.now()}`,
+          email: staffEmail.trim(),
+          phone: staffPhone.trim(),
+          role: res.data?.role || 'Staff / Assistant',
+          status: res.data?.status || 'Invited',
+        };
+        setTeamMembers((prev) => [...prev, newMember]);
+        setInviteSuccess(`Invitation sent to ${staffEmail.trim()}`);
+        onShowToast(`Staff member invited: ${staffEmail.trim()}`, 'success');
+        setStaffEmail('');
+        setStaffPhone('');
+        setTimeout(() => {
+          setShowInviteModal(false);
+          setInviteSuccess(null);
+        }, 1500);
+      } else {
+        setInviteError(res.error || 'Failed to dispatch staff invitation.');
+      }
+    } catch (err: any) {
+      setInviteError(err?.message || 'Failed to dispatch staff invitation.');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-200">
+    <div className="space-y-6">
       {/* Section: Personal Information */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-            <User className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Personal Information</h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Manage your personal contacts and store identity visible on customer receipts.
-            </p>
-          </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-900">Personal Information</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage your merchant contacts and store identity.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
@@ -105,7 +157,7 @@ export default function AccountSettings({
             hint="Min 2 characters, max 100"
             onSave={async (newVal) => {
               await onUpdatePersonalInfo('fullName', newVal);
-              onShowToast('✅ Full name updated successfully');
+              onShowToast('Full name updated successfully');
             }}
           />
 
@@ -119,7 +171,7 @@ export default function AccountSettings({
             hint="Nigerian 11-digit mobile number"
             onSave={async (newVal) => {
               await onUpdatePersonalInfo('phone', newVal);
-              onShowToast('✅ Phone number updated successfully');
+              onShowToast('Phone number updated successfully');
             }}
           />
 
@@ -130,10 +182,10 @@ export default function AccountSettings({
             type="tel"
             autoFormat={formatNigerianPhone}
             validate={validatePhone}
-            hint="Can be identical to phone or separate"
+            hint="WhatsApp phone number"
             onSave={async (newVal) => {
               await onUpdatePersonalInfo('whatsappNumber', newVal);
-              onShowToast('✅ WhatsApp number updated successfully');
+              onShowToast('WhatsApp number updated successfully');
             }}
           />
 
@@ -143,10 +195,10 @@ export default function AccountSettings({
             value={personalInfo.businessName}
             validate={validateBusinessName}
             maxLength={100}
-            hint="Your brand displayed in WhatsApp chat"
+            hint="Store name displayed in WhatsApp chat"
             onSave={async (newVal) => {
               await onUpdatePersonalInfo('businessName', newVal);
-              onShowToast('✅ Business name updated successfully');
+              onShowToast('Business name updated successfully');
             }}
           />
 
@@ -158,10 +210,10 @@ export default function AccountSettings({
               type="email"
               validate={validateEmail}
               placeholder="e.g. vendor@example.com"
-              hint="Used for critical order receipts and account recovery"
+              hint="Used for order notifications and account access"
               onSave={async (newVal) => {
                 await onUpdatePersonalInfo('email', newVal);
-                onShowToast('✅ Email address updated successfully');
+                onShowToast('Email address updated successfully');
               }}
             />
           </div>
@@ -169,47 +221,37 @@ export default function AccountSettings({
       </div>
 
       {/* Section: Account Status */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Account Status</h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              System verification status, assigned vendor identifier, and bot connection.
-            </p>
-          </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-900">Account Status</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            System verification, assigned vendor ID, and bot connection.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          {/* Status Badge */}
-          <div className="border border-slate-200/90 rounded-xl p-4 bg-slate-50/50">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">
-              Account Status
+          <div className="border border-slate-200 rounded p-4 bg-slate-50">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
+              Status
             </span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                ✅ Active
+            <div className="mt-1">
+              <span className="inline-block px-2.5 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                Active
               </span>
             </div>
           </div>
 
-          {/* Account Created */}
-          <div className="border border-slate-200/90 rounded-xl p-4 bg-slate-50/50">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">
+          <div className="border border-slate-200 rounded p-4 bg-slate-50">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
               Account Created
             </span>
-            <div className="flex items-center gap-2 mt-1 text-sm font-semibold text-slate-900">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span>{accountStatus.accountCreated}</span>
-            </div>
+            <span className="text-sm font-semibold text-slate-900 block mt-1">
+              {accountStatus.accountCreated}
+            </span>
           </div>
 
-          {/* Vendor ID */}
-          <div className="border border-slate-200/90 rounded-xl p-4 bg-slate-50/50">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">
+          <div className="border border-slate-200 rounded p-4 bg-slate-50">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
               Vendor ID
             </span>
             <div className="flex items-center justify-between gap-2 mt-1">
@@ -219,23 +261,17 @@ export default function AccountSettings({
               <button
                 type="button"
                 onClick={() => copyToClipboard(accountStatus.vendorId, true)}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-emerald-700 bg-white border border-slate-200 hover:border-emerald-300 px-2 py-1 rounded-lg transition"
                 title="Copy Vendor ID"
+                className="text-xs font-medium text-slate-700 bg-white border border-slate-300 px-2 py-0.5 rounded transition"
               >
-                {copiedVendorId ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-                <span>{copiedVendorId ? 'Copied' : 'Copy'}</span>
+                {copiedVendorId ? 'Copied' : 'Copy'}
               </button>
             </div>
           </div>
 
-          {/* Bot WhatsApp Number */}
-          <div className="border border-slate-200/90 rounded-xl p-4 bg-slate-50/50">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">
-              Bot WhatsApp Number
+          <div className="border border-slate-200 rounded p-4 bg-slate-50">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
+              Bot Number
             </span>
             <div className="flex items-center justify-between gap-2 mt-1">
               <span className="text-sm font-mono font-bold text-slate-900">
@@ -244,20 +280,165 @@ export default function AccountSettings({
               <button
                 type="button"
                 onClick={() => copyToClipboard(accountStatus.botWhatsAppNumber, false)}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-emerald-700 bg-white border border-slate-200 hover:border-emerald-300 px-2 py-1 rounded-lg transition"
-                title="Copy Bot Number"
+                title="Copy Bot WhatsApp Number"
+                className="text-xs font-medium text-slate-700 bg-white border border-slate-300 px-2 py-0.5 rounded transition"
               >
-                {copiedBotNumber ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-                <span>{copiedBotNumber ? 'Copied' : 'Copy'}</span>
+                {copiedBotNumber ? 'Copied' : 'Copy'}
               </button>
+
             </div>
           </div>
         </div>
       </div>
+
+      {/* Section: Store Team & Staff */}
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Store Team &amp; Staff</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Invite assistants to manage orders and stock.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            className="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-2 rounded transition self-start sm:self-auto"
+          >
+            Invite Staff Member
+          </button>
+        </div>
+
+        {teamMembers.length === 0 ? (
+          <div className="py-6 text-center text-xs text-slate-500 mt-4">
+            No additional team members invited yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100 mt-4">
+            {teamMembers.map((member) => (
+              <div key={member.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div>
+                  <p className="font-bold text-slate-900">{member.email}</p>
+                  <p className="text-slate-500 font-mono">{member.phone}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                    {member.role}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                    {member.status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Invite Staff Modal */}
+      {showInviteModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-lg max-w-md w-full p-6 border border-slate-200 relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Invite Store Staff</h3>
+                <p className="text-xs text-slate-500">Provide credentials for your store assistant</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInviteModal(false);
+                  setInviteError(null);
+                  setInviteSuccess(null);
+                }}
+                className="text-xs text-slate-500 hover:text-slate-800 p-1 border border-slate-200 rounded"
+              >
+                Close
+              </button>
+            </div>
+
+            {inviteSuccess && (
+              <div className="mb-4 p-3 bg-slate-100 border border-slate-300 rounded text-slate-800 text-xs font-medium">
+                {inviteSuccess}
+              </div>
+            )}
+
+            {inviteError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-800 text-xs font-medium">
+                {inviteError}
+              </div>
+            )}
+
+            <form onSubmit={handleInviteStaff} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Staff Email Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={staffEmail}
+                  onChange={(e) => setStaffEmail(e.target.value)}
+                  placeholder="assistant@example.com"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Staff Phone Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  maxLength={14}
+                  value={staffPhone}
+                  onChange={(e) => setStaffPhone(formatNigerianPhone(e.target.value))}
+                  placeholder="0803 123 4567"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Temporary Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={staffPassword}
+                  onChange={(e) => setStaffPassword(e.target.value)}
+                  placeholder="Temporary password"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-slate-900 font-mono"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">Staff will be asked to change this password on first login.</p>
+              </div>
+
+              <div className="flex gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  disabled={isInviting}
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isInviting}
+                  className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded transition"
+                >
+                  {isInviting ? 'Sending...' : 'Send Invitation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

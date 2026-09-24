@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Pencil, Check, X, Loader2 } from 'lucide-react';
 
 export interface EditableFieldProps {
   id: string;
@@ -60,6 +59,7 @@ export default function EditableField({
       newVal = autoFormat(newVal);
     }
     setDraftValue(newVal);
+
     if (error && validate) {
       const err = validate(newVal);
       setError(err);
@@ -81,13 +81,12 @@ export default function EditableField({
 
   const handleCommit = async () => {
     if (validate) {
-      const validationError = validate(draftValue);
-      if (validationError) {
-        setError(validationError);
+      const err = validate(draftValue);
+      if (err) {
+        setError(err);
         return;
       }
     }
-    setError(null);
 
     if (draftValue === value) {
       setIsEditing(false);
@@ -96,18 +95,19 @@ export default function EditableField({
 
     try {
       setIsSaving(true);
-      const res = await onSave(draftValue);
-      if (res !== false) {
-        setIsEditing(false);
-      }
+      await onSave(draftValue);
+      setIsEditing(false);
+      setError(null);
     } catch (err: any) {
-      setError(err?.message || 'Failed to save');
+      setError(err?.message || 'Failed to save changes');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     if (e.key === 'Escape') {
       handleCancel();
     } else if (e.key === 'Enter' && !isTextArea) {
@@ -116,18 +116,16 @@ export default function EditableField({
     }
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
     if (!saveOnBlur) return;
-    // Don't blur-save if clicking the cancel or action buttons within this container
-    if (e.currentTarget.contains(e.relatedTarget as Node)) {
-      return;
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      handleCommit();
     }
-    handleCommit();
   };
 
   return (
     <div
-      className={`border border-slate-200/90 rounded-xl p-4 bg-white hover:border-slate-300 transition-colors ${className}`}
+      className={`border border-slate-200 rounded p-4 bg-white ${className}`}
       onBlur={handleBlur}
     >
       <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -141,11 +139,10 @@ export default function EditableField({
           <button
             type="button"
             onClick={handleStartEdit}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition"
+            className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded transition"
             aria-label={`Edit ${label}`}
           >
-            <Pencil className="w-3.5 h-3.5" />
-            <span>Edit</span>
+            Edit
           </button>
         )}
       </div>
@@ -163,7 +160,7 @@ export default function EditableField({
               rows={3}
               placeholder={placeholder}
               disabled={isSaving}
-              className={`w-full text-sm text-slate-900 border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition resize-none ${
+              className={`w-full text-sm text-slate-900 border rounded p-2.5 focus:outline-none focus:border-slate-900 transition resize-none ${
                 error ? 'border-red-400 bg-red-50/20' : 'border-slate-300'
               }`}
             />
@@ -178,7 +175,7 @@ export default function EditableField({
               maxLength={maxLength}
               placeholder={placeholder}
               disabled={isSaving}
-              className={`w-full text-sm text-slate-900 border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition ${
+              className={`w-full text-sm text-slate-900 border rounded p-2.5 focus:outline-none focus:border-slate-900 transition ${
                 error ? 'border-red-400 bg-red-50/20' : 'border-slate-300'
               }`}
             />
@@ -206,28 +203,17 @@ export default function EditableField({
                 type="button"
                 onClick={handleCancel}
                 disabled={isSaving}
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition"
+                className="text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded transition"
               >
-                <X className="w-3.5 h-3.5" />
-                <span>Cancel</span>
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleCommit}
                 disabled={isSaving}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 rounded-lg shadow-sm transition disabled:opacity-50"
+                className="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 rounded transition disabled:opacity-50"
               >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Save</span>
-                  </>
-                )}
+                {isSaving ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

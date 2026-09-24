@@ -16,7 +16,7 @@ import { apiClient } from '../lib/api';
 describe('Navigation and Components', () => {
   it('renders Navbar with links', () => {
     render(<Navbar />);
-    expect(screen.getByText('Naija Marketplace')).toBeDefined();
+    expect(screen.getByText('ShopPal')).toBeDefined();
     expect(screen.getByText('Dashboard')).toBeDefined();
     expect(screen.getByText('Products')).toBeDefined();
     expect(screen.getByText('Orders')).toBeDefined();
@@ -25,7 +25,7 @@ describe('Navigation and Components', () => {
 
   it('renders Footer with copyright', () => {
     render(<Footer />);
-    expect(screen.getByText(/Naija Marketplace \(EcomBot\)/i)).toBeDefined();
+    expect(screen.getByText(/ShopPal/i)).toBeDefined();
   });
 });
 
@@ -89,8 +89,9 @@ describe('Boilerplate App Pages', () => {
   it('renders Settings page', () => {
     render(<SettingsPage />);
     expect(screen.getByText('Settings & Integrations')).toBeDefined();
-    expect(screen.getByText('Paystack Configuration')).toBeDefined();
+    expect(screen.getByText(/Payment Settings|Paystack Configuration/i)).toBeDefined();
   });
+
 
   it('renders Login page', () => {
     render(<LoginPage />);

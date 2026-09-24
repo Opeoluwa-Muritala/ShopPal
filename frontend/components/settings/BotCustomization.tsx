@@ -1,19 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  Bot,
-  MessageSquare,
-  Languages,
-  Clock,
-  Power,
-  Pencil,
-  Check,
-  X,
-  Loader2,
-  CheckCheck,
-  AlertTriangle,
-} from 'lucide-react';
 import { BotCustomizationData, OperatingHours } from './types';
 
 export interface BotCustomizationProps {
@@ -60,38 +47,55 @@ export default function BotCustomization({
       setGreetingError('Greeting message cannot exceed 200 characters');
       return;
     }
+    setIsSavingGreeting(true);
     setGreetingError(null);
     try {
-      setIsSavingGreeting(true);
       await onUpdateGreeting(greetingText.trim());
       setIsEditingGreeting(false);
-      onShowToast('✅ Bot greeting updated!');
-    } catch {
-      setGreetingError('Failed to save greeting message');
+      onShowToast('Greeting message updated');
+    } catch (err: any) {
+      setGreetingError(err?.message || 'Failed to update greeting');
     } finally {
       setIsSavingGreeting(false);
     }
   };
 
   const handleSaveLanguage = async () => {
+    setIsSavingLanguage(true);
     try {
-      setIsSavingLanguage(true);
       await onUpdateLanguage(selectedLanguage);
-      onShowToast('✅ Bot language updated!');
+      onShowToast(`Language set to ${selectedLanguage}`);
     } catch {
-      onShowToast('Failed to save bot language', 'error');
+      onShowToast('Failed to update language', 'error');
     } finally {
       setIsSavingLanguage(false);
     }
   };
 
-  const handleSaveOperatingHours = async () => {
+  const handleToggleOperatingHours = async () => {
+    const updated: OperatingHours = {
+      ...operatingHours,
+      enabled: !operatingHours.enabled,
+    };
+    setOperatingHours(updated);
+    setIsSavingHours(true);
     try {
-      setIsSavingHours(true);
-      await onUpdateOperatingHours(operatingHours);
-      onShowToast('✅ Operating hours updated!');
+      await onUpdateOperatingHours(updated);
+      onShowToast(updated.enabled ? 'Operating hours enabled' : 'Operating hours disabled');
     } catch {
-      onShowToast('Failed to save operating hours', 'error');
+      onShowToast('Failed to update operating hours', 'error');
+    } finally {
+      setIsSavingHours(false);
+    }
+  };
+
+  const handleSaveOperatingHours = async () => {
+    setIsSavingHours(true);
+    try {
+      await onUpdateOperatingHours(operatingHours);
+      onShowToast('Operating hours schedule saved');
+    } catch {
+      onShowToast('Failed to save hours', 'error');
     } finally {
       setIsSavingHours(false);
     }
@@ -99,101 +103,65 @@ export default function BotCustomization({
 
   const handleToggleBotStatus = async () => {
     const nextStatus = botStatus === 'active' ? 'paused' : 'active';
+    setBotStatus(nextStatus);
+    setIsSavingStatus(true);
     try {
-      setIsSavingStatus(true);
       await onUpdateBotStatus(nextStatus);
-      setBotStatus(nextStatus);
-      onShowToast('✅ Bot status updated!');
+      onShowToast(nextStatus === 'active' ? 'Bot is now Active' : 'Bot is now Paused');
     } catch {
-      onShowToast('Failed to update bot status', 'error');
+      setBotStatus(botStatus);
+      onShowToast('Failed to toggle bot status', 'error');
     } finally {
       setIsSavingStatus(false);
     }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-200">
+    <div className="space-y-6">
       {/* Section: Bot Status */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
-                botStatus === 'active'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-amber-50 text-amber-700'
-              }`}
-            >
-              <Power className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Bot Status</h2>
-              <p className="text-xs sm:text-sm text-slate-500">
-                Turn your WhatsApp bot on or pause incoming automated customer responses.
-              </p>
-            </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Bot Status</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pause or resume automated replies to customer messages.
+            </p>
           </div>
+          <button
+            type="button"
+            role="switch"
+            aria-label="Toggle Bot Active"
+            aria-checked={botStatus === 'active'}
+            onClick={handleToggleBotStatus}
+            disabled={isSavingStatus}
+            className={`text-xs font-semibold px-4 py-2 rounded transition self-start sm:self-auto ${
+              botStatus === 'active'
+                ? 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {isSavingStatus ? 'Updating...' : botStatus === 'active' ? 'Pause Bot' : 'Activate Bot'}
+          </button>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  botStatus === 'active'
-                    ? 'bg-emerald-500 animate-pulse'
-                    : 'bg-amber-500'
-                }`}
-              />
-              <span className="text-xs sm:text-sm font-bold text-slate-800">
-                {botStatus === 'active' ? 'Bot Active' : 'Bot Paused'}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleToggleBotStatus}
-              disabled={isSavingStatus}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-                botStatus === 'active' ? 'bg-emerald-600' : 'bg-slate-300'
-              }`}
-              role="switch"
-              aria-checked={botStatus === 'active'}
-              aria-label="Toggle Bot Active"
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  botStatus === 'active' ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
         </div>
 
-        {botStatus === 'paused' && (
-          <div className="mt-4 p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl flex items-center gap-3 text-xs sm:text-sm text-amber-900">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              <strong>Note:</strong> Your bot is currently paused. Customers who message your WhatsApp number will see: <em>&quot;Shop is currently closed&quot;</em>.
-            </span>
-          </div>
-        )}
+        <div className="mt-4">
+          <span className="text-xs text-slate-600">
+            Current Status:{' '}
+            <strong className="text-slate-900 capitalize font-bold">{botStatus}</strong>
+          </span>
+        </div>
       </div>
 
       {/* Section: Greeting Message */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Greeting Message</h2>
-              <p className="text-xs sm:text-sm text-slate-500">
-                First response sent to every new shopper who initiates a WhatsApp conversation.
-              </p>
-            </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Greeting Message</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              The opening message sent when a new shopper messages your WhatsApp number.
+            </p>
           </div>
-
           {!isEditingGreeting && (
             <button
               type="button"
@@ -202,21 +170,20 @@ export default function BotCustomization({
                 setIsEditingGreeting(true);
                 setGreetingError(null);
               }}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-xl transition"
+              className="text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded transition self-start sm:self-auto"
             >
-              <Pencil className="w-3.5 h-3.5" />
-              <span>Edit Greeting</span>
+              Edit Greeting
             </button>
           )}
         </div>
 
         <div className="mt-6 space-y-4">
           {isEditingGreeting ? (
-            <div className="border border-emerald-200 bg-emerald-50/20 rounded-xl p-4 space-y-3">
+            <div className="border border-slate-300 rounded p-4 space-y-3 bg-slate-50">
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="bot-greeting-textarea"
-                  className="text-xs font-bold uppercase tracking-wider text-slate-700"
+                  className="text-xs font-semibold text-slate-700"
                 >
                   Custom Greeting (Max 200 characters)
                 </label>
@@ -230,11 +197,11 @@ export default function BotCustomization({
                 maxLength={200}
                 value={greetingText}
                 onChange={(e) => setGreetingText(e.target.value)}
-                className="w-full text-sm text-slate-900 border border-slate-300 rounded-lg p-3 bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition resize-none"
-                placeholder="Hi! Welcome to Ilorin Fashion. What can I help you with? 😊"
+                className="w-full text-xs sm:text-sm text-slate-900 border border-slate-300 rounded p-2.5 bg-white focus:outline-none focus:border-slate-900 resize-none"
+                placeholder="Welcome to our store. How can I help you today?"
               />
               {greetingError && (
-                <p className="text-xs font-semibold text-red-600">{greetingError}</p>
+                <p className="text-xs text-red-600 font-medium">{greetingError}</p>
               )}
 
               <div className="flex items-center justify-end gap-2 pt-1">
@@ -244,74 +211,58 @@ export default function BotCustomization({
                     setIsEditingGreeting(false);
                     setGreetingText(botData.greetingMessage);
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg transition"
+                  className="text-xs font-medium text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded transition"
                 >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Cancel</span>
+                  Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveGreeting}
                   disabled={isSavingGreeting}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 rounded-lg shadow-sm transition disabled:opacity-50"
+                  className="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 rounded transition disabled:opacity-50"
                 >
-                  {isSavingGreeting ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Check className="w-3.5 h-3.5" />
-                  )}
-                  <span>Save Greeting</span>
+                  {isSavingGreeting ? 'Saving...' : 'Save Greeting'}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="border border-slate-200/90 rounded-xl p-4 bg-slate-50/50">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1.5">
+            <div className="border border-slate-200 rounded p-4 bg-slate-50">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
                 Current Active Greeting
               </span>
-              <p className="text-sm font-medium text-slate-900 leading-relaxed">
+              <p className="text-sm font-medium text-slate-900">
                 &quot;{botData.greetingMessage}&quot;
               </p>
             </div>
           )}
 
           {/* WhatsApp Preview Bubble */}
-          <div className="border border-slate-200 rounded-xl p-4 bg-slate-100/60">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-3">
+          <div className="border border-slate-200 rounded p-4 bg-slate-50">
+            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-2">
               Your customers will see:
             </span>
-            <div className="max-w-md bg-[#DCF8C6] border border-emerald-200/60 rounded-2xl rounded-tl-sm p-3 shadow-xs space-y-1">
-              <p className="text-xs sm:text-sm text-slate-900 font-sans leading-relaxed">
-                {isEditingGreeting ? greetingText : botData.greetingMessage}
-              </p>
-              <div className="flex items-center justify-end gap-1 text-[10px] text-slate-500">
-                <span>12:00 PM</span>
-                <CheckCheck className="w-3.5 h-3.5 text-sky-600" />
-              </div>
+            <div className="max-w-md bg-white border border-slate-300 rounded p-3 text-xs text-slate-900">
+              <p>{isEditingGreeting ? greetingText : botData.greetingMessage}</p>
+              <div className="text-right text-[10px] text-slate-400 mt-1">12:00 PM • Delivered</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Section: Bot Language */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-3 pb-5 border-b border-slate-100">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
-            <Languages className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Bot Language</h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Preferred default dialect for automated WhatsApp customer conversations.
-            </p>
-          </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h2 className="text-base font-bold text-slate-900">Bot Language</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Dialect for automated WhatsApp customer conversations.
+          </p>
         </div>
 
         <div className="mt-6 space-y-4 max-w-lg">
           <div>
             <label
               htmlFor="bot-language-select"
-              className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5"
+              className="text-xs font-semibold text-slate-700 block mb-1"
             >
               Select Dialect
             </label>
@@ -319,20 +270,11 @@ export default function BotCustomization({
               id="bot-language-select"
               value={selectedLanguage}
               onChange={(e) => setSelectedLanguage(e.target.value)}
-              className="w-full text-sm border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"
+              className="w-full text-xs sm:text-sm border border-slate-300 rounded p-2 bg-white text-slate-900 focus:outline-none focus:border-slate-900"
             >
               <option value="English / Naija Pidgin Mix">English / Naija Pidgin Mix (Recommended)</option>
               <option value="English">English</option>
               <option value="Pidgin">Pidgin</option>
-              <option value="Yoruba" disabled>
-                Yoruba (Coming soon)
-              </option>
-              <option value="Hausa" disabled>
-                Hausa (Coming soon)
-              </option>
-              <option value="Igbo" disabled>
-                Igbo (Coming soon)
-              </option>
             </select>
           </div>
 
@@ -344,196 +286,75 @@ export default function BotCustomization({
               type="button"
               onClick={handleSaveLanguage}
               disabled={isSavingLanguage || selectedLanguage === botData.language}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+              className="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 rounded transition disabled:opacity-50"
             >
-              {isSavingLanguage ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Check className="w-3.5 h-3.5" />
-              )}
-              <span>Save Language</span>
+              {isSavingLanguage ? 'Saving...' : 'Save Language'}
             </button>
           </div>
         </div>
       </div>
 
       {/* Section: Operating Hours */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-100 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">Operating Hours</h2>
-              <p className="text-xs sm:text-sm text-slate-500">
-                Specify scheduled shop working hours. Outside these hours, an automated closed notice is dispatched.
-              </p>
-            </div>
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Operating Hours</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Specify store operating hours.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs sm:text-sm font-semibold text-slate-700">
-              Enable operating hours
-            </span>
-            <button
-              type="button"
-              onClick={() =>
-                setOperatingHours((prev) => ({ ...prev, enabled: !prev.enabled }))
-              }
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
-                operatingHours.enabled ? 'bg-amber-600' : 'bg-slate-300'
-              }`}
-              role="switch"
-              aria-checked={operatingHours.enabled}
-              aria-label="Enable operating hours"
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  operatingHours.enabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleToggleOperatingHours}
+            disabled={isSavingHours}
+            className="text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded transition self-start sm:self-auto"
+          >
+            {operatingHours.enabled ? 'Enabled' : 'Disabled'}
+          </button>
         </div>
 
         {operatingHours.enabled && (
-          <div className="mt-6 space-y-4 border border-amber-200 bg-amber-50/20 rounded-xl p-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Mon - Fri */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5">
-                  Monday – Friday
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={operatingHours.monFri.from}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        monFri: { ...prev.monFri, from: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                  <span className="text-xs text-slate-400">to</span>
-                  <input
-                    type="time"
-                    value={operatingHours.monFri.to}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        monFri: { ...prev.monFri, to: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                </div>
-              </div>
-
-              {/* Saturday */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5">
-                  Saturday
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={operatingHours.saturday.from}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        saturday: { ...prev.saturday, from: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                  <span className="text-xs text-slate-400">to</span>
-                  <input
-                    type="time"
-                    value={operatingHours.saturday.to}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        saturday: { ...prev.saturday, to: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                </div>
-              </div>
-
-              {/* Sunday */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5">
-                  Sunday
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={operatingHours.sunday.from}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        sunday: { ...prev.sunday, from: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                  <span className="text-xs text-slate-400">to</span>
-                  <input
-                    type="time"
-                    value={operatingHours.sunday.to}
-                    onChange={(e) =>
-                      setOperatingHours((prev) => ({
-                        ...prev,
-                        sunday: { ...prev.sunday, to: e.target.value },
-                      }))
-                    }
-                    className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-900"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Closed message */}
-            <div className="pt-2">
-              <label
-                htmlFor="closed-message-input"
-                className="text-xs font-bold uppercase tracking-wider text-slate-700 block mb-1.5"
-              >
-                Closed Message
+          <div className="mt-6 space-y-4 max-w-lg">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                Mon - Fri Hours
               </label>
-              <input
-                id="closed-message-input"
-                type="text"
-                value={operatingHours.closedMessage}
-                onChange={(e) =>
-                  setOperatingHours((prev) => ({ ...prev, closedMessage: e.target.value }))
-                }
-                className="w-full text-sm border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900"
-              />
+              <div className="flex items-center gap-2 text-xs">
+                <input
+                  type="time"
+                  value={operatingHours.monFri.from}
+                  onChange={(e) =>
+                    setOperatingHours({
+                      ...operatingHours,
+                      monFri: { ...operatingHours.monFri, from: e.target.value },
+                    })
+                  }
+                  className="px-2 py-1.5 border border-slate-300 rounded"
+                />
+                <span>to</span>
+                <input
+                  type="time"
+                  value={operatingHours.monFri.to}
+                  onChange={(e) =>
+                    setOperatingHours({
+                      ...operatingHours,
+                      monFri: { ...operatingHours.monFri, to: e.target.value },
+                    })
+                  }
+                  className="px-2 py-1.5 border border-slate-300 rounded"
+                />
+              </div>
             </div>
 
-            {/* Timezone (Read only for MVP) */}
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs text-slate-500">
-                Timezone: <strong>{operatingHours.timezone}</strong> (WAT, UTC+1)
-              </span>
+            <div className="pt-2">
               <button
                 type="button"
                 onClick={handleSaveOperatingHours}
                 disabled={isSavingHours}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+                className="text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 rounded transition disabled:opacity-50"
               >
-                {isSavingHours ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Check className="w-3.5 h-3.5" />
-                )}
-                <span>Save Operating Hours</span>
+                {isSavingHours ? 'Saving...' : 'Save Schedule'}
               </button>
             </div>
           </div>
