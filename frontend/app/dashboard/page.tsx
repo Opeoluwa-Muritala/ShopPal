@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardHome from '../../components/dashboard/DashboardHome';
 
-import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { formatNaira } from '../../lib/utils';
 import { ordersApi, productsApi } from '../../lib/api';
