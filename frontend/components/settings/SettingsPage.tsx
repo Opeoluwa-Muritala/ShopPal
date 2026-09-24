@@ -39,7 +39,8 @@ import {
   NotificationSettingsData,
   ToastMessage,
 } from './types';
-import { apiClient } from '../../lib/api';
+import { apiClient, authApi } from '../../lib/api';
+import { clearStoredTokens, getStoredTokens } from '../../lib/auth';
 
 export const DEMO_VENDOR_SETTINGS: VendorSettings = {
   id: 'vendor_001234',
@@ -145,16 +146,17 @@ function SettingsPageInner() {
   };
 
   // React Query fetch
+  const storedVendorId = getStoredTokens().vendor_id || DEMO_VENDOR_SETTINGS.id;
   const { data: settings = DEMO_VENDOR_SETTINGS, isLoading } = useQuery<VendorSettings>({
-    queryKey: ['vendorSettings', DEMO_VENDOR_SETTINGS.id],
+    queryKey: ['vendorSettings', storedVendorId],
     queryFn: async () => {
       try {
-        const res = await apiClient<VendorSettings>(`/api/vendor/${DEMO_VENDOR_SETTINGS.id}/settings`);
+        const res = await apiClient<VendorSettings>(`/api/vendor/${storedVendorId}/settings`);
         if (res.data) {
           return res.data;
         }
       } catch {
-        // Fallback to demo defaults for offline / hackathon demo
+        // Fallback if settings route is unseeded
       }
       return DEMO_VENDOR_SETTINGS;
     },
@@ -381,7 +383,16 @@ function SettingsPageInner() {
   };
 
   const handleLogoutAllSessions = async () => {
-    await apiClient(`/api/auth/logout-all`, { method: 'POST' });
+    try {
+      await authApi.logoutAll();
+    } catch {
+      // Ignore
+    } finally {
+      clearStoredTokens();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
   };
 
   const handleDeleteAccount = async (reason: string) => {

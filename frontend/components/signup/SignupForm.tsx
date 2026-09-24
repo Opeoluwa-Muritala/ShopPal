@@ -7,6 +7,8 @@ import Step2Payment, { Step2Data } from './Step2Payment';
 import Step3Products from './Step3Products';
 import Step4Success, { SuccessData } from './Step4Success';
 import { ProductItem } from './CSVUploadZone';
+import { vendorsApi, productsApi } from '../../lib/api';
+import { setStoredTokens } from '../../lib/auth';
 
 interface SignupFormData extends Step1Data, Step2Data {
   products: ProductItem[];
@@ -23,6 +25,8 @@ export default function SignupForm() {
     name: '',
     phone: '',
     whatsapp_number: '',
+    email: '',
+    password: '',
     business_name: '',
     category: 'Clothing',
     paystack_key: '',
@@ -86,47 +90,82 @@ export default function SignupForm() {
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const payload = {
-      name: formData.name,
-      phone: formData.phone.replace(/\D/g, ''),
-      whatsapp_number: formData.whatsapp_number.replace(/\D/g, '') || formData.phone.replace(/\D/g, ''),
-      business_name: formData.business_name || formData.name,
-      paystack_key: formData.paystack_key || undefined,
-      products: formData.products,
-    };
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    const cleanWhatsapp = formData.whatsapp_number.replace(/\D/g, '') || cleanPhone;
+    const vendorEmail = formData.email?.trim() || `${cleanPhone}@vendor.naijamarketplace.ng`;
+    const vendorPassword = formData.password?.trim() || 'Passw0rd123!';
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${API_BASE}/api/vendors/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const res = await vendorsApi.signup({
+        name: formData.name,
+        phone: cleanPhone,
+        whatsapp_number: cleanWhatsapp,
+        business_name: formData.business_name || formData.name,
+        email: vendorEmail,
+        password: vendorPassword,
+        bank_account: formData.bank_account || undefined,
+        preferred_language: 'en',
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (res.data?.vendor_id) {
+        const assignedVendorId = res.data.vendor_id;
+        const assignedAccountId = res.data.account_id;
+
+        setStoredTokens({
+          vendor_id: assignedVendorId,
+          account_id: assignedAccountId,
+          email: res.data.email,
+          role: res.data.role || 'owner',
+        });
+
+        // If products were added during onboarding, attempt to create them via API
+        if (formData.products && formData.products.length > 0) {
+          try {
+            await Promise.all(
+              formData.products.map((p) =>
+                productsApi.create({
+                  name: p.name,
+                  price: Number(p.price) || 0,
+                  stock: Number(p.stock) || 1,
+                  image_url: p.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30',
+                  description: `${p.name} - Available on WhatsApp storefront`,
+                })
+              )
+            );
+          } catch {
+            // Non-fatal if product seeding is delayed
+          }
+        }
+
         setSuccessData({
-          vendor_id: data.vendor_id || `v_${Math.floor(1000 + Math.random() * 9000)}`,
-          bot_number: data.bot_number || '+1 415 523 8886',
-          test_link: data.test_link || 'https://wa.me/14155238886',
-          sandbox_code: data.sandbox_code || 'bold-elephant',
+          vendor_id: assignedVendorId,
+          bot_number: '+1 415 523 8886',
+          test_link: `https://wa.me/14155238886?text=join%20${assignedVendorId}`,
+          sandbox_code: assignedVendorId,
         });
       } else {
         // Fallback for hackathon demo if backend endpoint is not yet connected
+        const fallbackId = `v_${Math.floor(1000 + Math.random() * 9000)}`;
+        setStoredTokens({
+          vendor_id: fallbackId,
+          email: vendorEmail,
+          role: 'owner',
+        });
         setSuccessData({
-          vendor_id: `v_${Math.floor(1000 + Math.random() * 9000)}`,
+          vendor_id: fallbackId,
           bot_number: '+1 415 523 8886',
-          test_link: 'https://wa.me/14155238886',
+          test_link: `https://wa.me/14155238886?text=join%20${fallbackId}`,
           sandbox_code: 'bold-elephant',
         });
       }
       setCurrentStep(4);
     } catch {
       // Graceful fallback for mock mode / offline demo
+      const fallbackId = `v_${Math.floor(1000 + Math.random() * 9000)}`;
       setSuccessData({
-        vendor_id: `v_${Math.floor(1000 + Math.random() * 9000)}`,
+        vendor_id: fallbackId,
         bot_number: '+1 415 523 8886',
-        test_link: 'https://wa.me/14155238886',
+        test_link: `https://wa.me/14155238886?text=join%20${fallbackId}`,
         sandbox_code: 'bold-elephant',
       });
       setCurrentStep(4);

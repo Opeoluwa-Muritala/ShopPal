@@ -4,9 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, Mail, Phone, Loader2, AlertCircle, CheckCircle2, HelpCircle, X } from 'lucide-react';
 
+import { authApi } from '../../lib/api';
+import { setStoredTokens, setFrontendApiKey } from '../../lib/auth';
+
 export interface LoginResponse {
   vendor_id?: string;
   token?: string;
+  access_token?: string;
+  refresh_token?: string;
   dashboard_url?: string;
   message?: string;
 }
@@ -41,6 +46,15 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
+
+  // Forgot / Reset password state
+  const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newResetPassword, setNewResetPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
 
   // Load remembered identifier on mount (deferred to avoid cascading render lint errors)
   useEffect(() => {
@@ -139,35 +153,41 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const payload = {
-      identifier: identifier.trim(),
-      password,
-    };
+    const emailToSend = identifier.includes('@')
+      ? identifier.trim()
+      : `${identifier.trim().replace(/\D/g, '')}@vendor.naijamarketplace.ng`;
 
     try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const res = await authApi.login({
+        email: emailToSend,
+        password,
       });
 
-      if (res.ok) {
-        const data: LoginResponse = await res.json();
-        const vendorId = data.vendor_id || generateDemoVendorId();
-        const token = data.token || generateDemoToken();
+      const token = res.data?.access_token || (res.data as any)?.token;
+      const vendorId = (res.data as any)?.vendor_id || generateDemoVendorId();
+      const refreshToken = res.data?.refresh_token || token;
+
+      if (token) {
+        setStoredTokens({
+          access_token: token,
+          refresh_token: refreshToken,
+          vendor_id: vendorId,
+          email: emailToSend,
+        });
 
         persistSession(vendorId, token);
         setToastMessage('✅ Logged in! Welcome back');
 
-        if (onSuccess) onSuccess({ vendor_id: vendorId, token });
+        if (onSuccess) onSuccess({ vendor_id: vendorId, token, access_token: token, refresh_token: refreshToken });
         setTimeout(() => {
-          router.push(data.dashboard_url || '/dashboard');
+          router.push('/dashboard');
         }, 500);
       } else if (res.status === 401) {
         setSubmitError('❌ Email/phone or password incorrect');
+      } else if (res.error && res.status !== 0 && res.status !== 500) {
+        setSubmitError(res.error);
       } else {
-        // Fallback for hackathon demo mode if auth backend is not implemented
+        // Fallback for hackathon demo mode if auth backend is offline/unseeded
         handleDemoFallback();
       }
     } catch {
@@ -204,6 +224,71 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
     setTimeout(() => {
       router.push('/dashboard');
     }, 500);
+  };
+
+  const handleRequestResetToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      setForgotError('Please enter your account email address');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError(null);
+    setForgotSuccess(null);
+
+    try {
+      const res = await authApi.forgotPassword(forgotEmail.trim());
+      if (res.data?.message || res.status === 200) {
+        setForgotSuccess(res.data?.message || 'Password reset instructions dispatched to your email.');
+        setTimeout(() => {
+          setForgotStep('reset');
+        }, 1200);
+      } else {
+        setForgotError(res.error || 'Failed to dispatch reset instructions.');
+      }
+    } catch (err: any) {
+      setForgotError(err?.message || 'Network error requesting password reset.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleConfirmPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetToken.trim() || !newResetPassword) {
+      setForgotError('Please enter both the reset token and new password');
+      return;
+    }
+    if (newResetPassword.length < 8) {
+      setForgotError('New password must be at least 8 characters long');
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError(null);
+    setForgotSuccess(null);
+
+    try {
+      const res = await authApi.resetPassword({
+        token: resetToken.trim(),
+        new_password: newResetPassword,
+      });
+      if (res.data?.message || res.status === 200) {
+        setForgotSuccess('✅ Password successfully reset! You can now log in.');
+        setTimeout(() => {
+          setShowForgotModal(false);
+          setForgotStep('request');
+          setResetToken('');
+          setNewResetPassword('');
+          setForgotSuccess(null);
+        }, 1800);
+      } else {
+        setForgotError(res.error || 'Invalid or expired reset token.');
+      }
+    } catch (err: any) {
+      setForgotError(err?.message || 'Network error updating password.');
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -374,35 +459,162 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           aria-modal="true"
           className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
         >
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 relative">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative">
             <button
               type="button"
-              onClick={() => setShowForgotModal(false)}
+              onClick={() => {
+                setShowForgotModal(false);
+                setForgotError(null);
+                setForgotSuccess(null);
+              }}
               aria-label="Close modal"
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
-              <HelpCircle className="w-5 h-5" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <HelpCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Forgot Password?</h3>
+                <p className="text-xs text-slate-500">Reset your vendor account password</p>
+              </div>
             </div>
-            <h3 className="text-lg font-bold text-slate-900">Forgot Password?</h3>
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-              Automated WhatsApp password recovery is coming soon. In the meantime, message our support team on WhatsApp and we will quickly verify your phone number and reset your credentials.
-            </p>
-            <div className="mt-5 flex flex-col gap-2">
+
+            {/* Step Selector Tabs */}
+            <div className="flex border-b border-slate-100 mb-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotStep('request');
+                  setForgotError(null);
+                }}
+                className={`flex-1 py-2 text-center border-b-2 transition ${
+                  forgotStep === 'request'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                1. Request Token
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotStep('reset');
+                  setForgotError(null);
+                }}
+                className={`flex-1 py-2 text-center border-b-2 transition ${
+                  forgotStep === 'reset'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                2. Enter Token &amp; Reset
+              </button>
+            </div>
+
+            {/* Success message */}
+            {forgotSuccess && (
+              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{forgotSuccess}</span>
+              </div>
+            )}
+
+            {/* Error message */}
+            {forgotError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{forgotError}</span>
+              </div>
+            )}
+
+            {forgotStep === 'request' ? (
+              <form onSubmit={handleRequestResetToken} className="space-y-3">
+                <p className="text-xs text-slate-600">
+                  Enter your registered email address and we will dispatch a secure reset token (`POST /api/auth/forgot-password`).
+                </p>
+                <div>
+                  <label htmlFor="forgotEmail" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    id="forgotEmail"
+                    type="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="e.g. vendor@example.com"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition"
+                  >
+                    {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Send Reset Token</span>}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleConfirmPasswordReset} className="space-y-3">
+                <div>
+                  <label htmlFor="resetToken" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Reset Token
+                  </label>
+                  <input
+                    id="resetToken"
+                    type="text"
+                    required
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Enter reset token from email"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="newResetPassword" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    New Password (min 8 chars)
+                  </label>
+                  <input
+                    id="newResetPassword"
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newResetPassword}
+                    onChange={(e) => setNewResetPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition"
+                  >
+                    {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Update Password</span>}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
               <a
                 href="https://wa.me/14155238886?text=Hello%20Naija%20Marketplace%20Support%2C%20I%20need%20help%20logging%20into%20my%20vendor%20account"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl text-center transition"
+                className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl text-center transition"
               >
                 Contact WhatsApp Support
               </a>
               <button
                 type="button"
                 onClick={() => setShowForgotModal(false)}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl text-center transition"
+                className="w-full py-1.5 text-slate-500 hover:text-slate-700 text-xs font-medium text-center transition"
               >
                 Back to Login
               </button>
