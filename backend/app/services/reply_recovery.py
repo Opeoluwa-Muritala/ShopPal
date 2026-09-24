@@ -22,8 +22,9 @@ from app.db.models import (
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
-from app.services.llm import GemmaError, LLMService, ai_cooldown_active
+from app.services.llm import GemmaError, LLMService
 from app.services.quick_replies import ai_failure_reply, quick_reply
+from app.services.transcription import TranscriptionError, transcribe_audio
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
@@ -39,6 +40,32 @@ def now():
 
 def normalize_number(value):
     return "".join(char for char in value if char.isdigit())
+
+
+def transcribe_whatsapp_audio(message, settings):
+    payload = message.raw_payload or {}
+    audio = payload.get("audio") if isinstance(payload, dict) else None
+    media_id = audio.get("id") if isinstance(audio, dict) else None
+    token = settings.whatsapp_access_token.get_secret_value()
+    if not media_id or not token:
+        raise TranscriptionError("Voice transcription is unavailable")
+    response = httpx.get(
+        f"https://graph.facebook.com/v25.0/{media_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    response.raise_for_status()
+    media_url = response.json().get("url")
+    if not isinstance(media_url, str) or not media_url.startswith("https://"):
+        raise TranscriptionError("Voice media URL is invalid")
+    media = httpx.get(
+        media_url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    media.raise_for_status()
+    content_type = media.headers.get("content-type", "audio/ogg").split(";", 1)[0]
+    return transcribe_audio(media.content, content_type, settings)
 
 
 def validate_action(action):
@@ -75,6 +102,19 @@ def validate_action(action):
         if key in args and (not isinstance(args[key], str) or len(args[key]) > limit):
             raise GemmaError("Invalid tool input")
     return action
+
+
+def ensure_payment_account(reply_text, transcript):
+    """Keep the payment account visible after an address-backed checkout."""
+    for item in reversed(transcript or []):
+        action = item.get("action", {}) if isinstance(item, dict) else {}
+        result = item.get("result", {}) if isinstance(item, dict) else {}
+        account = result.get("payment_account") if isinstance(result, dict) else None
+        if action.get("tool") == "checkoutCart" and account:
+            if str(account) not in reply_text:
+                return f"{reply_text}\n\nPayment account number: {account}"
+            break
+    return reply_text
 
 
 def checkpoint(session, job, owner):
@@ -191,22 +231,19 @@ def generate_reply(session, job, owner, settings):
         older.failure_category = f"merged_into:{job.id}"
         older.lease_owner = None
         older.lease_until = None
+    if message.message_type == "audio":
+        transcript_prefix = "__voice_transcript__:"
+        if not message.body or not message.body.startswith(transcript_prefix):
+            message.body = transcript_prefix + transcribe_whatsapp_audio(message, settings)
+            session.flush()
+        else:
+            message.body = message.body[len(transcript_prefix):]
     customer_text = "\n".join(
         [
             *(f"Earlier queued customer message: {body}" for _, body in queued_messages),
             f"Latest customer message: {message.body}",
         ]
     )
-    if not job.pending_action and not job.transcript and ai_cooldown_active():
-        job.pending_action = {
-            "reply": (
-                "Welcome to ShopPal. Reply with:\n"
-                "1 — See available products\n"
-                "2 — View my cart\n"
-                "3 — Checkout\n\n"
-                "You can also send a product number and quantity."
-            ),
-        }
     if not job.pending_action and not job.transcript:
         instant = quick_reply(session, vendor, [body for _, body in queued_messages] + [message.body])
         if instant:
@@ -216,7 +253,13 @@ def generate_reply(session, job, owner, settings):
     for _ in range(9):
         if not job.pending_action:
             if len(job.transcript) >= 8:
-                fail(session, job, "tool_limit", permanent=True)
+                job.reply_text = (
+                    "I want to help, but I need a little more detail. "
+                    "Are you asking about products, your cart, or checkout?"
+                )
+                job.pending_action = None
+                job.failure_category = "clarification_required"
+                checkpoint(session, job, owner)
                 return
             # End the read transaction before the external call.
             transcript = list(job.transcript)
@@ -230,7 +273,7 @@ def generate_reply(session, job, owner, settings):
             checkpoint(session, job, owner)
         action = validate_action(job.pending_action)
         if "reply" in action:
-            job.reply_text = action["reply"]
+            job.reply_text = ensure_payment_account(action["reply"], job.transcript)
             job.pending_action = None
             history_rows = [
                 *[
@@ -499,7 +542,11 @@ def process_claim(engine, job_id, settings):
                     ))
                     if vendor is not None and inbound is not None and inbound.body:
                         job.reply_text = ai_failure_reply(
-                            session, vendor, inbound.body, job.customer_phone
+                            session, vendor, inbound.body, job.customer_phone,
+                            structured=(
+                                getattr(exc, "provider", None) == "openrouter"
+                                and getattr(exc, "status_code", None) == 500
+                            ),
                         )
                         job.pending_action = None
                         job.failure_category = (
@@ -513,18 +560,40 @@ def process_claim(engine, job_id, settings):
                             send_reply(session, job, owner, settings)
                     else:
                         fail(session, job, "ai_fallback_unavailable", permanent=True)
-                except Exception:
+                except Exception as exc:
                     session.rollback()
                     session.refresh(job)
                     guard()
                     if job.lease_owner != owner:
                         return False
+                    logger.error(
+                        "Reply job processing failed",
+                        extra={
+                            "step": "reply_processing",
+                            "job_id": str(job.id),
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:500],
+                        },
+                    )
                     if job.state == "sending":
                         job.state = "delivery_unknown"
                         job.failure_category = "send_interrupted"
                         session.commit()
                     else:
-                        fail(session, job, "processing_failed")
+                        vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
+                        inbound = session.scalar(select(WhatsAppMessage).where(
+                            WhatsAppMessage.message_id == job.message_id
+                        ))
+                        if vendor is not None and inbound is not None and inbound.body and not job.reply_text:
+                            job.reply_text = ai_failure_reply(
+                                session, vendor, inbound.body, job.customer_phone
+                            )
+                            job.pending_action = None
+                            job.failure_category = "processing_failed"
+                            checkpoint(session, job, owner)
+                            send_reply(session, job, owner, settings)
+                        else:
+                            fail(session, job, "processing_failed")
                 return True
             finally:
                 session.rollback()
