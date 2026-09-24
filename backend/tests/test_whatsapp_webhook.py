@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db.models import WhatsAppMessage
-from app.db.session import get_engine
 from app.main import app
 from app.routers.whatsapp_webhook import _send_meta_message
 
@@ -144,10 +143,13 @@ def test_send_meta_message_calls_graph_api_without_exposing_token(monkeypatch):
     )
 
 
-def test_message_payload_persists_once_when_meta_redelivers():
-    engine = get_engine()
+def test_message_payload_persists_once_when_meta_redelivers(test_engine, monkeypatch):
+    engine = test_engine
+    monkeypatch.setattr("app.routers.whatsapp_webhook.get_engine", lambda: engine)
     with Session(engine) as session:
-        session.execute(delete(WhatsAppMessage))
+        session.execute(delete(WhatsAppMessage).where(
+            WhatsAppMessage.message_id == "wamid.test-message-1"
+        ))
         session.commit()
 
     body, signature = _signed_body(SAMPLE_MESSAGE_PAYLOAD)
@@ -191,7 +193,8 @@ def test_message_payload_persists_once_when_meta_redelivers():
     assert stored.status == "received"
 
 
-def test_status_update_is_persisted():
+def test_status_update_is_persisted(test_engine, monkeypatch):
+    monkeypatch.setattr("app.routers.whatsapp_webhook.get_engine", lambda: test_engine)
     payload = {
         "object": "whatsapp_business_account",
         "entry": [
@@ -228,7 +231,7 @@ def test_status_update_is_persisted():
         app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 200
-    with Session(get_engine()) as session:
+    with Session(test_engine) as session:
         stored = session.scalar(
             select(WhatsAppMessage).where(
                 WhatsAppMessage.message_id == "wamid.status-message-1"

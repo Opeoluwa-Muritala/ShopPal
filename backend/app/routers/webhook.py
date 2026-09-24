@@ -2,6 +2,7 @@
 
 import json
 from asyncio import to_thread
+from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
@@ -281,7 +282,12 @@ async def paystack_webhook(
         stmt = (
             update(Order)
             .where(Order.order_code == reference)
-            .values(payment_status="paid", status="processing")
+            .values(
+                payment_status="paid",
+                status="processing",
+                payment_confirmed_at=datetime.now(UTC),
+                payment_confirmation_source="paystack_webhook",
+            )
         )
         session.execute(stmt)
         session.commit()

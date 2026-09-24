@@ -26,7 +26,12 @@ from app.services.reply_recovery import recovery_loop
 @asynccontextmanager
 async def lifespan(application):
     stop = asyncio.Event()
-    task = asyncio.create_task(recovery_loop(stop)) if get_settings().meta_reply_worker_enabled else None
+    application.state.reply_wakeup = asyncio.Event()
+    logger.info("Reply worker startup", extra={
+        "step": "reply_worker_startup",
+        "status": "enabled" if get_settings().meta_reply_worker_enabled else "disabled",
+    })
+    task = asyncio.create_task(recovery_loop(stop, application.state.reply_wakeup)) if get_settings().meta_reply_worker_enabled else None
     try:
         yield
     finally:
@@ -38,7 +43,7 @@ async def lifespan(application):
 def create_app() -> FastAPI:
     setup_logging()
     application = FastAPI(
-        title="Naija Marketplace API",
+        title="ShopPal API",
         description=(
             "ShopPal backend for vendor commerce and customer conversations over "
             "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "

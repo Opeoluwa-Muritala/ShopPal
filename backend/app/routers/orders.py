@@ -1,5 +1,6 @@
 """Vendor-scoped orders router protected by JWT authentication and strict tenant isolation."""
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -8,9 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import Settings, get_settings
 from app.db.models import Account, Order
 from app.db.session import get_db
+from app.logging_conf import logger
 from app.services.auth import get_current_account
+from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/api/orders", tags=["Frontend Orders"])
 
@@ -96,4 +100,72 @@ def update_order_status(
         "order_code": order.order_code,
         "status": order.status,
         "updated": True,
+    }
+
+
+@router.get("/payment-reviews")
+def payment_reviews(
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return payment-review notifications for this vendor only."""
+    if session is None:
+        return {"count": 0, "payments": []}
+    orders = session.scalars(
+        select(Order).where(
+            Order.vendor_id == current_account.vendor_id,
+            Order.payment_status.in_(["pending_payment", "manual_review"]),
+        ).order_by(Order.created_at.desc()).limit(100)
+    ).all()
+    return {
+        "count": len(orders),
+        "payments": [{
+            "id": str(order.id), "order_code": order.order_code,
+            "customer_phone": order.customer_phone, "total": str(order.total),
+            "payment_status": order.payment_status, "items": order.items,
+        } for order in orders],
+    }
+
+
+@router.post("/{order_id}/confirm-payment")
+async def confirm_payment(
+    order_id: UUID,
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Vendor-confirm a payment after reviewing proof; scope and audit it."""
+    if session is None:
+        raise HTTPException(status_code=503, detail="Payment confirmation unavailable")
+    order = session.scalar(select(Order).where(Order.id == order_id).with_for_update())
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.vendor_id != current_account.vendor_id:
+        raise HTTPException(status_code=403, detail="Access forbidden")
+    if order.payment_status == "paid":
+        return {"order_code": order.order_code, "payment_status": "paid", "notification_sent": False}
+    if order.payment_status not in ("pending_payment", "manual_review"):
+        raise HTTPException(status_code=409, detail="Order is not awaiting payment confirmation")
+    order.payment_status = "paid"
+    order.status = "processing"
+    order.payment_confirmed_by = current_account.id
+    order.payment_confirmed_at = datetime.now(UTC)
+    order.payment_confirmation_source = "vendor_manual"
+    session.commit()
+    notification_sent = False
+    try:
+        await send_whatsapp_text(
+            order.customer_phone,
+            "Payment confirmed. Please send your delivery address so we can arrange delivery.",
+            settings,
+        )
+        notification_sent = True
+    except Exception:
+        logger.error("Payment confirmed but customer notification failed", extra={
+            "step": "payment_confirmation_notification", "order_code": order.order_code,
+            "error_type": "whatsapp_send_failed",
+        })
+    return {
+        "order_code": order.order_code, "payment_status": order.payment_status,
+        "notification_sent": notification_sent,
     }
