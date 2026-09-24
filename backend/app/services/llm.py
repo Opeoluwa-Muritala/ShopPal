@@ -3,12 +3,14 @@
 import base64
 import json
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 
 import httpx
 
 from app.config import Settings
+from app.logging_conf import logger
 
 ToolDispatcher = Callable[[str, dict[str, Any]], dict[str, Any]]
 
@@ -22,10 +24,14 @@ TOOL_DECLARATIONS = [
 ]
 
 MASTER_PROMPT = """
-You are ShopPal, the customer shopping assistant for Naija Marketplace on WhatsApp.
-Speak naturally, warmly, and briefly in Nigerian English or light Pidgin. Match the
-customer's language: use Nigerian Pidgin when the customer uses Pidgin, and clear
-English when the customer uses English. Keep replies short enough for WhatsApp.
+You are ShopPal, a customer shopping assistant on WhatsApp.
+Use only ShopPal as your assistant name, even if older messages use another brand.
+Speak naturally, warmly, and briefly in standard British English by default. Detect the
+language and style of the latest customer message and reply in that same language:
+Yoruba in Yoruba, Igbo in Igbo, Hausa in Hausa, and Nigerian Pidgin in Nigerian Pidgin.
+Use British spelling for English. Do not switch languages unless the customer switches
+or asks for a translation. Keep replies short enough for WhatsApp and use correct
+grammar for the selected language.
 
 Always answer the latest customer message first. If several customer messages are
 queued together, combine them into one reply and do not answer an earlier question
@@ -55,6 +61,19 @@ class GemmaError(RuntimeError):
     pass
 
 
+_AI_COOLDOWN_UNTIL = 0.0
+AI_COOLDOWN_SECONDS = 180.0
+
+
+def ai_cooldown_active() -> bool:
+    return time.monotonic() < _AI_COOLDOWN_UNTIL
+
+
+def start_ai_cooldown() -> None:
+    global _AI_COOLDOWN_UNTIL
+    _AI_COOLDOWN_UNTIL = time.monotonic() + AI_COOLDOWN_SECONDS
+
+
 class LLMService:
     SYSTEM_PROMPT = MASTER_PROMPT
 
@@ -78,20 +97,37 @@ class LLMService:
         if not self.api_key:
             raise GemmaError("Customer assistant is unavailable")
         try:
+            payload = {**payload, "generationConfig": {
+                "maxOutputTokens": 256,
+                "temperature": 0.2,
+                **payload.get("generationConfig", {}),
+            }}
             if self.thinking_level:
                 payload = {**payload, "generationConfig": {
                     **payload.get("generationConfig", {}),
                     "thinkingConfig": {"thinkingLevel": self.thinking_level.upper()},
                 }}
+            started = time.monotonic()
             response = httpx.post(
                 self.url, headers={"x-goog-api-key": self.api_key}, json=payload,
                 timeout=httpx.Timeout(self.timeout, connect=10)
             )
             response.raise_for_status()
+            logger.info(
+                "AI response received",
+                extra={"step": "ai_response", "provider": "google",
+                       "model": self.url.rsplit("/models/", 1)[-1].split(":", 1)[0],
+                       "latency_ms": round((time.monotonic() - started) * 1000, 2),
+                       "latency_seconds": round(time.monotonic() - started, 3),
+                       "status_code": response.status_code},
+            )
             return response.json()
         except httpx.HTTPStatusError as exc:
             error = GemmaError("Customer assistant request failed")
             error.status_code = exc.response.status_code
+            error.provider = "google"
+            if exc.response.status_code == 429:
+                start_ai_cooldown()
             raise error from None
         except (httpx.HTTPError, ValueError, TypeError):
             raise GemmaError("Customer assistant request failed") from None
@@ -102,6 +138,12 @@ class LLMService:
         The worker validates every action before executing it. Conversation text
         and tool results are data; only the server supplies the tool allowlist.
         """
+        started = time.monotonic()
+        if ai_cooldown_active():
+            error = GemmaError("AI provider cooldown active")
+            error.provider = "ai"
+            error.status_code = 429
+            raise error
         instruction = (
             MASTER_PROMPT.replace('Return only the customer reply inside <answer>...</answer>.', '')
             + '\nFor this API return ONLY one JSON object: '
@@ -128,17 +170,35 @@ class LLMService:
             parts = self._parts(self._post({"contents": [{"role": "user", "parts": [
                 {"text": instruction}, {"text": "Conversation data:\n" + context}
             ]}]}))
-        except GemmaError:
+        except GemmaError as exc:
             if self.fallback_provider != "openrouter":
                 raise
+            self.provider = "openrouter"
+            logger.warning(
+                "Google AI unavailable; switching to OpenRouter",
+                extra={"step": "ai_provider_fallback", "service": "openrouter",
+                       "status_code": getattr(exc, "status_code", None)},
+            )
             return self._next_action_openrouter(instruction, message, history, transcript)
         output = "".join(part.get("text", "") for part in parts).strip()
+        logger.info(
+            "Gemma returned response",
+            extra={
+                "step": "ai_result",
+                "provider": "google",
+                "model": self.url.rsplit("/models/", 1)[-1].split(":", 1)[0],
+                "response_preview": output[:2000],
+                "latency_seconds": round(time.monotonic() - started, 3),
+            },
+        )
         try:
             action = self._decode_action(output)
         except GemmaError:
             if self.fallback_provider != "openrouter":
                 raise
-            return self._next_action_openrouter(instruction, message, history, transcript)
+            action = self._next_action_openrouter(instruction, message, history, transcript)
+            self.provider = "openrouter"
+            return action
         if not isinstance(action, dict):
             raise GemmaError("Invalid agent action")
         return action
@@ -146,6 +206,7 @@ class LLMService:
     def _next_action_openrouter(
         self, instruction: str, message: str, history: list, transcript: list
     ) -> dict[str, Any]:
+        started = time.monotonic()
         messages = [{"role": "system", "content": instruction}]
         for item in history:
             role = "assistant" if item.get("role") == "assistant" else "user"
@@ -175,10 +236,24 @@ class LLMService:
             try:
                 function = calls[0]["function"]
                 arguments = json.loads(function.get("arguments", "{}"))
-                return {"tool": str(function["name"]), "arguments": arguments}
+                action = {"tool": str(function["name"]), "arguments": arguments}
+                logger.info(
+                    "Gemma returned action",
+                    extra={"step": "ai_action", "provider": "openrouter",
+                           "model": self.openrouter_model, "action_type": action["tool"],
+                           "latency_seconds": round(time.monotonic() - started, 3)},
+                )
+                return action
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise GemmaError("Customer assistant returned an invalid tool call") from exc
-        return self._decode_action(str(choice.get("content", "")))
+        content = str(choice.get("content", ""))
+        logger.info(
+            "Gemma returned response",
+            extra={"step": "ai_result", "provider": "openrouter",
+                   "model": self.openrouter_model, "response_preview": content[:2000],
+                   "latency_seconds": round(time.monotonic() - started, 3)},
+        )
+        return self._decode_action(content)
 
     def _post_openrouter(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not self.openrouter_api_key:
@@ -190,14 +265,22 @@ class LLMService:
                     "Authorization": f"Bearer {self.openrouter_api_key}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
+                json={**payload, "max_tokens": min(int(payload.get("max_tokens", 256)), 256)},
                 timeout=httpx.Timeout(self.timeout, connect=10),
             )
             response.raise_for_status()
+            logger.info(
+                "AI response received",
+                extra={"step": "ai_response", "provider": "openrouter",
+                       "model": self.openrouter_model, "status_code": response.status_code},
+            )
             return response.json()
         except httpx.HTTPStatusError as exc:
             error = GemmaError("Customer assistant request failed")
             error.status_code = exc.response.status_code
+            error.provider = "openrouter"
+            if exc.response.status_code == 429:
+                start_ai_cooldown()
             raise error from None
         except (httpx.HTTPError, ValueError, TypeError):
             raise GemmaError("Customer assistant request failed") from None

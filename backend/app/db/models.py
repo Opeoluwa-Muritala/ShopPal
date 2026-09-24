@@ -111,6 +111,9 @@ class Order(Identity, Timestamps, Base):
         String(30), server_default=text("'pending_payment'")
     )
     paystack_ref: Mapped[str | None] = mapped_column(String(120))
+    payment_confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"))
+    payment_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_confirmation_source: Mapped[str | None] = mapped_column(String(30))
 
 
 class Conversation(Identity, Base):
@@ -233,4 +236,11 @@ class ReplyToolResult(Identity, Base):
     name: Mapped[str] = mapped_column(String(40))
     arguments: Mapped[dict] = mapped_column(JSONB)
     result: Mapped[dict] = mapped_column(JSONB)
+
+
+class ReplyTemplate(Base):
+    __tablename__ = "whatsapp_reply_templates"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
 
