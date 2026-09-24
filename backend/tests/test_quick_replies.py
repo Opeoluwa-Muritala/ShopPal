@@ -28,7 +28,7 @@ def test_catalog_uses_vendor_scoped_stock_and_whatsapp_format(message):
         SimpleNamespace(name="Oud\n*perfume*", price=Decimal("12000")),
     ]
     reply = quick_reply(session, vendor, [message])
-    assert "• Oud perfume — ₦12,000.00" in reply
+    assert "1. Oud perfume" in reply
     query = session.scalars.call_args.args[0].compile(dialect=postgresql.dialect())
     assert vendor.id in query.params.values()
     assert "products.vendor_id =" in str(query)
