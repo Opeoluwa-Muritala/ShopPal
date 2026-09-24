@@ -1,15 +1,18 @@
 /**
- * Authentication & session management for Naija Marketplace
- * Handles JWT tokens, refresh rotation, logout, and credentials storage.
+ * Authentication & session management for ShopPal
+ * Handles JWT tokens, refresh rotation, logout, and vendor identity credentials.
  */
 
-const ACCESS_TOKEN_KEY = 'nm_access_token';
-const REFRESH_TOKEN_KEY = 'nm_refresh_token';
-const VENDOR_ID_KEY = 'nm_vendor_id';
-const ACCOUNT_ID_KEY = 'nm_account_id';
-const USER_EMAIL_KEY = 'nm_user_email';
-const USER_ROLE_KEY = 'nm_user_role';
-const API_KEY_STORAGE = 'nm_frontend_api_key';
+const ACCESS_TOKEN_KEY = 'shoppal_access_token';
+const REFRESH_TOKEN_KEY = 'shoppal_refresh_token';
+const VENDOR_ID_KEY = 'shoppal_vendor_id';
+const ACCOUNT_ID_KEY = 'shoppal_account_id';
+const USER_EMAIL_KEY = 'shoppal_user_email';
+const USER_ROLE_KEY = 'shoppal_user_role';
+const VENDOR_NAME_KEY = 'shoppal_vendor_name';
+const BUSINESS_NAME_KEY = 'shoppal_business_name';
+const VENDOR_PHONE_KEY = 'shoppal_vendor_phone';
+const API_KEY_STORAGE = 'shoppal_frontend_api_key';
 
 export interface AuthTokens {
   access_token: string;
@@ -18,6 +21,9 @@ export interface AuthTokens {
   account_id?: string;
   email?: string;
   role?: string;
+  name?: string;
+  business_name?: string;
+  phone?: string;
 }
 
 export interface UserSession {
@@ -27,6 +33,9 @@ export interface UserSession {
   accountId: string | null;
   email: string | null;
   role: string | null;
+  name: string | null;
+  businessName: string | null;
+  phone: string | null;
   isAuthenticated: boolean;
 }
 
@@ -44,6 +53,9 @@ export function getStoredTokens(): AuthTokens {
     account_id: localStorage.getItem(ACCOUNT_ID_KEY) || undefined,
     email: localStorage.getItem(USER_EMAIL_KEY) || undefined,
     role: localStorage.getItem(USER_ROLE_KEY) || 'owner',
+    name: localStorage.getItem(VENDOR_NAME_KEY) || undefined,
+    business_name: localStorage.getItem(BUSINESS_NAME_KEY) || undefined,
+    phone: localStorage.getItem(VENDOR_PHONE_KEY) || undefined,
   };
 }
 
@@ -53,26 +65,35 @@ export function getStoredTokens(): AuthTokens {
 export function setStoredTokens(tokens: Partial<AuthTokens>): void {
   if (typeof window === 'undefined') return;
 
-  if (tokens.access_token) {
+  if (tokens.access_token !== undefined) {
     localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
   }
-  if (tokens.refresh_token) {
+  if (tokens.refresh_token !== undefined) {
     localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
   }
-  if (tokens.vendor_id) {
+  if (tokens.vendor_id !== undefined) {
     localStorage.setItem(VENDOR_ID_KEY, tokens.vendor_id);
   }
-  if (tokens.account_id) {
+  if (tokens.account_id !== undefined) {
     localStorage.setItem(ACCOUNT_ID_KEY, tokens.account_id);
   }
-  if (tokens.email) {
+  if (tokens.email !== undefined) {
     localStorage.setItem(USER_EMAIL_KEY, tokens.email);
   }
-  if (tokens.role) {
+  if (tokens.role !== undefined) {
     localStorage.setItem(USER_ROLE_KEY, tokens.role);
   }
+  if (tokens.name !== undefined) {
+    localStorage.setItem(VENDOR_NAME_KEY, tokens.name);
+  }
+  if (tokens.business_name !== undefined) {
+    localStorage.setItem(BUSINESS_NAME_KEY, tokens.business_name);
+  }
+  if (tokens.phone !== undefined) {
+    localStorage.setItem(VENDOR_PHONE_KEY, tokens.phone);
+  }
 
-  // Dispatch custom event for reactive UI updates across tabs/components
+  window.dispatchEvent(new Event('shoppal-auth-changed'));
   window.dispatchEvent(new Event('nm-auth-changed'));
 }
 
@@ -87,6 +108,10 @@ export function clearStoredTokens(): void {
   localStorage.removeItem(ACCOUNT_ID_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
   localStorage.removeItem(USER_ROLE_KEY);
+  localStorage.removeItem(VENDOR_NAME_KEY);
+  localStorage.removeItem(BUSINESS_NAME_KEY);
+  localStorage.removeItem(VENDOR_PHONE_KEY);
+  window.dispatchEvent(new Event('shoppal-auth-changed'));
   window.dispatchEvent(new Event('nm-auth-changed'));
 }
 
@@ -102,7 +127,7 @@ export function getFrontendApiKey(): string {
 }
 
 /**
- * Set custom frontend API key (e.g. from Settings or Diagnostics)
+ * Set custom frontend API key
  */
 export function setFrontendApiKey(key: string): void {
   if (typeof window === 'undefined') return;
@@ -121,6 +146,9 @@ export function getCurrentSession(): UserSession {
     accountId: tokens.account_id || null,
     email: tokens.email || null,
     role: tokens.role || null,
-    isAuthenticated: Boolean(tokens.access_token),
+    name: tokens.name || null,
+    businessName: tokens.business_name || null,
+    phone: tokens.phone || null,
+    isAuthenticated: Boolean(tokens.access_token || tokens.vendor_id),
   };
 }

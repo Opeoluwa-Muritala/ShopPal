@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Download, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 export interface ProductItem {
   name: string;
@@ -53,67 +52,60 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
       .filter((l) => l.length > 0);
 
     if (lines.length < 2) {
-      setError('❌ CSV is empty or missing headers.');
+      setError('CSV is empty or missing headers.');
       return;
     }
 
-    // Parse header row
-    const headers = lines[0]
-      .split(',')
-      .map((h) => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+    const header = lines[0].toLowerCase().split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
+    const nameIdx = header.findIndex((h) => h.includes('name') || h.includes('title') || h.includes('product'));
+    const priceIdx = header.findIndex((h) => h.includes('price') || h.includes('amount') || h.includes('cost'));
+    const stockIdx = header.findIndex((h) => h.includes('stock') || h.includes('qty') || h.includes('quantity'));
+    const imgIdx = header.findIndex((h) => h.includes('image') || h.includes('photo') || h.includes('url') || h.includes('img'));
+    const descIdx = header.findIndex((h) => h.includes('desc') || h.includes('detail') || h.includes('info'));
 
-    const nameIdx = headers.findIndex((h) => h === 'product name' || h === 'name' || h === 'title');
-    const priceIdx = headers.findIndex((h) => h === 'price' || h === 'price in ngn' || h === 'amount');
-    const stockIdx = headers.findIndex((h) => h === 'stock' || h === 'quantity' || h === 'qty');
-    const imageIdx = headers.findIndex((h) => h === 'image url' || h === 'image_url' || h === 'image');
-    const descIdx = headers.findIndex((h) => h === 'description' || h === 'desc');
-
-    if (nameIdx === -1 || priceIdx === -1 || stockIdx === -1) {
-      setError('❌ CSV headers invalid. Check the template.');
+    if (nameIdx === -1 || priceIdx === -1) {
+      setError('Invalid CSV headers. Required columns: Product Name, Price.');
       return;
     }
 
-    const parsedProducts: ProductItem[] = [];
+    const parsed: ProductItem[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      // Split taking basic commas into account
-      const rawCols = lines[i].split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
-      if (rawCols.length < 3) continue;
+      const line = lines[i];
+      const cols = line.split(',').map((c) => c.trim().replace(/^["']|["']$/g, ''));
+      if (cols.length < 2) continue;
 
-      const name = rawCols[nameIdx] || '';
-      const price = parseFloat(rawCols[priceIdx]);
-      const stock = parseInt(rawCols[stockIdx], 10);
-      const image_url = imageIdx !== -1 && rawCols[imageIdx] ? rawCols[imageIdx] : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff';
-      const description = descIdx !== -1 && rawCols[descIdx] ? rawCols[descIdx] : '';
+      const name = cols[nameIdx];
+      const rawPrice = cols[priceIdx]?.replace(/[₦,\s]/g, '') || '0';
+      const price = parseFloat(rawPrice) || 0;
+      const stock = stockIdx !== -1 ? parseInt(cols[stockIdx], 10) || 0 : 1;
+      const image_url =
+        imgIdx !== -1 && cols[imgIdx]
+          ? cols[imgIdx]
+          : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30';
+      const description = descIdx !== -1 ? cols[descIdx] : '';
 
-      if (name && !isNaN(price) && price > 0 && !isNaN(stock) && stock >= 0) {
-        parsedProducts.push({
-          name,
-          price,
-          stock,
-          image_url,
-          description,
-        });
+      if (name && price > 0) {
+        parsed.push({ name, price, stock, image_url, description });
       }
     }
 
-    if (parsedProducts.length < 3) {
-      setError('❌ Minimum 3 products required');
+    if (parsed.length === 0) {
+      setError('Could not extract valid product rows. Check file formatting.');
       return;
     }
 
-    onProductsLoaded(parsedProducts);
-    setSuccessMsg(`✅ CSV processed! ${parsedProducts.length} products added`);
+    onProductsLoaded(parsed);
+    setSuccessMsg(`Successfully imported ${parsed.length} products from CSV.`);
   };
 
   const handleFile = (file: File) => {
     if (!file.name.endsWith('.csv')) {
-      setError('❌ Please upload a valid .csv file only');
+      setError('Please upload a valid CSV file (.csv).');
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
-      setError('❌ File size exceeds 5MB limit');
+      setError('File size exceeds 5MB limit.');
       return;
     }
 
@@ -121,12 +113,10 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      if (content) {
-        parseCSV(content);
-      }
+      if (content) parseCSV(content);
     };
     reader.onerror = () => {
-      setError('❌ Failed to read CSV file');
+      setError('Failed to read file. Please try again.');
     };
     reader.readAsText(file);
   };
@@ -166,18 +156,17 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
   return (
     <div className="space-y-4">
       {/* Template Download Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded text-xs">
         <div>
-          <span className="font-bold text-emerald-900 block">Need a quick spreadsheet template?</span>
-          <span className="text-emerald-700">Headers: Product Name, Price, Stock, Image URL, Description</span>
+          <span className="font-semibold text-slate-900 block">Need a spreadsheet template?</span>
+          <span className="text-slate-600">Columns: Product Name, Price, Stock, Image URL, Description</span>
         </div>
         <button
           type="button"
           onClick={downloadSampleCSV}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-300 text-emerald-800 font-semibold rounded-lg hover:bg-emerald-100/60 transition shadow-2xs self-start sm:self-auto"
+          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-800 font-semibold rounded hover:bg-slate-50 transition"
         >
-          <Download className="w-3.5 h-3.5" />
-          <span>Download Sample CSV</span>
+          Download Sample CSV
         </button>
       </div>
 
@@ -188,10 +177,10 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
         onDragLeave={handleDrag}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all duration-200 ${
+        className={`border-2 border-dashed rounded p-6 sm:p-8 text-center cursor-pointer transition ${
           dragActive
-            ? 'border-emerald-500 bg-emerald-50/60 scale-[1.01]'
-            : 'border-slate-300 hover:border-emerald-500 bg-slate-50/50 hover:bg-emerald-50/20'
+            ? 'border-slate-900 bg-slate-50'
+            : 'border-slate-300 hover:border-slate-600 bg-white'
         }`}
       >
         <input
@@ -203,20 +192,15 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
           data-testid="csv-file-input"
         />
 
-        <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 mx-auto flex items-center justify-center mb-3 shadow-2xs">
-          <UploadCloud className="w-6 h-6" />
-        </div>
-
-        <h4 className="text-sm font-bold text-slate-900 mb-1">
-          {fileName ? fileName : 'Click to upload or drag & drop CSV here'}
-        </h4>
+        <p className="text-sm font-semibold text-slate-900 mb-1">
+          {fileName ? fileName : 'Click to select CSV file or drag & drop here'}
+        </p>
         <p className="text-xs text-slate-500 max-w-sm mx-auto">
-          CSV files only (max 5MB). At least 3 products required to launch your WhatsApp bot.
+          CSV files only (maximum 5MB).
         </p>
 
         {fileName && (
-          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 shadow-2xs">
-            <FileText className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-slate-100 border border-slate-200 rounded text-xs text-slate-800">
             <span>{fileName}</span>
             <button
               type="button"
@@ -224,9 +208,9 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
                 e.stopPropagation();
                 clearFile();
               }}
-              className="text-slate-400 hover:text-red-500 transition ml-1"
+              className="text-slate-500 hover:text-red-700 ml-1 font-bold"
             >
-              <X className="w-3.5 h-3.5" />
+              Remove
             </button>
           </div>
         )}
@@ -234,17 +218,15 @@ export default function CSVUploadZone({ onProductsLoaded }: CSVUploadZoneProps) 
 
       {/* Error alert */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2 animate-fadeIn" role="alert">
-          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{error}</span>
+        <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 font-medium" role="alert">
+          {error}
         </div>
       )}
 
       {/* Success toast */}
       {successMsg && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 animate-fadeIn">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMsg}</span>
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-800 font-medium">
+          {successMsg}
         </div>
       )}
     </div>

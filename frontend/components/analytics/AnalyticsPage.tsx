@@ -1,15 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  BarChart3,
-  Download,
-  Share2,
-  FileSpreadsheet,
-  AlertCircle,
-  TrendingUp,
-} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import AnalyticsProvider from './AnalyticsProvider';
 import DateRangePicker from './DateRangePicker';
 import SummaryCards from './SummaryCards';
@@ -18,51 +10,135 @@ import TopProductsChart from './TopProductsChart';
 import PaymentStatusChart from './PaymentStatusChart';
 import CustomerInsights from './CustomerInsights';
 import { AnalyticsData, DateRangeKey } from './types';
-import { apiClient } from '../../lib/api';
+import { ordersApi, productsApi } from '../../lib/api';
 
-// Fallback initial/demo data for instant render & offline resilience
+// Empty/zero state — used as fallback when API fails or returns no data.
+// Keeps the AnalyticsData shape satisfied without exposing fake demo figures.
 const FALLBACK_ANALYTICS: AnalyticsData = {
-  total_orders: 45,
-  total_revenue: 450000,
-  commission: 9000,
-  avg_order_value: 10000,
-  repeat_customers: 12,
-  revenue_by_date: [
-    { date: 'Sep 01', revenue: 15000, orders: 2 },
-    { date: 'Sep 03', revenue: 22000, orders: 2 },
-    { date: 'Sep 05', revenue: 35000, orders: 3 },
-    { date: 'Sep 08', revenue: 18000, orders: 1 },
-    { date: 'Sep 10', revenue: 28000, orders: 3 },
-    { date: 'Sep 12', revenue: 42000, orders: 4 },
-    { date: 'Sep 14', revenue: 31000, orders: 3 },
-    { date: 'Sep 16', revenue: 49000, orders: 5 },
-    { date: 'Sep 18', revenue: 38000, orders: 4 },
-    { date: 'Sep 20', revenue: 45000, orders: 4 },
-    { date: 'Sep 21', revenue: 42000, orders: 4 },
-    { date: 'Sep 22', revenue: 65000, orders: 6 },
-    { date: 'Sep 23', revenue: 20000, orders: 2 },
-  ],
-  top_products: [
-    { product_id: 'prod_001', name: 'Blue Sneaker', orders: 12, revenue: 180000 },
-    { product_id: 'prod_002', name: 'Red Kicks', orders: 8, revenue: 96000 },
-    { product_id: 'prod_003', name: 'Black Formal', orders: 6, revenue: 108000 },
-    { product_id: 'prod_004', name: 'Casual Shirt', orders: 5, revenue: 75000 },
-    { product_id: 'prod_005', name: 'Denim Jeans', orders: 3, revenue: 72000 },
-  ],
-  payment_status: {
-    paid: 38,
-    pending: 5,
-    failed: 2,
-  },
-  unique_customers: 52,
-  repeat_purchase_rate: 0.23,
-  customer_acquisition: 8,
-  avg_customer_lifetime_value: 18500,
-  orders_trend: { value: 12, is_positive: true },
-  revenue_trend: { value: 50000, is_positive: true },
-  aov_trend: { value: 500, is_positive: true },
-  repeat_customers_trend: { value: 3, is_positive: true },
+  total_orders: 0,
+  total_revenue: 0,
+  commission: 0,
+  avg_order_value: 0,
+  repeat_customers: 0,
+  revenue_by_date: [],
+  top_products: [],
+  payment_status: { paid: 0, pending: 0, failed: 0 },
+  unique_customers: 0,
+  repeat_purchase_rate: 0,
+  customer_acquisition: 0,
+  avg_customer_lifetime_value: 0,
+  orders_trend: { value: 0, is_positive: true },
+  revenue_trend: { value: 0, is_positive: true },
+  aov_trend: { value: 0, is_positive: true },
+  repeat_customers_trend: { value: 0, is_positive: true },
 };
+
+/** Derive AnalyticsData from real orders + products API responses */
+function deriveAnalytics(
+  orders: Awaited<ReturnType<typeof ordersApi.list>>['data'],
+  _products: Awaited<ReturnType<typeof productsApi.list>>['data']
+): AnalyticsData {
+  if (!orders) return FALLBACK_ANALYTICS;
+
+  const orderList = orders.orders ?? [];
+
+  // Payment status counts
+  const paymentStatus = { paid: 0, pending: 0, failed: 0 };
+  for (const o of orderList) {
+    const ps = (o.payment_status || '').toLowerCase();
+    if (ps === 'paid') paymentStatus.paid += 1;
+    else if (ps === 'pending') paymentStatus.pending += 1;
+    else if (ps === 'failed') paymentStatus.failed += 1;
+  }
+
+  // Revenue from paid orders only
+  const totalRevenue = orderList.reduce((sum, o) => {
+    if ((o.payment_status || '').toLowerCase() === 'paid') {
+      return sum + parseFloat(String(o.total) || '0');
+    }
+    return sum;
+  }, 0);
+
+  const totalOrders = orderList.length;
+  const commission = totalRevenue * 0.02;
+  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  // Unique and repeat customers
+  const phoneCounts = new Map<string, number>();
+  for (const o of orderList) {
+    const phone = o.customer_phone || 'unknown';
+    phoneCounts.set(phone, (phoneCounts.get(phone) ?? 0) + 1);
+  }
+  const uniqueCustomers = phoneCounts.size;
+  const repeatCustomers = Array.from(phoneCounts.values()).filter((c) => c > 1).length;
+  const repeatPurchaseRate = uniqueCustomers > 0 ? repeatCustomers / uniqueCustomers : 0;
+
+  // Revenue by date — group by date portion of created_at (fallback to today)
+  const today = new Date().toISOString().slice(0, 10);
+  const revenueByDateMap = new Map<string, { revenue: number; orders: number }>();
+  for (const o of orderList) {
+    const dateKey: string = (o as any).created_at
+      ? String((o as any).created_at).slice(0, 10)
+      : today;
+    const entry = revenueByDateMap.get(dateKey) ?? { revenue: 0, orders: 0 };
+    if ((o.payment_status || '').toLowerCase() === 'paid') {
+      entry.revenue += parseFloat(String(o.total) || '0');
+    }
+    entry.orders += 1;
+    revenueByDateMap.set(dateKey, entry);
+  }
+  const revenueByDate = Array.from(revenueByDateMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, { revenue, orders }]) => ({ date, revenue, orders }));
+
+  // Top products — group order items by product name
+  const productOrderMap = new Map<string, { product_id: string; orders: number; revenue: number }>();
+  for (const o of orderList) {
+    const items: any[] = Array.isArray(o.items) ? o.items : [];
+    for (const item of items) {
+      const name: string = item.name || item.product_name || 'Unknown Product';
+      const prodId: string = item.product_id || item.id || name;
+      const itemRevenue =
+        parseFloat(String(item.price || item.total || '0')) *
+        (parseInt(String(item.quantity || item.qty || '1'), 10) || 1);
+      const existing = productOrderMap.get(name) ?? { product_id: prodId, orders: 0, revenue: 0 };
+      existing.orders += 1;
+      existing.revenue += itemRevenue;
+      productOrderMap.set(name, existing);
+    }
+  }
+  const topProducts = Array.from(productOrderMap.entries())
+    .map(([name, { product_id, orders, revenue }]) => ({
+      product_id,
+      name,
+      orders,
+      revenue,
+    }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 5);
+
+  const avgCustomerLifetimeValue =
+    uniqueCustomers > 0 ? totalRevenue / uniqueCustomers : 0;
+
+  return {
+    total_orders: totalOrders,
+    total_revenue: totalRevenue,
+    commission,
+    avg_order_value: avgOrderValue,
+    repeat_customers: repeatCustomers,
+    revenue_by_date: revenueByDate,
+    top_products: topProducts,
+    payment_status: paymentStatus,
+    unique_customers: uniqueCustomers,
+    repeat_purchase_rate: repeatPurchaseRate,
+    customer_acquisition: uniqueCustomers,
+    avg_customer_lifetime_value: avgCustomerLifetimeValue,
+    orders_trend: { value: 0, is_positive: true },
+    revenue_trend: { value: 0, is_positive: true },
+    aov_trend: { value: 0, is_positive: true },
+    repeat_customers_trend: { value: 0, is_positive: true },
+  };
+}
 
 function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
   const [dateRange, setDateRange] = useState<DateRangeKey>('30days');
@@ -70,9 +146,7 @@ function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
   const [customTo, setCustomTo] = useState('');
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
 
-  const queryClient = useQueryClient();
-
-  // React Query Fetcher
+  // React Query Fetcher — derives analytics from real orders + products endpoints
   const {
     data = FALLBACK_ANALYTICS,
     isLoading,
@@ -82,30 +156,18 @@ function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
   } = useQuery<AnalyticsData>({
     queryKey: ['analytics', vendorId, dateRange, customFrom, customTo],
     queryFn: async () => {
-      let queryParams = `vendor_id=${encodeURIComponent(vendorId)}&date_range=${encodeURIComponent(
-        dateRange
-      )}`;
-      if (dateRange === 'custom' && customFrom && customTo) {
-        queryParams += `&from=${encodeURIComponent(customFrom)}&to=${encodeURIComponent(customTo)}`;
+      const [ordersRes, productsRes] = await Promise.all([
+        ordersApi.list(),
+        productsApi.list(),
+      ]);
+
+      if (ordersRes.error && productsRes.error) {
+        // Both failed — return empty state, no fake data
+        return FALLBACK_ANALYTICS;
       }
 
-      // Try Next.js API route first (supports local standalone & hackathon demo mode)
-      try {
-        const localRes = await fetch(`/api/analytics?${queryParams}`);
-        if (localRes.ok) {
-          return await localRes.json();
-        }
-      } catch {
-        // Fall back to backend apiClient
-      }
-
-      const res = await apiClient<AnalyticsData>(`/api/analytics?${queryParams}`);
-      if (res.data) {
-        return res.data;
-      }
-      return FALLBACK_ANALYTICS;
+      return deriveAnalytics(ordersRes.data, productsRes.data);
     },
-    initialData: FALLBACK_ANALYTICS,
   });
 
   const handleRefresh = async () => {
@@ -140,15 +202,15 @@ function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
         <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
                 Analytics
               </h1>
-              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                Naija Marketplace
+              <span className="text-xs font-semibold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
+                ShopPal
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Monitor your store performance, revenue retention (keep 98%), and WhatsApp sales metrics.
+              Monitor store performance, revenue retention, and sales metrics.
             </p>
           </div>
 
@@ -157,10 +219,9 @@ function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
             <button
               type="button"
               onClick={handleDownloadReport}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-xs transition"
+              className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded hover:bg-slate-50 transition"
               title="Print or Save Analytics as PDF"
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Export PDF</span>
             </button>
           </div>

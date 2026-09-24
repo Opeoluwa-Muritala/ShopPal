@@ -1,5 +1,5 @@
 /**
- * Utility helpers for Naija Marketplace
+ * Utility helpers for ShopPal
  */
 
 export function formatNaira(amount: number): string {
