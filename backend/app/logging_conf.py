@@ -71,6 +71,16 @@ class StructuredJsonFormatter(logging.Formatter):
             "api_key",
             "job_id",
             "failure_category",
+            "provider",
+            "model",
+            "operation",
+            "action_type",
+            "response_status",
+            "provider",
+            "model",
+            "operation",
+            "action_type",
+            "response_status",
         ]
         raw_extra: dict[str, Any] = {}
         for key in context_keys:

@@ -29,7 +29,7 @@ def privacy_policy() -> HTMLResponse:
 <body><main>
   <h1>ShopPal Privacy Policy</h1>
   <p><strong>Effective date:</strong> 22 September 2026</p>
-  <p>ShopPal, also known as Naija Marketplace, helps customers communicate with participating
+  <p>ShopPal helps customers communicate with participating
   vendors and place orders through WhatsApp.</p>
 
   <h2>Information we collect</h2>

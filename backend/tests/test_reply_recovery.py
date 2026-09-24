@@ -447,6 +447,30 @@ def test_poll_processes_due_job(test_engine, setup_job, settings, monkeypatch):
     assert row(test_engine, setup_job[0]).state == "accepted"
 
 
+@pytest.mark.parametrize("body,expected", [("hello", "ShopPal"), ("hello what do you sell", "Oud")])
+def test_quick_reply_sends_and_persists_history_without_ai(
+    test_engine, setup_job, settings, monkeypatch, body, expected
+):
+    with Session(test_engine) as session:
+        message = session.scalar(select(WhatsAppMessage).where(WhatsAppMessage.message_id == setup_job[3]))
+        message.body = body
+        session.commit()
+    agent = Mock(side_effect=AssertionError("Quick replies must not call AI"))
+    monkeypatch.setattr(LLMService, "next_action", agent)
+    send = Mock(return_value=accepted())
+    monkeypatch.setattr(recovery.httpx, "post", send)
+    recovery.process_claim(test_engine, setup_job[0], settings)
+    job = row(test_engine, setup_job[0])
+    assert job.state == "accepted"
+    assert expected in job.reply_text
+    agent.assert_not_called()
+    send.assert_called_once()
+    with Session(test_engine) as session:
+        history = session.scalar(select(Conversation).where(Conversation.vendor_id == setup_job[2])).message_history
+        assert history[-2]["content"] == body
+        assert history[-1]["content"] == job.reply_text
+
+
 def test_missing_mapping_is_visible(test_engine, setup_job, settings):
     with Session(test_engine) as session:
         job = session.get(ReplyJob, setup_job[0])
@@ -458,17 +482,33 @@ def test_missing_mapping_is_visible(test_engine, setup_job, settings):
     assert row(test_engine, setup_job[0]).state == "needs_review"
 
 
-def test_sixth_transient_failure_requires_review(
+def test_ai_failure_requires_review_without_repeating_ai(
     test_engine, setup_job, settings, monkeypatch
 ):
     monkeypatch.setattr(
         LLMService, "next_action", Mock(side_effect=GemmaError("timeout"))
     )
-    for attempt in range(6):
-        due(test_engine, setup_job[0])
-        recovery.process_claim(test_engine, setup_job[0], settings)
-    assert row(test_engine, setup_job[0]).attempts == 6
+    recovery.process_claim(test_engine, setup_job[0], settings)
+    assert row(test_engine, setup_job[0]).attempts == 1
+
+
+def test_ai_cooldown_creates_saved_message_without_ai_call(
+    test_engine, setup_job, settings, monkeypatch
+):
+    monkeypatch.setattr(recovery, "ai_cooldown_active", lambda: True)
+    agent = Mock(side_effect=AssertionError("AI must not be called during cooldown"))
+    monkeypatch.setattr(LLMService, "next_action", agent)
+    monkeypatch.setattr(recovery.httpx, "post", Mock(return_value=accepted()))
+    recovery.process_claim(test_engine, setup_job[0], settings)
+    job = row(test_engine, setup_job[0])
+    assert job.state == "accepted"
+    assert "See available products" in job.reply_text
+    assert "break" not in job.reply_text.lower()
+    agent.assert_not_called()
     assert row(test_engine, setup_job[0]).state == "needs_review"
+    due(test_engine, setup_job[0])
+    recovery.process_claim(test_engine, setup_job[0], settings)
+    assert row(test_engine, setup_job[0]).attempts == 1
 
 
 @pytest.mark.parametrize(
@@ -552,7 +592,7 @@ def test_gemma4_uses_minimal_thinking_by_default(monkeypatch):
     assert post.call_args.kwargs["json"]["generationConfig"]["thinkingConfig"] == {
         "thinkingLevel": "MINIMAL"
     }
-    assert post.call_args.kwargs["timeout"].read == 90
+    assert post.call_args.kwargs["timeout"].read == 20
 
 
 def test_review_is_read_only_and_does_not_expose_customer_content(
@@ -602,7 +642,7 @@ def test_lifespan_starts_and_stops_enabled_worker(monkeypatch):
     main = importlib.import_module("app.main")
     seen = []
 
-    async def worker(stop):
+    async def worker(stop, wakeup):
         seen.append("started")
         await stop.wait()
         seen.append("stopped")
