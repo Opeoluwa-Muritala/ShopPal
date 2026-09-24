@@ -98,7 +98,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 3 Minimalist KPI Metric Cards */}
+      {/* 3 Minimalist KPI Metric Cards for the project */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Total Sales */}
         <div className="bg-white border border-emerald-200 bg-emerald-50/10 rounded-xl p-5 flex flex-col justify-between shadow-xs">
