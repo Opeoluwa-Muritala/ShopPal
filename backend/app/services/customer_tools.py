@@ -123,6 +123,7 @@ class CustomerToolDispatcher:
             (item for item in items if item["product_id"] == str(product.id)),
             None,
         )
+        previous_quantity = int(existing["qty"]) if existing else 0
         if existing:
             quantity += int(existing["qty"])
             if quantity > product.stock:
@@ -139,7 +140,13 @@ class CustomerToolDispatcher:
             )
         cart.items = items
         self._save()
-        return self.view_cart({})
+        result = self.view_cart({})
+        result.update({
+            "cart_action": "increased_existing" if existing else "added_new",
+            "added_quantity": int(args["quantity"]),
+            "previous_quantity": previous_quantity,
+        })
+        return result
 
     def update_cart_item(self, args: dict[str, Any]) -> dict[str, Any]:
         product = self._product(str(args["productId"]))
