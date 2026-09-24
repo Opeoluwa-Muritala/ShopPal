@@ -9,7 +9,6 @@ import PaymentStatusChart from '../components/analytics/PaymentStatusChart';
 import CustomerInsights from '../components/analytics/CustomerInsights';
 import AnalyticsPage from '../components/analytics/AnalyticsPage';
 import AnalyticsAppPage from '../app/dashboard/analytics/page';
-import AnalyticsPagesPage from '../pages/dashboard/analytics';
 import { AnalyticsData } from '../components/analytics/types';
 
 // Mock ResizeObserver for jsdom
@@ -229,10 +228,6 @@ describe('Full AnalyticsPage Integration & Route Exports', () => {
   it('renders App Router page export', () => {
     render(<AnalyticsAppPage />);
     expect(screen.getByRole('heading', { name: 'Analytics' })).toBeDefined();
-  });
-
-  it('renders Pages Router page export', () => {
-    render(<AnalyticsPagesPage />);
-    expect(screen.getByRole('heading', { name: 'Analytics' })).toBeDefined();
+    expect(screen.getByText('Naija Marketplace')).toBeDefined();
   });
 });

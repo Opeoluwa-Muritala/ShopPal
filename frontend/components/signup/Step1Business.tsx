@@ -1,7 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { User, Phone, MessageSquare, Store, Tag, ArrowRight, AlertCircle } from 'lucide-react';
+import {
+  User,
+  Phone,
+  MessageSquare,
+  Store,
+  Tag,
+  ArrowRight,
+  AlertCircle,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 
 export interface Step1Data {
   name: string;
@@ -9,6 +21,9 @@ export interface Step1Data {
   whatsapp_number: string;
   business_name: string;
   category: string;
+  email: string;
+  password?: string;
+  preferred_language?: string;
 }
 
 interface Step1Props {
@@ -20,6 +35,7 @@ interface Step1Props {
 export default function Step1Business({ data, onChange, onNext }: Step1Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasSyncWhatsApp, setHasSyncWhatsApp] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Auto-format phone to 11 digits: "0701 234 5678"
   const formatPhone = (val: string): string => {
@@ -76,6 +92,23 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
     const rawWA = data.whatsapp_number.replace(/\D/g, '');
     if (rawWA && rawWA.length !== 11) {
       newErrors.whatsapp_number = '❌ WhatsApp number must be 11 digits';
+    }
+
+    // Email validation (optional on step 1, validated if provided)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (data.email && data.email.trim() && !emailRegex.test(data.email.trim())) {
+      newErrors.email = '❌ Please enter a valid email address';
+    }
+
+    // Password validation (optional on step 1, validated if provided)
+    if (data.password && data.password.length > 0) {
+      if (data.password.length < 8) {
+        newErrors.password = '❌ Password must be at least 8 characters';
+      } else if (!/\d/.test(data.password)) {
+        newErrors.password = '❌ Password must include at least 1 digit';
+      } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(data.password)) {
+        newErrors.password = '❌ Password must include at least 1 special character (!@#$%^&*)';
+      }
     }
 
     if (data.business_name && data.business_name.length > 100) {
@@ -208,6 +241,84 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
             <AlertCircle className="w-3.5 h-3.5" />
             <span>{errors.whatsapp_number}</span>
           </p>
+        )}
+      </div>
+
+      {/* Account Email */}
+      <div>
+        <label htmlFor="accountEmail" className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
+          Account Email Address <span className="text-slate-400 font-normal">(optional)</span>
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <Mail className="w-4 h-4" />
+          </div>
+          <input
+            id="accountEmail"
+            type="email"
+            placeholder="vendor@example.com"
+            value={data.email || ''}
+            onChange={(e) => {
+              onChange({ email: e.target.value });
+              if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+            }}
+            className={`w-full pl-10 pr-3.5 py-2.5 bg-white border rounded-xl text-sm transition focus:outline-none focus:ring-2 ${
+              errors.email
+                ? 'border-red-400 focus:ring-red-400 bg-red-50/30'
+                : 'border-slate-300 focus:ring-emerald-500 focus:border-emerald-500'
+            }`}
+          />
+        </div>
+        {errors.email ? (
+          <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5" />
+            <span>{errors.email}</span>
+          </p>
+        ) : (
+          <p className="mt-1 text-[11px] text-slate-400">Used for order receipts, login, and store notifications.</p>
+        )}
+      </div>
+
+      {/* Account Password */}
+      <div>
+        <label htmlFor="accountPassword" className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">
+          Create Password <span className="text-slate-400 font-normal">(optional)</span>
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <Lock className="w-4 h-4" />
+          </div>
+          <input
+            id="accountPassword"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Min 8 characters (1 number, 1 special symbol)"
+            value={data.password || ''}
+            onChange={(e) => {
+              onChange({ password: e.target.value });
+              if (errors.password) setErrors((prev) => ({ ...prev, password: '' }));
+            }}
+            className={`w-full pl-10 pr-10 py-2.5 bg-white border rounded-xl text-sm transition focus:outline-none focus:ring-2 ${
+              errors.password
+                ? 'border-red-400 focus:ring-red-400 bg-red-50/30'
+                : 'border-slate-300 focus:ring-emerald-500 focus:border-emerald-500'
+            }`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600"
+          >
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        {errors.password ? (
+          <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5" />
+            <span>{errors.password}</span>
+          </p>
+        ) : (
+          <p className="mt-1 text-[11px] text-slate-400">Min 8 characters, at least 1 digit and 1 symbol.</p>
         )}
       </div>
 
