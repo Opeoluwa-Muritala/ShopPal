@@ -2,39 +2,34 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import {
-  TrendingUp,
-  ShoppingBag,
-  MessageSquare,
-  Users,
-  CreditCard,
-  Plus,
-  Truck,
-  ExternalLink,
-  Package,
-  Settings,
-  Sparkles,
-  Inbox,
-  Loader2,
-} from 'lucide-react';
 import { formatNaira } from '../../lib/utils';
-import { ordersApi, productsApi, diagnosticsApi } from '../../lib/api';
+import { ordersApi, productsApi } from '../../lib/api';
+import { getCurrentSession, UserSession } from '../../lib/auth';
 
 export default function DashboardPage() {
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('7d');
+  const [session, setSession] = useState<UserSession | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setSession(getCurrentSession());
+
+    const handleAuthChange = () => {
+      setSession(getCurrentSession());
+    };
+
+    window.addEventListener('shoppal-auth-changed', handleAuthChange);
+    return () => window.removeEventListener('shoppal-auth-changed', handleAuthChange);
+  }, []);
 
   useEffect(() => {
     async function loadDashboardData() {
       setIsLoading(true);
       try {
-        const [ordersRes, productsRes, logsRes] = await Promise.allSettled([
+        const [ordersRes, productsRes] = await Promise.allSettled([
           ordersApi.list(),
           productsApi.list(),
-          diagnosticsApi.getRecentLogs(5),
         ]);
 
         if (ordersRes.status === 'fulfilled' && ordersRes.value.data?.orders) {
@@ -42,9 +37,6 @@ export default function DashboardPage() {
         }
         if (productsRes.status === 'fulfilled' && productsRes.value.data?.products) {
           setProducts(productsRes.value.data.products);
-        }
-        if (logsRes.status === 'fulfilled' && logsRes.value.data?.logs) {
-          setRecentLogs(logsRes.value.data.logs);
         }
       } finally {
         setIsLoading(false);
@@ -54,7 +46,6 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  // Compute live metrics from backend fetched data
   const totalSales = orders.reduce((sum, o) => {
     const isPaid = (o.payment_status || '').toLowerCase() === 'paid';
     const amount = typeof o.total === 'string' ? parseFloat(o.total) || 0 : Number(o.total) || 0;
@@ -62,592 +53,238 @@ export default function DashboardPage() {
   }, 0);
 
   const totalOrdersCount = orders.length;
-  const completedOrdersCount = orders.filter((o) => (o.status || '').toLowerCase() === 'delivered').length;
-  const inTransitOrdersCount = orders.filter(
-    (o) => (o.status || '').toLowerCase() === 'shipped' || (o.status || '').toLowerCase() === 'processing'
+  const completedOrdersCount = orders.filter(
+    (o) => (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'completed'
   ).length;
-  const pendingOrdersCount = orders.filter((o) => (o.status || '').toLowerCase() === 'new').length;
-
-  const avgOrderValue = totalOrdersCount > 0 ? Math.round(totalSales / totalOrdersCount) : 0;
+  const pendingOrdersCount = orders.filter(
+    (o) => (o.status || '').toLowerCase() === 'new' || (o.status || '').toLowerCase() === 'processing'
+  ).length;
   const totalCatalogStock = products.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
 
-  const recentOrders = orders.slice(0, 5);
-  const topProducts = products.slice(0, 5);
-
-  // SVG Donut calculation
-  const completedPct = totalOrdersCount > 0 ? Math.round((completedOrdersCount / totalOrdersCount) * 100) : 0;
-  const inTransitPct = totalOrdersCount > 0 ? Math.round((inTransitOrdersCount / totalOrdersCount) * 100) : 0;
-  const pendingPct = totalOrdersCount > 0 ? Math.max(0, 100 - completedPct - inTransitPct) : 0;
-
-  const circumference = 238; // 2 * PI * 38
-  const completedDash = (completedPct / 100) * circumference;
-  const inTransitDash = (inTransitPct / 100) * circumference;
-  const pendingDash = (pendingPct / 100) * circumference;
+  const vendorDisplayName = session?.name || session?.businessName || 'Vendor';
+  const businessDisplayName = session?.businessName || 'ShopPal Store';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-
-      {/* Header & WhatsApp Connection Status */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem' }}>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#111827', margin: 0 }}>Vendor Dashboard</h1>
-            <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '9999px', border: '1px solid #a7f3d0' }}>
-              ShopPal Storefront
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Vendor Dashboard</h1>
+            <span className="text-xs bg-slate-100 text-slate-800 font-medium px-2.5 py-0.5 rounded border border-slate-200">
+              {businessDisplayName}
             </span>
           </div>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-            AI-powered WhatsApp conversational commerce for Nigerian merchants.
+          <p className="text-sm text-slate-600 mt-1">
+            Welcome, <strong>{vendorDisplayName}</strong>. WhatsApp automated sales and catalog management.
           </p>
         </div>
 
-        {/* WhatsApp Connection Status Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.4rem 0.8rem', borderRadius: '0.5rem' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }} />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#166534' }}>
-              WhatsApp Bot Active
-            </span>
-          </div>
+        <div className="flex items-center gap-3">
           <Link
             href="/products"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              backgroundColor: '#16a34a',
-              color: '#ffffff',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              padding: '0.5rem 1rem',
-              borderRadius: '0.5rem',
-              textDecoration: 'none',
-              boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-            }}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded shadow-sm transition"
           >
-            <Plus size={16} /> Add Product
-          </Link>
-        </div>
-      </div>
-
-      {/* Top Quick Stats Summary Bar */}
-      <div style={{ backgroundColor: '#064e3b', color: '#ffffff', borderRadius: '0.75rem', padding: '1rem 1.25rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Sparkles size={20} color="#6ee7b7" />
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-            <strong>Store Highlights:</strong> {totalOrdersCount} automated orders recorded • {formatNaira(totalSales)} settled via Paystack
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem' }}>
-          <span style={{ backgroundColor: 'rgba(255,255,255,0.15)', padding: '0.25rem 0.6rem', borderRadius: '0.375rem' }}>
-            {inTransitOrdersCount} Dispatches Active
-          </span>
-          <span style={{ backgroundColor: 'rgba(255,255,255,0.15)', padding: '0.25rem 0.6rem', borderRadius: '0.375rem' }}>
-            {products.length} Catalog Items
-          </span>
-        </div>
-      </div>
-
-      {/* 6 Live KPI Metrics Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-        {/* Total Sales / Revenue */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Total Sales</span>
-            <span style={{ color: '#16a34a', backgroundColor: '#f0fdf4', padding: '0.1rem 0.35rem', borderRadius: '0.25rem' }}>Live</span>
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>
-            {formatNaira(totalSales)}
-          </div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Settled to bank via Paystack</span>
-        </div>
-
-        {/* Active Orders */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Active Orders</span>
-            <ShoppingBag size={14} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>{totalOrdersCount}</div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-            {completedOrdersCount} completed • {inTransitOrdersCount} in transit
-          </span>
-        </div>
-
-        {/* Catalog Items */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Catalog Items</span>
-            <Package size={14} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>{products.length}</div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{totalCatalogStock} total units in stock</span>
-        </div>
-
-        {/* Average Order Value */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Avg Order Value</span>
-            <CreditCard size={14} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>{formatNaira(avgOrderValue)}</div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Per completed customer order</span>
-        </div>
-
-        {/* Customer Base */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Customer Orders</span>
-            <Users size={14} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>{totalOrdersCount}</div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Recorded via WhatsApp bot</span>
-        </div>
-
-        {/* Pending Actions */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#6b7280', fontSize: '0.75rem', fontWeight: 600 }}>
-            <span>Pending Orders</span>
-            <MessageSquare size={14} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#111827' }}>{pendingOrdersCount}</div>
-          <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Awaiting packaging or payment</span>
-        </div>
-      </div>
-
-      {/* Charts & Status Breakdown Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
-
-        {/* Revenue Trend Visualizer */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-            <div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>Revenue Trends</h3>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.2rem 0 0' }}>Sales generated from automated chat checkout links</p>
-            </div>
-            {/* Time Filter Buttons */}
-            <div style={{ display: 'flex', backgroundColor: '#f3f4f6', padding: '0.2rem', borderRadius: '0.5rem', gap: '0.25rem' }}>
-              {(['7d', '30d', 'all'] as const).map((range) => (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => setTimeRange(range)}
-                  style={{
-                    border: 'none',
-                    backgroundColor: timeRange === range ? '#ffffff' : 'transparent',
-                    color: timeRange === range ? '#16a34a' : '#6b7280',
-                    fontWeight: 600,
-                    fontSize: '0.75rem',
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '0.375rem',
-                    cursor: 'pointer',
-                    boxShadow: timeRange === range ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                  }}
-                >
-                  {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : 'All Time'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* SVG Trend Line / Zero State */}
-          <div style={{ position: 'relative', width: '100%', height: '180px', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {totalSales === 0 ? (
-              <div style={{ textAlign: 'center', color: '#9ca3af' }}>
-                <TrendingUp size={36} color="#d1d5db" style={{ margin: '0 auto 0.5rem auto' }} />
-                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4b5563', margin: 0 }}>No revenue recorded yet</p>
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.25rem 0 0' }}>
-                  Orders verified by Paystack will dynamically plot here.
-                </p>
-              </div>
-            ) : (
-              <svg viewBox="0 0 600 200" preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-                <defs>
-                  <linearGradient id="dashboardAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <line x1="0" y1="50" x2="600" y2="50" stroke="#f3f4f6" strokeWidth="1" />
-                <line x1="0" y1="100" x2="600" y2="100" stroke="#f3f4f6" strokeWidth="1" />
-                <line x1="0" y1="150" x2="600" y2="150" stroke="#f3f4f6" strokeWidth="1" />
-                <path d="M0,170 C100,160 200,120 300,90 C400,100 500,50 600,20 L600,200 L0,200 Z" fill="url(#dashboardAreaGrad)" />
-                <path d="M0,170 C100,160 200,120 300,90 C400,100 500,50 600,20" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#9ca3af', borderTop: '1px solid #f3f4f6', paddingTop: '0.5rem' }}>
-            <span>Active Period Revenue: {formatNaira(totalSales)}</span>
-            <span>{totalOrdersCount} Completed Sales</span>
-          </div>
-        </div>
-
-        {/* Donut Chart / Order Status Breakdown */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>Order Status Breakdown</h3>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.2rem 0 0' }}>{totalOrdersCount} total active transactions</p>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', margin: '1rem 0' }}>
-            <svg viewBox="0 0 100 100" style={{ width: '130px', height: '130px', transform: 'rotate(-90deg)' }}>
-              <circle cx="50" cy="50" r="38" fill="transparent" stroke="#f3f4f6" strokeWidth="12" />
-              {totalOrdersCount > 0 && (
-                <>
-                  <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10b981" strokeWidth="12" strokeDasharray={`${completedDash} ${circumference}`} strokeDashoffset="0" />
-                  <circle cx="50" cy="50" r="38" fill="transparent" stroke="#0ea5e9" strokeWidth="12" strokeDasharray={`${inTransitDash} ${circumference}`} strokeDashoffset={`-${completedDash}`} />
-                  <circle cx="50" cy="50" r="38" fill="transparent" stroke="#f59e0b" strokeWidth="12" strokeDasharray={`${pendingDash} ${circumference}`} strokeDashoffset={`-${completedDash + inTransitDash}`} />
-                </>
-              )}
-            </svg>
-            <div style={{ position: 'absolute', textAlign: 'center' }}>
-              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#111827' }}>{totalOrdersCount}</span>
-              <span style={{ display: 'block', fontSize: '0.7rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Orders</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem', borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
-                <span style={{ color: '#4b5563' }}>Completed &amp; Delivered</span>
-              </div>
-              <strong style={{ color: '#111827' }}>{completedOrdersCount} ({completedPct}%)</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#0ea5e9' }} />
-                <span style={{ color: '#4b5563' }}>In Transit (Dispatch)</span>
-              </div>
-              <strong style={{ color: '#111827' }}>{inTransitOrdersCount} ({inTransitPct}%)</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
-                <span style={{ color: '#4b5563' }}>Pending Packaging</span>
-              </div>
-              <strong style={{ color: '#111827' }}>{pendingOrdersCount} ({pendingPct}%)</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions Shortcuts */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1rem 1.25rem' }}>
-        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.75rem 0', color: '#111827' }}>
-          Merchant Quick Actions
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
-          <Link
-            href="/products"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #bbf7d0',
-              backgroundColor: '#f0fdf4',
-              color: '#166534',
-              textDecoration: 'none',
-              fontSize: '0.825rem',
-              fontWeight: 600,
-            }}
-          >
-            <Package size={16} /> Add Single Product
-          </Link>
-          <Link
-            href="/products"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#f9fafb',
-              color: '#374151',
-              textDecoration: 'none',
-              fontSize: '0.825rem',
-              fontWeight: 600,
-            }}
-          >
-            <ExternalLink size={16} /> Bulk CSV Upload
-          </Link>
-          <Link
-            href="/dashboard/analytics"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #bbf7d0',
-              backgroundColor: '#f0fdf4',
-              color: '#166534',
-              textDecoration: 'none',
-              fontSize: '0.825rem',
-              fontWeight: 600,
-            }}
-          >
-            <TrendingUp size={16} /> Business Analytics
+            Add Product
           </Link>
           <Link
             href="/orders"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#f9fafb',
-              color: '#374151',
-              textDecoration: 'none',
-              fontSize: '0.825rem',
-              fontWeight: 600,
-            }}
+            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-medium rounded transition"
           >
-            <Truck size={16} /> View All Orders
-          </Link>
-          <Link
-            href="/settings"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #e5e7eb',
-              backgroundColor: '#f9fafb',
-              color: '#374151',
-              textDecoration: 'none',
-              fontSize: '0.825rem',
-              fontWeight: 600,
-            }}
-          >
-            <Settings size={16} /> WhatsApp Settings
+            Manage Orders
           </Link>
         </div>
       </div>
 
-      {/* Real-Time WhatsApp Activity Feed & Top Selling Products */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+      {/* 3 Minimalist KPI Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Total Sales */}
+        <div className="bg-white border border-emerald-200 bg-emerald-50/10 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 uppercase tracking-wider">
+            <span>Total Sales</span>
+            <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 text-[11px] font-bold">
+              Paystack
+            </span>
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 my-2">
+            {formatNaira(totalSales)}
+          </div>
+          <div className="text-xs text-slate-500">
+            Verified payouts from completed customer orders
+          </div>
+        </div>
 
-        {/* Real-time WhatsApp Activity Feed */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MessageSquare size={18} color="#16a34a" />
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>Live WhatsApp Activity</h3>
-              </div>
-              <span style={{ fontSize: '0.65rem', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '9999px' }}>
-                LIVE
-              </span>
+        {/* Active Orders */}
+        <div className="bg-white border border-blue-200 bg-blue-50/10 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-blue-800 uppercase tracking-wider">
+            <span>Orders</span>
+            <span className="text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full text-xs font-bold">{totalOrdersCount} Total</span>
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 my-2">
+            {totalOrdersCount}
+          </div>
+          <div className="text-xs text-slate-500">
+            {completedOrdersCount} completed • {pendingOrdersCount} pending
+          </div>
+        </div>
+
+        {/* Catalog Items */}
+        <div className="bg-white border border-purple-200 bg-purple-50/10 rounded-xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-purple-800 uppercase tracking-wider">
+            <span>Catalog Items</span>
+            <span className="text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full text-xs font-bold">{products.length} Products</span>
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 my-2">
+            {products.length}
+          </div>
+          <div className="text-xs text-slate-500">
+            {totalCatalogStock} total units in stock
+          </div>
+        </div>
+      </div>
+
+
+      {/* Main Content: Recent Orders & Catalog Products */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Recent Orders (2 cols) */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                Recent Orders
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Orders received via WhatsApp storefront
+              </p>
             </div>
+            <Link
+              href="/orders"
+              className="text-xs font-semibold text-slate-900 hover:underline"
+            >
+              View all orders
+            </Link>
+          </div>
 
-            {recentLogs.length === 0 ? (
-              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#9ca3af' }}>
-                <Inbox size={32} color="#d1d5db" style={{ margin: '0 auto 0.5rem auto' }} />
-                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4b5563', margin: 0 }}>No WhatsApp activity yet</p>
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.25rem 0 0' }}>
-                  Inbound customer chats and webhook events will display here in real time.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {recentLogs.map((log, idx) => (
-                  <div key={idx} style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600 }}>
-                      <span style={{ color: '#111827' }}>{log.route || 'Webhook Activity'}</span>
-                      <span style={{ color: '#9ca3af', fontSize: '0.7rem' }}>{log.timestamp ? log.timestamp.slice(11, 19) : 'Just now'}</span>
+          {isLoading ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              Loading orders...
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              No orders recorded yet. When customers order on WhatsApp, they will appear here.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 font-semibold">
+                    <th className="py-2 px-3">Order ID</th>
+                    <th className="py-2 px-3">Customer</th>
+                    <th className="py-2 px-3">Amount</th>
+                    <th className="py-2 px-3">Payment</th>
+                    <th className="py-2 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.slice(0, 6).map((order) => {
+                    const amount =
+                      typeof order.total === 'string'
+                        ? parseFloat(order.total) || 0
+                        : Number(order.total) || 0;
+                    const isPaid = (order.payment_status || '').toLowerCase() === 'paid';
+
+                    return (
+                      <tr key={order.id} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-mono font-medium text-slate-900">
+                          {order.order_code || (order.id ? order.id.slice(0, 8) : 'ORD-NEW')}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">
+                          {order.customer_phone || 'Customer'}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-900">
+                          {formatNaira(amount)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium border ${
+                              isPaid
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {(order.payment_status || 'PENDING').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 capitalize">
+                          {order.status || 'new'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Catalog Preview (1 col) */}
+        <div className="bg-white border border-slate-200 rounded-lg p-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                Products
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Active in WhatsApp bot
+              </p>
+            </div>
+            <Link
+              href="/products"
+              className="text-xs font-semibold text-slate-900 hover:underline"
+            >
+              Manage
+            </Link>
+          </div>
+
+          {isLoading ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              Loading products...
+            </div>
+          ) : products.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-500">
+              No products found in catalog.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {products.slice(0, 5).map((product) => {
+                const price =
+                  typeof product.price === 'string'
+                    ? parseFloat(product.price) || 0
+                    : Number(product.price) || 0;
+
+                return (
+                  <div
+                    key={product.id}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded flex items-center justify-between text-xs"
+                  >
+                    <div className="truncate pr-2">
+                      <span className="font-semibold text-slate-900 block truncate">
+                        {product.name}
+                      </span>
+                      <span className="text-slate-500 text-[11px]">
+                        {product.stock} units available
+                      </span>
                     </div>
-                    <p style={{ fontSize: '0.775rem', color: '#4b5563', margin: '0.2rem 0' }}>
-                      {log.message}
-                    </p>
-                    <span style={{ fontSize: '0.7rem', color: '#065f46', backgroundColor: '#ecfdf5', padding: '0.1rem 0.35rem', borderRadius: '0.25rem' }}>
-                      {log.level || 'INFO'}
+                    <span className="font-bold text-slate-900 whitespace-nowrap">
+                      {formatNaira(price)}
                     </span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Link
-            href="/dashboard/logs"
-            style={{
-              display: 'block',
-              textAlign: 'center',
-              width: '100%',
-              marginTop: '1rem',
-              border: 'none',
-              backgroundColor: '#f0fdf4',
-              color: '#166534',
-              padding: '0.5rem',
-              borderRadius: '0.5rem',
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textDecoration: 'none',
-            }}
-          >
-            View Full WhatsApp Message Logs →
-          </Link>
-        </div>
-
-        {/* Top Products Widget */}
-        <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>Catalog Highlights</h3>
-              <Link href="/products" style={{ fontSize: '0.75rem', color: '#16a34a', textDecoration: 'none', fontWeight: 600 }}>
-                Manage Catalog →
-              </Link>
+                );
+              })}
             </div>
-
-            {topProducts.length === 0 ? (
-              <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#9ca3af' }}>
-                <Package size={32} color="#d1d5db" style={{ margin: '0 auto 0.5rem auto' }} />
-                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#4b5563', margin: 0 }}>No products in catalog</p>
-                <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.25rem 0 0' }}>
-                  Add products to start displaying your inventory to WhatsApp shoppers.
-                </p>
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '0.7rem' }}>
-                      <th style={{ padding: '0.4rem 0' }}>Product</th>
-                      <th style={{ padding: '0.4rem 0' }}>Stock</th>
-                      <th style={{ padding: '0.4rem 0', textAlign: 'right' }}>Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topProducts.map((p) => {
-                      const priceNum = typeof p.price === 'string' ? parseFloat(p.price) || 0 : Number(p.price) || 0;
-                      return (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.6rem 0', fontWeight: 600, color: '#111827' }}>{p.name}</td>
-                          <td style={{ padding: '0.6rem 0' }}>
-                            <span style={{ backgroundColor: Number(p.stock) > 0 ? '#ecfdf5' : '#fee2e2', color: Number(p.stock) > 0 ? '#065f46' : '#991b1b', padding: '0.1rem 0.35rem', borderRadius: '0.25rem', fontSize: '0.7rem' }}>
-                              {p.stock} units
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.6rem 0', textAlign: 'right', fontWeight: 700 }}>{formatNaira(priceNum)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div style={{ fontSize: '0.75rem', color: '#6b7280', borderTop: '1px solid #f3f4f6', paddingTop: '0.5rem' }}>
-            Total active catalog stock: <strong>{totalCatalogStock} units</strong>
-          </div>
+          )}
         </div>
       </div>
-
-      {/* Recent Orders Table Preview */}
-      <div style={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#111827' }}>Recent WhatsApp Orders</h3>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: '0.2rem 0 0' }}>Customer transactions verified by Paystack</p>
-          </div>
-          <Link href="/orders" style={{ fontSize: '0.75rem', color: '#16a34a', textDecoration: 'none', fontWeight: 600 }}>
-            View All Orders →
-          </Link>
-        </div>
-
-        {recentOrders.length === 0 ? (
-          <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: '#9ca3af' }}>
-            <ShoppingBag size={36} color="#d1d5db" style={{ margin: '0 auto 0.5rem auto' }} />
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#4b5563', margin: 0 }}>No orders recorded yet</p>
-            <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '0.25rem 0 0' }}>
-              Orders completed by Nigerian shoppers on WhatsApp will automatically appear here.
-            </p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #e5e7eb', color: '#9ca3af', fontSize: '0.75rem' }}>
-                  <th style={{ padding: '0.5rem' }}>Order ID</th>
-                  <th style={{ padding: '0.5rem' }}>Customer Phone</th>
-                  <th style={{ padding: '0.5rem' }}>Items</th>
-                  <th style={{ padding: '0.5rem' }}>Total</th>
-                  <th style={{ padding: '0.5rem' }}>Payment</th>
-                  <th style={{ padding: '0.5rem' }}>Fulfillment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order) => {
-                  const amount = typeof order.total === 'string' ? parseFloat(order.total) || 0 : Number(order.total) || 0;
-                  const isPaid = (order.payment_status || '').toLowerCase() === 'paid';
-                  const itemsSummary = Array.isArray(order.items)
-                    ? order.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(', ')
-                    : '1x WhatsApp Cart Order';
-
-                  return (
-                    <tr key={order.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      <td style={{ padding: '0.6rem 0.5rem', fontWeight: 700, fontFamily: 'monospace' }}>
-                        {order.order_code || `ORD-${order.id.slice(0, 4).toUpperCase()}`}
-                      </td>
-                      <td style={{ padding: '0.6rem 0.5rem' }}>{order.customer_phone}</td>
-                      <td style={{ padding: '0.6rem 0.5rem' }}>{itemsSummary}</td>
-                      <td style={{ padding: '0.6rem 0.5rem', fontWeight: 700 }}>{formatNaira(amount)}</td>
-                      <td style={{ padding: '0.6rem 0.5rem' }}>
-                        <span style={{ backgroundColor: isPaid ? '#ecfdf5' : '#fef3c7', color: isPaid ? '#065f46' : '#92400e', fontSize: '0.7rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '9999px' }}>
-                          {(order.payment_status || 'PENDING').toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.6rem 0.5rem' }}>
-                        <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '0.25rem' }}>
-                          {order.status || 'new'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Customer / Merchant Testimonial Snippet */}
-      <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '0.825rem', color: '#064e3b', fontStyle: 'italic' }}>
-            &ldquo;ShopPal answered customer questions in Nigerian Pidgin while I was away, closed sales, and sent me the Paystack receipts directly.&rdquo;
-          </p>
-          <span style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#166534', marginTop: '0.35rem' }}>
-            — Mrs. Chidinma Okafor, Fabric Merchant at Balogun Market, Lagos
-          </span>
-        </div>
-        <Link
-          href="/dashboard/analytics"
-          style={{
-            backgroundColor: '#16a34a',
-            color: '#ffffff',
-            fontSize: '0.8rem',
-            fontWeight: 600,
-            padding: '0.45rem 0.9rem',
-            borderRadius: '0.5rem',
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          View Store Reports →
-        </Link>
-      </div>
-
     </div>
   );
 }

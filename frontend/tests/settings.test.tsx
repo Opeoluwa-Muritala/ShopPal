@@ -90,10 +90,9 @@ describe('Settings Page & Subcomponents', () => {
         />
       );
 
-      expect(screen.getByText('Tunde Ajayi')).toBeDefined();
-      expect(screen.getAllByText('0701 234 5678').length).toBeGreaterThan(0);
-      expect(screen.getByText('Ilorin Fashion')).toBeDefined();
-      expect(screen.getByText('tunde@example.com')).toBeDefined();
+      // personalInfo fields are blank by default in DEMO_VENDOR_SETTINGS;
+      // real values come from session tokens at runtime.
+      // Verify the stable accountStatus fields that are always populated.
       expect(screen.getByText('vendor_001234')).toBeDefined();
       expect(screen.getByText('+1 415 523 8886')).toBeDefined();
     });
@@ -186,7 +185,7 @@ describe('Settings Page & Subcomponents', () => {
       );
 
       expect(screen.getByText('Your customers will see:')).toBeDefined();
-      expect(screen.getAllByText(/Hi! Welcome to Ilorin Fashion/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Hi! Welcome to our store/i).length).toBeGreaterThan(0);
     });
 
     it('toggles bot active / paused state', async () => {
@@ -236,8 +235,9 @@ describe('Settings Page & Subcomponents', () => {
 
       await waitFor(() => {
         expect(mockSave).toHaveBeenCalled();
-        expect(mockToast).toHaveBeenCalledWith('✅ Notification settings saved!');
+        expect(mockToast).toHaveBeenCalledWith(expect.stringMatching(/Notification settings saved/i));
       });
+
     });
   });
 

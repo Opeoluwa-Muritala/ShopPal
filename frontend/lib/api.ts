@@ -1,5 +1,5 @@
 /**
- * API client for Naija Marketplace with automatic authentication,
+ * API client for ShopPal with automatic authentication,
  * token refresh rotation, and typed backend endpoint callers.
  */
 

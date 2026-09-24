@@ -2,7 +2,7 @@ import React from 'react';
 import AnalyticsPage from '../../../components/analytics/AnalyticsPage';
 
 export const metadata = {
-  title: 'Analytics — Naija Marketplace',
+  title: 'Analytics — ShopPal',
   description: 'Monitor your business performance, revenue retention, and WhatsApp store analytics.',
 };
 

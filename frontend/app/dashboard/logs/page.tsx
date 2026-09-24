@@ -261,7 +261,7 @@ export default function DiagnosticsLogsPage() {
             <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
             <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
             <span className="w-3 h-3 rounded-full bg-emerald-500/80 inline-block" />
-            <span className="ml-2 font-bold text-slate-300">naija-marketplace-core.log</span>
+            <span className="ml-2 font-bold text-slate-300">shoppal-core.log</span>
           </div>
           <span>Showing {filteredLogs.length} events</span>
         </div>

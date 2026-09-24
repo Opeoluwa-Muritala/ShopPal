@@ -216,7 +216,7 @@ describe('Full AnalyticsPage Integration & Route Exports', () => {
     render(<AnalyticsPage />);
 
     expect(screen.getByRole('heading', { name: 'Analytics' })).toBeDefined();
-    expect(screen.getByText('Naija Marketplace')).toBeDefined();
+    expect(screen.getByText('ShopPal')).toBeDefined();
     expect(screen.getByText('Export PDF')).toBeDefined();
 
     await waitFor(() => {
@@ -228,6 +228,6 @@ describe('Full AnalyticsPage Integration & Route Exports', () => {
   it('renders App Router page export', () => {
     render(<AnalyticsAppPage />);
     expect(screen.getByRole('heading', { name: 'Analytics' })).toBeDefined();
-    expect(screen.getByText('Naija Marketplace')).toBeDefined();
+    expect(screen.getByText('ShopPal')).toBeDefined();
   });
 });
