@@ -138,6 +138,9 @@ async def receive_whatsapp_webhook(
     try:
         _validate_payload(payload)
         await to_thread(process_whatsapp_payload, payload, settings)
+        wakeup = getattr(request.app.state, "reply_wakeup", None)
+        if wakeup is not None:
+            wakeup.set()
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Malformed webhook payload") from None
     except Exception:

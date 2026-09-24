@@ -22,7 +22,8 @@ from app.db.models import (
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
-from app.services.llm import GemmaError, LLMService
+from app.services.llm import GemmaError, LLMService, ai_cooldown_active
+from app.services.quick_replies import ai_failure_reply, quick_reply
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
@@ -196,8 +197,22 @@ def generate_reply(session, job, owner, settings):
             f"Latest customer message: {message.body}",
         ]
     )
+    if not job.pending_action and not job.transcript and ai_cooldown_active():
+        job.pending_action = {
+            "reply": (
+                "Welcome to ShopPal. Reply with:\n"
+                "1 — See available products\n"
+                "2 — View my cart\n"
+                "3 — Checkout\n\n"
+                "You can also send a product number and quantity."
+            ),
+        }
+    if not job.pending_action and not job.transcript:
+        instant = quick_reply(session, vendor, [body for _, body in queued_messages] + [message.body])
+        if instant:
+            job.pending_action = {"reply": instant}
     checkpoint(session, job, owner)
-    service = LLMService(settings)
+    service = None
     for _ in range(9):
         if not job.pending_action:
             if len(job.transcript) >= 8:
@@ -206,6 +221,7 @@ def generate_reply(session, job, owner, settings):
             # End the read transaction before the external call.
             transcript = list(job.transcript)
             session.commit()
+            service = service or LLMService(settings)
             action = validate_action(
                 service.next_action(customer_text, history, transcript)
             )
@@ -380,6 +396,7 @@ def send_reply(session, job, owner, settings):
             "step": "meta_message_send",
             "job_id": identifier,
             "delivery_mode": "template" if use_template else "text",
+            "latency_ms": round((job.accepted_at - job.created_at).total_seconds() * 1000, 2),
         },
     )
 
@@ -438,6 +455,10 @@ def process_claim(engine, job_id, settings):
                 job.attempts += 1
                 job.state = "processing"
                 checkpoint(session, job, owner)
+                logger.info("Reply job picked up", extra={
+                    "step": "reply_claim", "job_id": str(job.id),
+                    "latency_ms": round((now() - job.created_at).total_seconds() * 1000, 2),
+                })
 
                 def guard():
                     try:
@@ -453,8 +474,9 @@ def process_claim(engine, job_id, settings):
                         )
                     )
                     if (
-                        inbound.wa_timestamp is None
-                        or now() - inbound.wa_timestamp >= timedelta(hours=24)
+                        (inbound is None or inbound.wa_timestamp is None
+                         or now() - inbound.wa_timestamp >= timedelta(hours=24))
+                        and not (job.reply_text and job.attempts > 1)
                     ):
                         fail(session, job, "messaging_window", permanent=True)
                         return True
@@ -471,12 +493,26 @@ def process_claim(engine, job_id, settings):
                     if job.lease_owner != owner:
                         return False
                     code = getattr(exc, "status_code", None)
-                    fail(
-                        session,
-                        job,
-                        "gemma_http_" + str(code) if code else "gemma_unavailable",
-                        permanent=code in (400, 401, 403, 404),
-                    )
+                    vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
+                    inbound = session.scalar(select(WhatsAppMessage).where(
+                        WhatsAppMessage.message_id == job.message_id
+                    ))
+                    if vendor is not None and inbound is not None and inbound.body:
+                        job.reply_text = ai_failure_reply(
+                            session, vendor, inbound.body, job.customer_phone
+                        )
+                        job.pending_action = None
+                        job.failure_category = (
+                            getattr(exc, "provider", "gemma") + "_http_" + str(code)
+                            if code else "gemma_unavailable"
+                        )
+                        # Persist the fallback before sending. Any send retry uses
+                        # this exact saved response and never calls AI again.
+                        checkpoint(session, job, owner)
+                        if job.state == "processing" and job.reply_text:
+                            send_reply(session, job, owner, settings)
+                    else:
+                        fail(session, job, "ai_fallback_unavailable", permanent=True)
                 except Exception:
                     session.rollback()
                     session.refresh(job)
@@ -495,7 +531,7 @@ def process_claim(engine, job_id, settings):
                 # The outer transaction releases the advisory lock automatically.
 
 
-def recover_once(engine, settings):
+def ready_job_ids(engine, limit=20, exclude=()):
     with Session(engine) as session:
         ids = session.scalars(
             select(ReplyJob.id)
@@ -504,10 +540,16 @@ def recover_once(engine, settings):
                 ReplyJob.next_attempt_at <= now(),
                 or_(ReplyJob.lease_until.is_(None), ReplyJob.lease_until <= now()),
                 ~newer_pending(ReplyJob),
+                ReplyJob.id.not_in(exclude),
             )
             .order_by(ReplyJob.created_at, ReplyJob.id)
-            .limit(20)
+            .limit(limit)
         ).all()
+    return ids
+
+
+def recover_once(engine, settings):
+    ids = ready_job_ids(engine)
     if not ids:
         return
     # Different customers can be processed in parallel. process_claim still holds
@@ -526,24 +568,48 @@ def recover_once(engine, settings):
                 )
 
 
-async def recovery_loop(stop):
-    while not stop.is_set():
-        try:
-            await asyncio.to_thread(recover_once, get_engine(), get_settings())
-        except Exception as exc:
-            # Keep diagnostics useful without logging provider responses, tokens,
-            # customer text, or database URLs.
-            logger.error(
-                "Reply recovery poll failed",
-                extra={
-                    "step": "reply_recovery",
-                    "status": "poll_error",
-                    "error_type": type(exc).__name__,
-                },
-            )
-        try:
-            await asyncio.wait_for(
-                stop.wait(), timeout=get_settings().meta_reply_worker_poll_seconds
-            )
-        except TimeoutError:
-            pass
+async def recovery_loop(stop, wakeup=None):
+    # Keep polling while jobs run: a slow customer must not hold up free slots.
+    running = {}
+    settings = get_settings()
+    wakeup = wakeup or asyncio.Event()
+    stop_task = asyncio.create_task(stop.wait())
+    try:
+        while not stop.is_set():
+            wakeup.clear()
+            for identifier, task in list(running.items()):
+                if task.done():
+                    del running[identifier]
+                    try:
+                        task.result()
+                    except Exception:
+                        logger.error("Reply job thread failed", extra={"step": "reply_recovery", "status": "worker_error"})
+            try:
+                capacity = settings.meta_reply_worker_concurrency - len(running)
+                if capacity:
+                    engine = get_engine()
+                    ids = await asyncio.to_thread(ready_job_ids, engine, capacity, tuple(running))
+                    for identifier in ids:
+                        running[identifier] = asyncio.create_task(
+                            asyncio.to_thread(process_claim, engine, identifier, settings)
+                        )
+            except Exception as exc:
+                logger.error(
+                    "Reply recovery poll failed",
+                    extra={"step": "reply_recovery", "status": "poll_error", "error_type": type(exc).__name__},
+                )
+            wake_task = asyncio.create_task(wakeup.wait())
+            try:
+                await asyncio.wait(
+                    [stop_task, wake_task],
+                    timeout=settings.meta_reply_worker_poll_seconds,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                wake_task.cancel()
+                await asyncio.gather(wake_task, return_exceptions=True)
+    finally:
+        # Threads cannot be safely cancelled during a shopping action or send.
+        await asyncio.gather(*running.values(), return_exceptions=True)
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)

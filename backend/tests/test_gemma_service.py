@@ -1,5 +1,8 @@
 from unittest.mock import Mock, patch
 
+import httpx
+import pytest
+
 from app.config import Settings
 from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, GemmaError, LLMService
 from app.services.transcription import transcribe_audio
@@ -139,6 +142,65 @@ def test_google_gemma_has_priority_and_openrouter_is_failure_fallback():
     }
     service._post.assert_called_once()
     service._post_openrouter.assert_called_once()
+
+    # Subsequent tool rounds stay on the working provider for this reply.
+    service.next_action("my cart", [], [{"action": {"tool": "viewCart"}, "result": {}}])
+    service._post.assert_called_once()
+    assert service._post_openrouter.call_count == 2
+
+
+def test_google_429_switches_immediately_and_keeps_conversation_context(monkeypatch):
+    service = LLMService(Settings(
+        _env_file=None, gemma_api_key="google-test", openrouter_api_key="router-test",
+    ))
+    post = Mock(side_effect=[
+        httpx.Response(429, request=httpx.Request("POST", service.url)),
+        httpx.Response(200, json={"choices": [{"message": {"content": '{"reply":"Your cart is ready."}'}}]},
+                       request=httpx.Request("POST", service.openrouter_url)),
+    ])
+    monkeypatch.setattr("app.services.llm.httpx.post", post)
+    history = [{"role": "user", "content": "Two bottles please"}]
+    transcript = [{"action": {"tool": "viewCart", "arguments": {}}, "result": {"total": "100.00"}}]
+    assert service.next_action("Show my cart", history, transcript) == {"reply": "Your cart is ready."}
+    assert [call.args[0] for call in post.call_args_list] == [service.url, service.openrouter_url]
+    assert service.provider == "openrouter"
+    payload = post.call_args.kwargs["json"]
+    assert payload["messages"][1] == history[0]
+    assert "100.00" in payload["messages"][-1]["content"]
+
+
+def test_openrouter_429_is_attributed_to_openrouter(monkeypatch):
+    service = LLMService(Settings(
+        _env_file=None, gemma_api_key="google-test", openrouter_api_key="router-test",
+    ))
+    post = Mock(side_effect=[
+        httpx.Response(429, request=httpx.Request("POST", service.url)),
+        httpx.Response(429, request=httpx.Request("POST", service.openrouter_url)),
+    ])
+    monkeypatch.setattr("app.services.llm.httpx.post", post)
+    with pytest.raises(GemmaError) as caught:
+        service.next_action("Show my cart", [], [])
+    assert caught.value.provider == "openrouter"
+    assert caught.value.status_code == 429
+    assert post.call_count == 2
+
+
+def test_rate_limit_starts_five_minute_ai_cooldown(monkeypatch):
+    import app.services.llm as llm
+
+    llm._AI_COOLDOWN_UNTIL = 0
+    service = LLMService(Settings(_env_file=None, OPENROUTER_API_KEY="router-test"))
+    post = Mock(return_value=httpx.Response(429, request=httpx.Request("POST", service.openrouter_url)))
+    monkeypatch.setattr("app.services.llm.httpx.post", post)
+    with pytest.raises(GemmaError):
+        service.next_action("hello", [], [])
+    assert llm.ai_cooldown_active()
+    with pytest.raises(GemmaError) as blocked:
+        service.next_action("hello", [], [])
+    assert blocked.value.status_code == 429
+    assert post.call_count == 1
+    assert llm.AI_COOLDOWN_SECONDS == 180.0
+    llm._AI_COOLDOWN_UNTIL = 0
 
 
 def test_natural_product_selection_uses_latest_catalog_result():
