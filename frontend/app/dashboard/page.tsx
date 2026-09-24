@@ -1,4 +1,5 @@
-'use client';
+import React from 'react';
+import DashboardHome from '../../components/dashboard/DashboardHome';
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';

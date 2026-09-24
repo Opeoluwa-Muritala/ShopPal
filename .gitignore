@@ -42,17 +42,12 @@ out/
 next-env.d.ts
 
 # Environment Variables & Secrets
-.env
 .env*.local
-.env.development
-.env.test
-.env.production
 !.env.example
 
 # Operating System & IDE Files
 .DS_Store
 Thumbs.db
-.vscode/
 !.vscode/settings.json
 !.vscode/extensions.json
 .idea/
@@ -73,3 +68,4 @@ lerna-debug.log*
 # Test / Coverage outputs
 coverage/
 junit.xml
+config.bat
