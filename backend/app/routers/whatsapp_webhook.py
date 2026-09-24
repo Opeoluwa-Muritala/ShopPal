@@ -172,12 +172,16 @@ def _validate_payload(payload):
                 for field, limit in (("id", 255), ("from", 30), ("recipient_id", 30), ("type", 30), ("status", 30)):
                     if not isinstance(event.get(field, ""), str) or len(event.get(field, "")) > limit:
                         raise ValueError("Malformed event field")
-                if event.get("type") == "text":
+                if event.get("type") in {"text", "audio"}:
                     if not event.get("id") or not event.get("from"):
                         raise ValueError("Missing message identity")
-                    content = event.get("text")
-                    if not isinstance(content, dict) or not isinstance(content.get("body"), str):
+                    content = event.get(event.get("type"))
+                    if not isinstance(content, dict):
+                        raise ValueError("Malformed message")
+                    if event.get("type") == "text" and not isinstance(content.get("body"), str):
                         raise ValueError("Malformed text")
+                    if event.get("type") == "audio" and not isinstance(content.get("id"), str):
+                        raise ValueError("Malformed audio")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
@@ -245,7 +249,7 @@ def _persist_messages(
         inserted_id = session.execute(statement).scalar_one_or_none()
         if inserted_id is not None:
             inserted.append((value, message))
-            if message.get("type") == "text":
+            if message.get("type") in {"text", "audio"}:
                 metadata = value.get("metadata", {})
                 phone = str(message.get("from", ""))
                 allowed = check_phone_rate_limit(phone)

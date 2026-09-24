@@ -1,18 +1,17 @@
-from types import SimpleNamespace
+﻿from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
 
 from app.services.quick_replies import ai_failure_reply
 
 
-def test_ai_failure_uses_numbered_shopping_menu_for_unknown_request():
+def test_ai_failure_asks_for_clarification_for_unknown_request():
     session = Mock()
     session.execute.return_value.all.return_value = []
     reply = ai_failure_reply(session, SimpleNamespace(id=uuid4()), "Do something unusual")
-    assert "1 — See available products" in reply
+    assert "tell me a little more" in reply.lower()
     assert "temporarily" not in reply.lower()
-    assert "2 — View my cart" in reply
-    assert "3 — Checkout" in reply
+    assert "numbered" not in reply.lower()
 
 
 def test_ai_failure_guides_checkout_without_ai():
