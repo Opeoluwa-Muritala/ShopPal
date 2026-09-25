@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -20,7 +20,7 @@ import {
   NotificationSettingsData,
   ToastMessage,
 } from './types';
-import { authApi } from '../../lib/api';
+import { authApi, vendorsApi } from '../../lib/api';
 import { clearStoredTokens, getStoredTokens } from '../../lib/auth';
 
 export const DEMO_VENDOR_SETTINGS: VendorSettings = {
@@ -148,6 +148,61 @@ function SettingsPageInner() {
   }, [storedTokens]);
 
   const [currentSettings, setCurrentSettings] = useState<VendorSettings>(initialSettings);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadVendorProfile = async () => {
+      const response = await vendorsApi.getMe();
+      if (cancelled || !response.data) return;
+
+      const profile = response.data;
+      setCurrentSettings((prev) => ({
+        ...prev,
+        id: profile.vendor_id || profile.id,
+        personalInfo: {
+          ...prev.personalInfo,
+          fullName: profile.name || prev.personalInfo.fullName,
+          phone: profile.phone || prev.personalInfo.phone,
+          whatsappNumber: profile.whatsapp_number || profile.phone || prev.personalInfo.whatsappNumber,
+          businessName: profile.business_name || prev.personalInfo.businessName,
+          email: profile.email || prev.personalInfo.email,
+        },
+        accountStatus: {
+          ...prev.accountStatus,
+          status: profile.is_active ? 'Active' : 'Inactive',
+          accountCreated: profile.created_at
+            ? new Date(profile.created_at).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })
+            : prev.accountStatus.accountCreated,
+          vendorId: profile.vendor_id || profile.id,
+          botWhatsAppNumber: profile.bot_number || profile.whatsapp_number || prev.accountStatus.botWhatsAppNumber,
+        },
+        paystack: {
+          ...prev.paystack,
+          key: profile.paystack_public_key || prev.paystack.key,
+          isConnected: Boolean(profile.paystack_public_key),
+        },
+        bankAccount: {
+          ...prev.bankAccount,
+          accountNumber: profile.bank_account || prev.bankAccount.accountNumber,
+        },
+        bot: {
+          ...prev.bot,
+          greetingMessage: profile.greeting_message || prev.bot.greetingMessage,
+          language: profile.preferred_language || prev.bot.language,
+        },
+      }));
+    };
+
+    void loadVendorProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ---- Handlers: local state updates only (no non-existent API endpoints) ----
 

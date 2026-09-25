@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Account, Vendor
 from app.db.session import get_db
-from app.services.auth import hash_password
+from app.services.auth import get_current_account, hash_password
 
 router = APIRouter(prefix="/api/vendors", tags=["Vendor Onboarding"])
 
@@ -24,6 +24,35 @@ class VendorSignupRequest(BaseModel):
     password: str = Field(..., min_length=8)
     preferred_language: str | None = Field(default="pidgin", max_length=20)
     bank_account: str | None = Field(default=None, max_length=50)
+
+
+@router.get("/me")
+def get_current_vendor(
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return the authenticated vendor profile used by dashboard settings."""
+    vendor = session.get(Vendor, current_account.vendor_id) if session is not None else None
+    if vendor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vendor profile not found")
+
+    return {
+        "id": str(vendor.id),
+        "vendor_id": str(vendor.id),
+        "account_id": str(current_account.id),
+        "name": vendor.name,
+        "business_name": vendor.business_name or vendor.name,
+        "email": current_account.email,
+        "phone": vendor.phone,
+        "whatsapp_number": vendor.whatsapp_number,
+        "bot_number": vendor.bot_number or vendor.whatsapp_number,
+        "paystack_public_key": vendor.paystack_public_key,
+        "bank_account": vendor.bank_account,
+        "greeting_message": vendor.greeting_message,
+        "preferred_language": vendor.preferred_language,
+        "is_active": bool(vendor.is_active),
+        "created_at": vendor.created_at.isoformat() if vendor.created_at else None,
+    }
 
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
