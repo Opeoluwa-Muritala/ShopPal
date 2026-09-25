@@ -244,6 +244,26 @@ export const accountsApi = {
 };
 
 export const vendorsApi = {
+  getMe: async () => {
+    return apiClient<{
+      id: string;
+      vendor_id: string;
+      account_id: string;
+      name: string;
+      business_name: string;
+      email: string;
+      phone: string;
+      whatsapp_number: string;
+      bot_number?: string;
+      paystack_public_key?: string | null;
+      bank_account?: string | null;
+      greeting_message?: string | null;
+      preferred_language?: string | null;
+      is_active: boolean;
+      created_at?: string | null;
+    }>('/api/vendors/me');
+  },
+
   signup: async (body: {
     name: string;
     phone: string;
