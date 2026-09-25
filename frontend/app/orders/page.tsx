@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ordersApi } from '../../lib/api';
 import { formatNaira } from '../../lib/utils';
 
-export type OrderStatus = 'new' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'new' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
 export type PaymentStatus = 'paid' | 'pending' | 'failed';
 
 export interface OrderItemRecord {
@@ -19,7 +19,8 @@ export interface OrderItemRecord {
     quantity: number;
     unit_price?: number;
   }>;
-  created_at?: string;
+  created_at?: string | null;
+  is_cart?: boolean;
 }
 
 export default function OrdersPage() {
@@ -48,7 +49,8 @@ export default function OrdersPage() {
           status: (o.status as OrderStatus) || 'new',
           payment_status: (o.payment_status as PaymentStatus) || 'paid',
           items: Array.isArray(o.items) ? o.items : [{ name: 'WhatsApp Cart Order', quantity: 1 }],
-          created_at: 'Just now',
+          created_at: o.created_at,
+          is_cart: Boolean(o.is_cart),
         }));
         setOrders(mapped);
         setIsBackendConnected(true);
@@ -68,7 +70,10 @@ export default function OrdersPage() {
     loadOrders();
   }, []);
 
-  const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
+  const handleUpdateStatus = async (
+    orderId: string,
+    newStatus: Exclude<OrderStatus, 'pending'>
+  ) => {
     const prevOrders = [...orders];
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
@@ -109,7 +114,7 @@ export default function OrdersPage() {
     [orders]
   );
   const pendingFulfillmentCount = useMemo(
-    () => orders.filter((o) => o.status === 'new' || o.status === 'processing').length,
+    () => orders.filter((o) => o.status === 'pending' || o.status === 'new' || o.status === 'processing').length,
     [orders]
   );
   const deliveredCount = useMemo(
@@ -209,6 +214,7 @@ export default function OrdersPage() {
           {(
             [
               { id: 'all', label: 'All' },
+              { id: 'pending', label: 'Pending' },
               { id: 'new', label: 'New' },
               { id: 'processing', label: 'Processing' },
               { id: 'shipped', label: 'Shipped' },
@@ -309,19 +315,28 @@ export default function OrdersPage() {
 
                       {/* Status Selector */}
                       <td className="py-3 px-4">
-                        <select
-                          value={order.status}
-                          onChange={(e) =>
-                            handleUpdateStatus(order.id, e.target.value as OrderStatus)
-                          }
-                          className="text-xs font-medium rounded px-2 py-1 bg-white border border-slate-300 focus:outline-none focus:border-slate-900 cursor-pointer"
-                        >
-                          <option value="new">New</option>
-                          <option value="processing">Processing</option>
-                          <option value="shipped">Shipped</option>
-                          <option value="delivered">Delivered</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
+                        {order.is_cart ? (
+                          <span className="inline-flex px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
+                            Pending cart
+                          </span>
+                        ) : (
+                          <select
+                            value={order.status}
+                            onChange={(e) =>
+                              handleUpdateStatus(
+                                order.id,
+                                e.target.value as Exclude<OrderStatus, 'pending'>
+                              )
+                            }
+                            className="text-xs font-medium rounded px-2 py-1 bg-white border border-slate-300 focus:outline-none focus:border-slate-900 cursor-pointer"
+                          >
+                            <option value="new">New</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        )}
                       </td>
                     </tr>
                   );

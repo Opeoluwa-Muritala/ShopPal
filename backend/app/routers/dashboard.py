@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Account, Order, Product
 from app.db.session import get_db
+from app.routers.orders import pending_cart_rows
 from app.services.auth import get_current_account
 
 router = APIRouter(prefix="/api/dashboard", tags=["Frontend Dashboard"])
@@ -42,6 +43,7 @@ def dashboard_summary(
         .order_by(Order.created_at.desc())
         .limit(100)
     ).all()
+    pending_carts = pending_cart_rows(session, current_account.vendor_id)
     products = session.scalars(
         select(Product)
         .where(Product.vendor_id == current_account.vendor_id)
@@ -82,7 +84,7 @@ def dashboard_summary(
     product_rows.sort(key=lambda item: item["revenue"], reverse=True)
 
     order_rows = []
-    for order in orders[:5]:
+    for order in orders:
         item_names = []
         for item in order.items or []:
             if isinstance(item, dict) and item.get("name"):
@@ -95,11 +97,23 @@ def dashboard_summary(
             "status": str(order.status or "new").replace("_", " ").title(),
             "timestamp": order.created_at.isoformat() if order.created_at else None,
             "paystackRef": order.paystack_ref,
+            "isCart": False,
         })
+    order_rows.extend({
+        "id": row["order_code"],
+        "customerPhone": row["customer_phone"],
+        "items": ", ".join(item["name"] for item in row["items"]),
+        "total": float(row["total"]),
+        "status": "Pending",
+        "timestamp": row["created_at"],
+        "paystackRef": None,
+        "isCart": True,
+    } for row in pending_carts)
+    order_rows.sort(key=lambda row: row.get("timestamp") or "", reverse=True)
 
     return {
         "stats": {
-            "totalOrders": len(orders),
+                "totalOrders": len(orders) + len(pending_carts),
             "totalRevenue": float(total_revenue),
             "commission": float(total_revenue * Decimal("0.02")),
             "repeatCustomers": repeat_customers,
@@ -107,6 +121,6 @@ def dashboard_summary(
             "revenueTrend": "Live data",
             "customersTrend": "Live data",
         },
-        "orders": order_rows,
+        "orders": order_rows[:5],
         "products": product_rows[:10],
     }
