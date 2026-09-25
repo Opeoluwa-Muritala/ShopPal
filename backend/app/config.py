@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
     frontend_api_key: SecretStr = SecretStr("")
+    # Comma-separated browser origins allowed to call the vendor API.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # Meta WhatsApp Cloud API webhook authentication
     whatsapp_verify_token: SecretStr = SecretStr("")

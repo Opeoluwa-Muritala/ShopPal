@@ -73,7 +73,14 @@ def login(
             secret = settings.jwt_secret.get_secret_value()
             access = create_access_token("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "owner", secret)
             refresh = secrets.token_urlsafe(48)
-            return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+            return {
+                "access_token": access,
+                "refresh_token": refresh,
+                "token_type": "bearer",
+                "account_id": "00000000-0000-0000-0000-000000000001",
+                "vendor_id": "00000000-0000-0000-0000-000000000002",
+                "role": "owner",
+            }
         else:
             record_failed_login(rate_limit_key)
             raise HTTPException(
@@ -117,6 +124,9 @@ def login(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
+        "account_id": str(account.id),
+        "vendor_id": str(account.vendor_id),
+        "role": account.role,
     }
 
 

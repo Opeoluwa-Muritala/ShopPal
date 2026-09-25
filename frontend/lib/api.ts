@@ -10,7 +10,11 @@ import {
   getFrontendApiKey,
 } from './auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  'http://localhost:8000'
+).replace(/\/$/, '');
 
 export interface ApiResponse<T> {
   data?: T;
@@ -164,7 +168,14 @@ export async function apiClient<T>(
 
 export const authApi = {
   login: async (body: { email: string; password: string }) => {
-    return apiClient<{ access_token: string; refresh_token: string; token_type: string }>(
+    return apiClient<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      account_id?: string;
+      vendor_id?: string;
+      role?: string;
+    }>(
       '/api/auth/login',
       {
         method: 'POST',
@@ -174,7 +185,14 @@ export const authApi = {
   },
 
   refresh: async (refreshToken: string) => {
-    return apiClient<{ access_token: string; refresh_token: string; token_type: string }>(
+    return apiClient<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      account_id?: string;
+      vendor_id?: string;
+      role?: string;
+    }>(
       '/api/auth/refresh',
       {
         method: 'POST',
