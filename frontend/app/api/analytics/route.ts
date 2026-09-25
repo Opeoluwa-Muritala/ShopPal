@@ -7,8 +7,13 @@ export async function GET(request: NextRequest) {
   const customFrom = searchParams.get('from');
   const customTo = searchParams.get('to');
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const apiKey = process.env.NEXT_PUBLIC_FRONTEND_API_KEY || 'nm_frontend_key_prod_v06';
+  const backendUrl = (
+    process.env.BACKEND_INTERNAL_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    'http://localhost:8000'
+  ).replace(/\/$/, '');
+  const apiKey = process.env.FRONTEND_API_KEY || process.env.NEXT_PUBLIC_FRONTEND_API_KEY || '';
 
   let liveOrders: any[] = [];
 

@@ -123,7 +123,7 @@ export function getFrontendApiKey(): string {
     const saved = localStorage.getItem(API_KEY_STORAGE);
     if (saved) return saved;
   }
-  return process.env.NEXT_PUBLIC_FRONTEND_API_KEY || 'frontend-default-key';
+  return process.env.NEXT_PUBLIC_FRONTEND_API_KEY || '';
 }
 
 /**

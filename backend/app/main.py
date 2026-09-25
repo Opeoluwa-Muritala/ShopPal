@@ -3,12 +3,14 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.config import get_settings
 from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
+    dashboard,
     auth,
     health,
     logs,
@@ -77,6 +79,19 @@ def create_app() -> FastAPI:
         ],
     )
 
+    configured_origins = [
+        origin.strip().rstrip("/")
+        for origin in get_settings().cors_origins.split(",")
+        if origin.strip()
+    ]
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=configured_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    )
+
     # Global timing and structured request logging middleware
     @application.middleware("http")
     async def log_requests_middleware(request: Request, call_next):
@@ -140,6 +155,7 @@ def create_app() -> FastAPI:
     application.include_router(vendors.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
     application.include_router(accounts.router, dependencies=frontend_dependencies)
+    application.include_router(dashboard.router, dependencies=frontend_dependencies)
     application.include_router(orders.router, dependencies=frontend_dependencies)
     application.include_router(products.router, dependencies=frontend_dependencies)
     return application
