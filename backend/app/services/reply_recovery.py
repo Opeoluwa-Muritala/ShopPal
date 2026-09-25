@@ -22,7 +22,7 @@ from app.db.models import (
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
-from app.services.llm import GemmaError, LLMService
+from app.services.llm import GemmaError, LLMService, ai_cooldown_active
 from app.services.quick_replies import ai_failure_reply, quick_reply
 from app.services.transcription import TranscriptionError, transcribe_audio
 
@@ -245,7 +245,13 @@ def generate_reply(session, job, owner, settings):
         ]
     )
     if not job.pending_action and not job.transcript:
-        instant = quick_reply(session, vendor, [body for _, body in queued_messages] + [message.body])
+        instant = quick_reply(
+            session,
+            vendor,
+            [body for _, body in queued_messages] + [message.body],
+            customer_phone=job.customer_phone,
+            history=history,
+        )
         if instant:
             job.pending_action = {"reply": instant}
     checkpoint(session, job, owner)
@@ -265,6 +271,11 @@ def generate_reply(session, job, owner, settings):
             transcript = list(job.transcript)
             session.commit()
             service = service or LLMService(settings)
+            if ai_cooldown_active():
+                cooldown_error = GemmaError("Customer assistant cooldown is active")
+                cooldown_error.provider = "openrouter"
+                cooldown_error.status_code = 500
+                raise cooldown_error
             action = validate_action(
                 service.next_action(customer_text, history, transcript)
             )
@@ -275,6 +286,19 @@ def generate_reply(session, job, owner, settings):
         if "reply" in action:
             job.reply_text = ensure_payment_account(action["reply"], job.transcript)
             job.pending_action = None
+            # Several workers can finish different messages for one customer while
+            # an AI request is in flight. Refresh and lock the row before merging;
+            # otherwise a later worker can overwrite the previous conversation
+            # history and the model loses product/quantity context.
+            conversation = session.scalar(
+                select(Conversation)
+                .where(
+                    Conversation.vendor_id == vendor.id,
+                    Conversation.customer_phone == job.customer_phone,
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            )
             history_rows = [
                 *[
                     {"role": "user", "content": body, "message_id": message_id}
@@ -535,6 +559,9 @@ def process_claim(engine, job_id, settings):
                     guard()
                     if job.lease_owner != owner:
                         return False
+                    if job.transcript or job.pending_action:
+                        fail(session, job, "gemma_unavailable")
+                        return True
                     code = getattr(exc, "status_code", None)
                     vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
                     inbound = session.scalar(select(WhatsAppMessage).where(
@@ -566,6 +593,9 @@ def process_claim(engine, job_id, settings):
                     guard()
                     if job.lease_owner != owner:
                         return False
+                    if job.transcript or job.pending_action:
+                        fail(session, job, "processing_failed")
+                        return True
                     logger.error(
                         "Reply job processing failed",
                         extra={
