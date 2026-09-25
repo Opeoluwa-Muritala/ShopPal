@@ -52,6 +52,14 @@ customer explicitly asks for options.
 Customers may select products by number rather than name. If a customer replies with a
 list number, use the preceding catalog list to identify it and ask for quantity when it
 is missing; never require the customer to repeat the product name.
+Interpret natural variations of product and quantity requests, including quantity-first,
+product-first, abbreviated, conversational, and number-word phrasing (for example,
+"ten of the roses", "make that four midnight musk", "I will take 3 from item 5", or
+"add the fifth one, three please"). When the immediately preceding assistant message
+asks how many, treat the latest quantity-only message as the answer to that question.
+Use the latest catalog and conversation context to resolve references such as "that one",
+"the last item", or "the roses"; ask one concise clarification only when more than one
+product or quantity remains genuinely possible.
 When a selected product is already in the cart, add the requested quantity to its
 existing quantity automatically. Use the resulting cart totals in your confirmation
 and tell the customer that the quantity was increased. If the requested quantity would

@@ -1,6 +1,7 @@
 """Vendor-scoped orders router protected by JWT authentication and strict tenant isolation."""
 
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -10,13 +11,63 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import Account, Order
+from app.db.models import Account, Cart, Order
 from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.auth import get_current_account
 from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/api/orders", tags=["Frontend Orders"])
+
+
+def _cart_item_rows(items: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]], Decimal]:
+    rows: list[dict[str, Any]] = []
+    total = Decimal("0.00")
+    for item in items or []:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        try:
+            quantity = int(item.get("qty", item.get("quantity", 0)))
+            unit_price = Decimal(str(item.get("price", item.get("unit_price", 0))))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if quantity < 1 or unit_price < 0:
+            continue
+        rows.append({
+            "product_id": item.get("product_id"),
+            "name": str(item["name"]),
+            "quantity": quantity,
+            "unit_price": str(unit_price),
+            "subtotal": str(unit_price * quantity),
+        })
+        total += unit_price * quantity
+    return rows, total.quantize(Decimal("0.01"))
+
+
+def pending_cart_rows(session: Session, vendor_id) -> list[dict[str, Any]]:
+    """Expose active, non-empty carts as read-only pending dashboard orders."""
+    carts = session.scalars(
+        select(Cart)
+        .where(Cart.vendor_id == vendor_id, Cart.state == "active")
+        .order_by(Cart.updated_at.desc())
+    ).all()
+    rows = []
+    for cart in carts:
+        items, total = _cart_item_rows(cart.items)
+        if not items:
+            continue
+        rows.append({
+            "id": f"cart-{cart.id}",
+            "order_code": f"CART-{str(cart.id).replace('-', '')[:8].upper()}",
+            "customer_phone": cart.customer_phone,
+            "total": str(total),
+            "status": "pending",
+            "payment_status": "pending",
+            "items": items,
+            "created_at": cart.updated_at.isoformat() if cart.updated_at else None,
+            "is_cart": True,
+        })
+    return rows
 
 
 class OrderUpdateSchema(BaseModel):
@@ -41,20 +92,23 @@ def list_vendor_orders(
 
     stmt = select(Order).where(Order.vendor_id == current_account.vendor_id)
     orders = session.scalars(stmt).all()
+    pending_carts = pending_cart_rows(session, current_account.vendor_id)
     return {
         "vendor_id": str(current_account.vendor_id),
-        "count": len(orders),
+        "count": len(orders) + len(pending_carts),
         "orders": [
-            {
+            *[{
                 "id": str(o.id),
                 "order_code": o.order_code,
                 "customer_phone": o.customer_phone,
                 "total": str(o.total),
                 "status": o.status,
                 "payment_status": o.payment_status,
-                "items": o.items,
-            }
-            for o in orders
+                "items": _cart_item_rows(o.items)[0],
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+                "is_cart": False,
+            } for o in orders],
+            *pending_carts,
         ],
     }
 

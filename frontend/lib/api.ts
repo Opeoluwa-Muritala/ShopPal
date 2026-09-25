@@ -353,6 +353,8 @@ export const ordersApi = {
         status: string;
         payment_status: string;
         items: any[];
+        created_at?: string | null;
+        is_cart?: boolean;
       }>;
     }>('/api/orders');
   },
