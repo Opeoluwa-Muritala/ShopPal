@@ -1,5 +1,6 @@
 """Meta WhatsApp Cloud API verification and event receiver."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -27,6 +28,7 @@ from app.db.models import ReplyJob, WhatsAppMessage
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.security import check_phone_rate_limit, mask_phone
+from app.services.whatsapp import mark_whatsapp_message_read
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
@@ -137,7 +139,11 @@ async def receive_whatsapp_webhook(
         raise HTTPException(status_code=400, detail="Malformed webhook payload")
     try:
         _validate_payload(payload)
-        await to_thread(process_whatsapp_payload, payload, settings)
+        read_receipts = await to_thread(process_whatsapp_payload, payload, settings)
+        for message_id, phone_number_id in read_receipts:
+            asyncio.create_task(
+                mark_whatsapp_message_read(message_id, phone_number_id, settings)
+            )
         wakeup = getattr(request.app.state, "reply_wakeup", None)
         if wakeup is not None:
             wakeup.set()
@@ -165,6 +171,13 @@ def _validate_payload(payload):
             metadata = value.get("metadata", {})
             if not isinstance(metadata, dict):
                 raise ValueError("Malformed metadata")
+            phone_number_id = metadata.get("phone_number_id", "")
+            if value.get("messages") and (
+                not isinstance(phone_number_id, str)
+                or not phone_number_id.isdigit()
+                or len(phone_number_id) > 40
+            ):
+                raise ValueError("Malformed phone number id")
             for field in ("phone_number_id", "display_phone_number"):
                 if not isinstance(metadata.get(field, ""), str) or len(metadata.get(field, "")) > 40:
                     raise ValueError("Malformed sender")
@@ -203,19 +216,25 @@ def _message_body(message: dict[str, Any]) -> str | None:
 
 def process_whatsapp_payload(
     payload: dict[str, Any], settings: Settings | None = None
-) -> None:
+) -> list[tuple[str, str]]:
     """Commit incoming events and jobs before acknowledging; never call AI here."""
     settings = settings or get_settings()
     try:
         with Session(get_engine()) as session:
+            read_receipts: list[tuple[str, str]] = []
             for entry in payload.get("entry", []):
                 for change in entry.get("changes", []):
                     if change.get("field") != "messages":
                         continue
                     value = change.get("value", {})
-                    _persist_messages(session, value)
+                    for _, message in _persist_messages(session, value):
+                        read_receipts.append((
+                            str(message["id"]),
+                            str(value.get("metadata", {}).get("phone_number_id", "")),
+                        ))
                     _persist_statuses(session, value)
             session.commit()
+            return read_receipts
     except Exception:
         logger.error(
             "Meta WhatsApp background persistence failed",
