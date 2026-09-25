@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     'http://localhost:8000'
   ).replace(/\/$/, '');
-  const apiKey = process.env.FRONTEND_API_KEY || process.env.NEXT_PUBLIC_FRONTEND_API_KEY || '';
+  const apiKey = process.env.NEXT_PRIVATE_FRONTEND_API_KEY || '';
 
   let liveOrders: any[] = [];
 
