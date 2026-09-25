@@ -10,8 +10,8 @@ from app.config import get_settings
 from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
-    dashboard,
     auth,
+    dashboard,
     health,
     logs,
     orders,
