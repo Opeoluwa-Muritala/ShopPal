@@ -10,11 +10,9 @@ import {
   getFrontendApiKey,
 } from './auth';
 
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  'http://localhost:8000'
-).replace(/\/$/, '');
+// Requests go through the Next.js server proxy so NEXT_PRIVATE_FRONTEND_API_KEY remains
+// server-only. The proxy forwards them to the configured backend.
+const API_BASE_URL = '/api/backend';
 
 export interface ApiResponse<T> {
   data?: T;

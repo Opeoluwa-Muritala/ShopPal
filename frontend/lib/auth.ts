@@ -123,7 +123,9 @@ export function getFrontendApiKey(): string {
     const saved = localStorage.getItem(API_KEY_STORAGE);
     if (saved) return saved;
   }
-  return process.env.NEXT_PUBLIC_FRONTEND_API_KEY || '';
+  // The shared API key is injected by the server-side proxy. Never bundle it
+  // into browser JavaScript through a NEXT_PUBLIC_ variable.
+  return '';
 }
 
 /**
