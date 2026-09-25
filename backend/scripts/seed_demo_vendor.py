@@ -1,8 +1,8 @@
 """Create or refresh the ShopPal demo vendor used for frontend login testing."""
 
+import sys
 from decimal import Decimal
 from pathlib import Path
-import sys
 
 from sqlalchemy import select
 
@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db.models import Account, Product, Vendor  # noqa: E402
 from app.db.session import get_engine  # noqa: E402
 from app.services.auth import hash_password  # noqa: E402
-
 
 EMAIL = "devtimmyoyin@gmail.com"
 DEMO_PASSWORD = "DemoShopPal123!"
