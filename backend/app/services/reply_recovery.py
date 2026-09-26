@@ -104,15 +104,15 @@ def validate_action(action):
     return action
 
 
-def ensure_payment_account(reply_text, transcript):
-    """Keep the payment account visible after an address-backed checkout."""
+def ensure_payment_link(reply_text, transcript):
+    """Keep the Paystack checkout URL visible after checkout."""
     for item in reversed(transcript or []):
         action = item.get("action", {}) if isinstance(item, dict) else {}
         result = item.get("result", {}) if isinstance(item, dict) else {}
-        account = result.get("payment_account") if isinstance(result, dict) else None
-        if action.get("tool") == "checkoutCart" and account:
-            if str(account) not in reply_text:
-                return f"{reply_text}\n\nPayment account number: {account}"
+        payment_url = result.get("payment_url") if isinstance(result, dict) else None
+        if action.get("tool") == "checkoutCart" and payment_url:
+            if str(payment_url) not in reply_text:
+                return f"{reply_text}\n\nPay securely here: {payment_url}"
             break
     return reply_text
 
@@ -284,7 +284,7 @@ def generate_reply(session, job, owner, settings):
             checkpoint(session, job, owner)
         action = validate_action(job.pending_action)
         if "reply" in action:
-            job.reply_text = ensure_payment_account(action["reply"], job.transcript)
+            job.reply_text = ensure_payment_link(action["reply"], job.transcript)
             job.pending_action = None
             # Several workers can finish different messages for one customer while
             # an AI request is in flight. Refresh and lock the row before merging;

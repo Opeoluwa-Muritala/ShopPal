@@ -17,7 +17,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -26,6 +26,7 @@ from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService
+from app.services.paystack import PaystackError, verify_transaction
 from app.services.security import (
     check_phone_rate_limit,
     is_paystack_event_processed,
@@ -278,19 +279,39 @@ async def paystack_webhook(
         return {"status": "ignored_duplicate", "event_id": event_id}
 
     if event_type == "charge.success" and reference and session is not None:
-        # Mark order as paid
-        stmt = (
-            update(Order)
-            .where(Order.order_code == reference)
-            .values(
-                payment_status="paid",
-                status="processing",
-                payment_confirmed_at=datetime.now(UTC),
-                payment_confirmation_source="paystack_webhook",
-            )
+        order = session.scalar(
+            select(Order).where(Order.order_code == reference).with_for_update()
         )
-        session.execute(stmt)
-        session.commit()
+        # Ignore valid Paystack events for orders that do not belong to this app.
+        # This also keeps webhook handling idempotent for already-removed orders.
+        if isinstance(order, Order):
+            try:
+                verified = await to_thread(verify_transaction, reference, settings)
+            except PaystackError:
+                logger.warning(
+                    "Paystack transaction verification failed",
+                    extra={"step": "paystack_transaction_verification", "status": "retryable"},
+                )
+                raise HTTPException(status_code=503, detail="Payment verification unavailable") from None
+            verified_reference = verified.get("reference")
+            verified_status = verified.get("status")
+            verified_amount = verified.get("amount")
+            expected_amount = int((order.total * 100).to_integral_exact())
+            if (
+                verified_reference != reference
+                or verified_status != "success"
+                or verified_amount != expected_amount
+            ):
+                logger.warning(
+                    "Paystack transaction did not match the order",
+                    extra={"step": "paystack_transaction_verification", "status": "rejected"},
+                )
+                raise HTTPException(status_code=400, detail="Payment verification failed")
+            order.payment_status = "paid"
+            order.status = "processing"
+            order.payment_confirmed_at = datetime.now(UTC)
+            order.payment_confirmation_source = "paystack_webhook"
+            session.commit()
 
     # Record event ID in idempotency store
     mark_paystack_event_processed(event_id)

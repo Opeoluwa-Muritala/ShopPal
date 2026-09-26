@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -198,6 +199,26 @@ class WhatsAppMessage(Identity, Base):
     wa_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     received_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
+class WhatsAppMedia(Identity, Base):
+    __tablename__ = "whatsapp_media"
+    __table_args__ = (
+        UniqueConstraint("wa_media_id"),
+        Index("idx_whatsapp_media_order_id", "order_id"),
+    )
+
+    order_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL")
+    )
+    wa_media_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    message_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    transcript: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
 
