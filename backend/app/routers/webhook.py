@@ -296,11 +296,23 @@ async def paystack_webhook(
             verified_reference = verified.get("reference")
             verified_status = verified.get("status")
             verified_amount = verified.get("amount")
+            requested_amount = verified.get("requested_amount")
+            verified_currency = str(verified.get("currency") or "").upper()
             expected_amount = int((order.total * 100).to_integral_exact())
+            try:
+                amount_requested_by_customer = int(
+                    requested_amount if requested_amount is not None else verified_amount
+                )
+                amount_charged = int(verified_amount)
+            except (TypeError, ValueError):
+                amount_requested_by_customer = -1
+                amount_charged = -1
             if (
                 verified_reference != reference
                 or verified_status != "success"
-                or verified_amount != expected_amount
+                or verified_currency != "NGN"
+                or amount_requested_by_customer != expected_amount
+                or amount_charged < expected_amount
             ):
                 logger.warning(
                     "Paystack transaction did not match the order",
