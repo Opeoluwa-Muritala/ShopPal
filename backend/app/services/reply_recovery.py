@@ -418,7 +418,7 @@ def send_reply(session, job, owner, settings):
     else:
         payload.update({
             "type": "text",
-            "text": {"preview_url": False, "body": job.reply_text},
+            "text": {"preview_url": True, "body": job.reply_text},
             "biz_opaque_callback_data": identifier,
         })
     checkpoint(session, job, owner)
