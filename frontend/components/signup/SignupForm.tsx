@@ -162,8 +162,8 @@ export default function SignupForm() {
 
       setSuccessData({
         vendor_id: assignedVendorId,
-        bot_number: '+1 415 523 8886',
-        test_link: `https://wa.me/14155238886?text=join%20${assignedVendorId}`,
+        bot_number: res.data?.bot_number || res.data?.whatsapp_number || cleanWhatsapp,
+        test_link: `https://wa.me/${(res.data?.bot_number || res.data?.whatsapp_number || cleanWhatsapp).replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(returnedBusinessName)}`,
         sandbox_code: assignedVendorId,
       });
       setCurrentStep(4);
@@ -180,8 +180,8 @@ export default function SignupForm() {
       });
       setSuccessData({
         vendor_id: fallbackId,
-        bot_number: '+1 415 523 8886',
-        test_link: `https://wa.me/14155238886?text=join%20${fallbackId}`,
+        bot_number: cleanWhatsapp,
+        test_link: `https://wa.me/${cleanWhatsapp}?text=Hello%20${encodeURIComponent(formData.business_name || formData.name)}`,
         sandbox_code: 'bold-elephant',
       });
       setCurrentStep(4);

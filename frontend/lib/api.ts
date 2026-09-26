@@ -281,6 +281,8 @@ export const vendorsApi = {
       business_name: string;
       email: string;
       phone: string;
+      whatsapp_number: string;
+      bot_number: string;
       role: string;
     }>('/api/vendors/signup', {
       method: 'POST',
