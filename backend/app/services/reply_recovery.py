@@ -32,6 +32,20 @@ DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
 
 
+def recent_conversation_context(history: list[dict], per_role: int = 3) -> list[dict]:
+    """Keep the latest three customer and assistant messages in chronological order."""
+    if per_role < 1:
+        return []
+    selected_indexes: set[int] = set()
+    for role in ("user", "assistant"):
+        role_indexes = [
+            index for index, item in enumerate(history)
+            if isinstance(item, dict) and item.get("role") == role
+        ]
+        selected_indexes.update(role_indexes[-per_role:])
+    return [item for index, item in enumerate(history) if index in selected_indexes]
+
+
 class LeaseLost(RuntimeError):
     pass
 
@@ -188,7 +202,7 @@ def generate_reply(session, job, owner, settings):
         )
         session.add(conversation)
         session.flush()
-    history = list(conversation.message_history or [])[-12:]
+    history = recent_conversation_context(list(conversation.message_history or []))
     message = session.scalar(
         select(WhatsAppMessage).where(WhatsAppMessage.message_id == job.message_id)
     )
@@ -418,7 +432,7 @@ def send_reply(session, job, owner, settings):
     else:
         payload.update({
             "type": "text",
-            "text": {"preview_url": False, "body": job.reply_text},
+            "text": {"preview_url": True, "body": job.reply_text},
             "biz_opaque_callback_data": identifier,
         })
     checkpoint(session, job, owner)
