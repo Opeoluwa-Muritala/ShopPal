@@ -26,7 +26,7 @@ from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService, ai_cooldown_active
 from app.services.quick_replies import ai_failure_reply, quick_reply
-from app.services.transcription import TranscriptionError, transcribe_audio
+from app.services.transcription import TranscriptionError
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
