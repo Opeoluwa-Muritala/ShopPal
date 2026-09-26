@@ -69,7 +69,11 @@ def quick_reply(session, vendor, messages, customer_phone=None, history=None):
     for number, product in enumerate(products, start=1):
         # Keep database text inside one WhatsApp list entry.
         name = re.sub(r"[*_~`]", "", " ".join(product.name.split()))[:120]
-        lines.append(f"{number}. {name} — ₦{product.price:,.2f}")
+        line = f"{number}. {name} — ₦{product.price:,.2f}"
+        image_url = getattr(product, "image_url", None)
+        if image_url:
+            line += f"\n{image_url}"
+        lines.append(line)
     lines.extend(["", templates["catalog_footer"]])
     return "\n".join(lines)
 

@@ -82,6 +82,7 @@ def test_vendor_signup_creates_vendor_and_owner_account():
         assert data["role"] == "owner"
         assert data["email"] == "ifeoma@market.ng"
         assert data["status"] == "active"
+        assert data["bot_number"] == "08011223344"
         assert "password" not in data
         assert "password_hash" not in data
 
@@ -92,6 +93,7 @@ def test_vendor_signup_creates_vendor_and_owner_account():
         account_created = next(i for i in added_instances if isinstance(i, Account))
 
         assert vendor_created.name == "Ifeoma Stores"
+        assert vendor_created.bot_number == "08011223344"
         assert account_created.role == "owner"
         assert account_created.email == "ifeoma@market.ng"
         assert verify_password("StrongPassword99!", account_created.password_hash)
