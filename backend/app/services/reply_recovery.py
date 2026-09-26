@@ -14,9 +14,11 @@ from sqlalchemy.orm import Session, aliased
 from app.config import get_settings
 from app.db.models import (
     Conversation,
+    Product,
     ReplyJob,
     ReplyToolResult,
     Vendor,
+    WhatsAppMedia,
     WhatsAppMessage,
 )
 from app.db.session import get_engine
@@ -46,26 +48,15 @@ def transcribe_whatsapp_audio(message, settings):
     payload = message.raw_payload or {}
     audio = payload.get("audio") if isinstance(payload, dict) else None
     media_id = audio.get("id") if isinstance(audio, dict) else None
-    token = settings.whatsapp_access_token.get_secret_value()
-    if not media_id or not token:
+    if not media_id:
         raise TranscriptionError("Voice transcription is unavailable")
-    response = httpx.get(
-        f"https://graph.facebook.com/v25.0/{media_id}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
-    )
-    response.raise_for_status()
-    media_url = response.json().get("url")
-    if not isinstance(media_url, str) or not media_url.startswith("https://"):
-        raise TranscriptionError("Voice media URL is invalid")
-    media = httpx.get(
-        media_url,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=20,
-    )
-    media.raise_for_status()
-    content_type = media.headers.get("content-type", "audio/ogg").split(";", 1)[0]
-    return transcribe_audio(media.content, content_type, settings)
+    with Session(get_engine()) as media_session:
+        media = media_session.scalar(
+            select(WhatsAppMedia).where(WhatsAppMedia.wa_media_id == str(media_id))
+        )
+        if media is None or not media.transcript:
+            raise TranscriptionError("Voice transcription is still processing")
+        return media.transcript
 
 
 def validate_action(action):
@@ -238,6 +229,33 @@ def generate_reply(session, job, owner, settings):
             session.flush()
         else:
             message.body = message.body[len(transcript_prefix):]
+    if message.message_type == "image":
+        payload = message.raw_payload or {}
+        image = payload.get("image") if isinstance(payload, dict) else None
+        media_id = image.get("id") if isinstance(image, dict) else None
+        media = session.scalar(
+            select(WhatsAppMedia).where(WhatsAppMedia.wa_media_id == str(media_id))
+        ) if media_id else None
+        if media is None or not media.content:
+            raise GemmaError("Image media is still processing")
+        catalog = [
+            {
+                "id": str(product.id),
+                "name": product.name,
+                "price": str(product.price),
+                "description": product.description,
+            }
+            for product in session.scalars(
+                select(Product).where(
+                    Product.vendor_id == vendor.id,
+                    Product.status == "active",
+                )
+            ).all()
+        ]
+        image_reply = LLMService(settings).match_product_image(
+            media.content, media.mime_type, catalog
+        )
+        job.pending_action = {"reply": image_reply}
     customer_text = "\n".join(
         [
             *(f"Earlier queued customer message: {body}" for _, body in queued_messages),
