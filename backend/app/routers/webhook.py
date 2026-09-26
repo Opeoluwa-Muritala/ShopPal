@@ -37,6 +37,7 @@ from app.services.security import (
     verify_twilio_signature,
 )
 from app.services.transcription import TranscriptionError, transcribe_audio
+from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/webhook", tags=["Provider Webhooks"])
 
@@ -296,22 +297,48 @@ async def paystack_webhook(
             verified_reference = verified.get("reference")
             verified_status = verified.get("status")
             verified_amount = verified.get("amount")
+            requested_amount = verified.get("requested_amount")
+            verified_currency = str(verified.get("currency") or "").upper()
             expected_amount = int((order.total * 100).to_integral_exact())
+            try:
+                amount_requested_by_customer = int(
+                    requested_amount if requested_amount is not None else verified_amount
+                )
+                amount_charged = int(verified_amount)
+            except (TypeError, ValueError):
+                amount_requested_by_customer = -1
+                amount_charged = -1
             if (
                 verified_reference != reference
                 or verified_status != "success"
-                or verified_amount != expected_amount
+                or verified_currency != "NGN"
+                or amount_requested_by_customer != expected_amount
+                or amount_charged < expected_amount
             ):
                 logger.warning(
                     "Paystack transaction did not match the order",
                     extra={"step": "paystack_transaction_verification", "status": "rejected"},
                 )
                 raise HTTPException(status_code=400, detail="Payment verification failed")
+            was_already_paid = order.payment_status == "paid"
             order.payment_status = "paid"
             order.status = "processing"
             order.payment_confirmed_at = datetime.now(UTC)
             order.payment_confirmation_source = "paystack_webhook"
             session.commit()
+            if not was_already_paid and order.customer_phone:
+                try:
+                    await send_whatsapp_text(
+                        order.customer_phone,
+                        f"Payment received for order {order.order_code}. Your order is now being processed.",
+                        settings,
+                    )
+                except Exception:
+                    logger.error("Payment verified but customer notification failed", extra={
+                        "step": "paystack_payment_notification",
+                        "order_code": order.order_code,
+                        "error_type": "whatsapp_send_failed",
+                    })
 
     # Record event ID in idempotency store
     mark_paystack_event_processed(event_id)

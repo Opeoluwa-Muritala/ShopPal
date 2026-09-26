@@ -114,11 +114,12 @@ def list_vendor_orders(
 
 
 @router.patch("/{order_id}")
-def update_order_status(
+async def update_order_status(
     order_id: UUID,
     body: OrderUpdateSchema,
     current_account: Account = Depends(get_current_account),
     session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """
     Updates order status.
@@ -147,12 +148,38 @@ def update_order_status(
             detail="Access forbidden: you cannot modify orders belonging to another vendor",
         )
 
+    previous_status = order.status
     order.status = body.status
     session.commit()
+
+    notification_sent = False
+    if previous_status != body.status and order.customer_phone:
+        status_messages = {
+            "new": f"Your order {order.order_code} has been received and is now being reviewed.",
+            "processing": f"Your order {order.order_code} is now being processed.",
+            "shipped": f"Good news! Your order {order.order_code} has been shipped.",
+            "delivered": f"Your order {order.order_code} has been delivered. Thank you for shopping with us!",
+            "cancelled": f"Your order {order.order_code} has been cancelled. Please contact us if you need help.",
+        }
+        try:
+            await send_whatsapp_text(
+                order.customer_phone,
+                status_messages[body.status],
+                settings,
+            )
+            notification_sent = True
+        except Exception:
+            logger.error("Order status updated but customer notification failed", extra={
+                "step": "order_status_notification",
+                "order_code": order.order_code,
+                "status": body.status,
+                "error_type": "whatsapp_send_failed",
+            })
     return {
         "id": str(order.id),
         "order_code": order.order_code,
         "status": order.status,
+        "notification_sent": notification_sent,
         "updated": True,
     }
 

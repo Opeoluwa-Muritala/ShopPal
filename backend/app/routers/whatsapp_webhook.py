@@ -291,7 +291,7 @@ def _persist_messages(
         inserted_id = session.execute(statement).scalar_one_or_none()
         if inserted_id is not None:
             inserted.append((value, message))
-            if message.get("type") in {"text", "audio"}:
+            if message.get("type") in {"text", "audio", "image"}:
                 metadata = value.get("metadata", {})
                 phone = str(message.get("from", ""))
                 allowed = check_phone_rate_limit(phone)
