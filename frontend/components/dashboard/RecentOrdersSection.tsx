@@ -20,6 +20,7 @@ export interface DashboardOrder {
   items: string;
   total: number;
   status: OrderStatus;
+  paymentStatus?: string;
   timestamp: string;
   paystackRef?: string;
 }
@@ -174,7 +175,7 @@ export default function RecentOrdersSection({
                         {formatNaira(order.total)}
                       </td>
                       <td className="py-3 px-3">
-                        {getStatusBadge(order.status)}
+                        {getStatusBadge(order.paymentStatus === 'paid' ? 'Paid' : order.status)}
                       </td>
                       <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
                         {order.timestamp}

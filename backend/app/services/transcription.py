@@ -20,11 +20,19 @@ def transcribe_audio(
     if not audio:
         raise TranscriptionError("Voice note is empty")
 
+    extension = {
+        "audio/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/webm": ".webm",
+    }.get(content_type.lower(), ".ogg")
     try:
         response = httpx.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {api_key}"},
-            files={"file": ("voice-note", audio, content_type)},
+            files={"file": (f"voice-note{extension}", audio, content_type)},
             data={"model": settings.groq_transcription_model},
             timeout=30,
         )
