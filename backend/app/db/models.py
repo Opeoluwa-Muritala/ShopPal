@@ -67,6 +67,9 @@ class Product(Identity, Timestamps, Base):
     vendor_id: Mapped[UUID] = mapped_column(
         ForeignKey("vendors.id", ondelete="CASCADE")
     )
+    image_media_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("whatsapp_media.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(120))
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     stock: Mapped[int] = mapped_column(Integer, server_default=text("0"))

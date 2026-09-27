@@ -27,6 +27,7 @@ from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService, ai_cooldown_active
 from app.services.quick_replies import ai_failure_reply, quick_reply
 from app.services.transcription import TranscriptionError
+from app.services.whatsapp import send_whatsapp_product_image
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
@@ -86,6 +87,7 @@ def validate_action(action):
     name, args = action["tool"], action["arguments"]
     fields = {
         "searchProducts": {"query"},
+        "showProductImage": {"productId"},
         "viewCart": set(),
         "addToCart": {"productId", "quantity"},
         "updateCartItem": {"productId", "quantity"},
@@ -385,6 +387,8 @@ def generate_reply(session, job, owner, settings):
         ]
         job.pending_action = None
         # Tool writes, receipt, and agent checkpoint commit atomically.
+        if action["tool"] == "showProductImage" and cached.result.get("image_product_id"):
+            job.pending_action = {"reply": cached.result["caption"]}
         checkpoint(session, job, owner)
 
 
@@ -437,15 +441,37 @@ def send_reply(session, job, owner, settings):
         })
     checkpoint(session, job, owner)
     try:
-        response = httpx.post(
-            f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
-            headers={
-                "Authorization": "Bearer "
-                + settings.whatsapp_access_token.get_secret_value()
-            },
-            json=payload,
-            timeout=20,
-        )
+        image_request = next((entry.get("result", {}) for entry in reversed(job.transcript or [])
+                              if entry.get("action", {}).get("tool") == "showProductImage"
+                              and entry.get("result", {}).get("image_product_id")), None)
+        if image_request and not use_template:
+            # Re-authorize against the job's vendor before resolving stored bytes.
+            product = session.scalar(select(Product).where(
+                Product.id == UUID(image_request["image_product_id"]),
+                Product.vendor_id == job.vendor_id,
+                Product.status == "active",
+            ))
+            if product is None or product.image_media_id is None:
+                fail(session, job, "product_image_unavailable", permanent=True)
+                return
+            # This worker runs in a dedicated thread, outside the server event loop.
+            result = asyncio.run(send_whatsapp_product_image(
+                session, str(product.id), recipient, image_request["caption"],
+            ))
+            response = httpx.Response(
+                result.get("status_code", 503) if result.get("ok") is False else 200,
+                json=result,
+            )
+        else:
+            response = httpx.post(
+                f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
+                headers={
+                    "Authorization": "Bearer "
+                    + settings.whatsapp_access_token.get_secret_value()
+                },
+                json=payload,
+                timeout=20,
+            )
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
         session.refresh(job)
         if job.state != "sending":

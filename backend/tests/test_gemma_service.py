@@ -61,6 +61,7 @@ def test_gemma_executes_allowlisted_customer_tool_then_returns_reply():
 def test_gemma_tools_exclude_admin_and_dashboard_actions():
     names = {tool["name"] for tool in TOOL_DECLARATIONS}
     assert names == {
+        "showProductImage",
         "searchProducts",
         "viewCart",
         "addToCart",
