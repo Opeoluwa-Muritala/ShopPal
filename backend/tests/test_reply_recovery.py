@@ -327,6 +327,11 @@ def test_checkout_does_not_repeat_after_provider_failure(
     test_engine, setup_job, settings, monkeypatch
 ):
     identifier, product_id, vendor_id, _, phone = setup_job
+    payment = Mock(return_value={
+        "reference": "test-payment-reference",
+        "authorization_url": "https://checkout.paystack.com/test-checkout",
+    })
+    monkeypatch.setattr("app.services.customer_tools.initialize_transaction", payment)
     actions = Mock(
         side_effect=[
             {
@@ -353,6 +358,7 @@ def test_checkout_does_not_repeat_after_provider_failure(
             == 1
         )
         assert session.get(Product, product_id).stock == 4
+    payment.assert_called_once()
     assert row(test_engine, identifier).state == "accepted"
 
 
@@ -501,7 +507,9 @@ def test_ai_cooldown_creates_saved_message_without_ai_call(
     monkeypatch.setattr(recovery.httpx, "post", Mock(return_value=accepted()))
     recovery.process_claim(test_engine, setup_job[0], settings)
     job = row(test_engine, setup_job[0])
-    assert job.state == "accepted"
+    assert job.state == "needs_review"
+    assert job.accepted_at is not None
+    assert job.outbound_message_id is not None
     assert "See available products" in job.reply_text
     assert "break" not in job.reply_text.lower()
     agent.assert_not_called()

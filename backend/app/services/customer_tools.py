@@ -30,6 +30,7 @@ class CustomerToolDispatcher:
     def __call__(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handler = {
             "searchProducts": self.search_products,
+            "showProductImage": self.show_product_image,
             "viewCart": self.view_cart,
             "addToCart": self.add_to_cart,
             "updateCartItem": self.update_cart_item,
@@ -114,6 +115,12 @@ class CustomerToolDispatcher:
             "items": cart.items or [],
             "total": str(total.quantize(Decimal("0.01"))),
         }
+
+    def show_product_image(self, args: dict[str, Any]) -> dict[str, Any]:
+        product = self._product(str(args["productId"]))
+        if product is None or product.image_media_id is None:
+            return {"error": "A photo is unavailable for that product"}
+        return {"image_product_id": str(product.id), "caption": f"{product.name} — NGN {product.price:,.2f}"}
 
     def add_to_cart(self, args: dict[str, Any]) -> dict[str, Any]:
         product = self._product(str(args["productId"]))

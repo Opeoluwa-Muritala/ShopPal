@@ -61,6 +61,7 @@ def test_gemma_executes_allowlisted_customer_tool_then_returns_reply():
 def test_gemma_tools_exclude_admin_and_dashboard_actions():
     names = {tool["name"] for tool in TOOL_DECLARATIONS}
     assert names == {
+        "showProductImage",
         "searchProducts",
         "viewCart",
         "addToCart",
@@ -268,7 +269,7 @@ def test_image_match_uses_inline_image_and_catalog():
     inline = payload["contents"][0]["parts"][1]["inlineData"]
     assert inline["mimeType"] == "image/jpeg"
     assert inline["data"]
-    assert "Looks like our Bag (₦5000)" in reply
+    assert "couldn't confidently match" in reply
 
 
 @patch("app.services.transcription.httpx.post")
