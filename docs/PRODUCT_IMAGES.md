@@ -20,6 +20,10 @@ conversation's vendor. The worker rechecks ownership, uploads its stored bytes
 to Meta and sends an image message. The regular catalog remains text.
 Each outbound send performs a fresh upload; inbound media IDs are never reused.
 
+For inbound customer photos, the AI identifies a catalog product or asks for a
+clearer label/name if uncertain. The server derives availability and price from
+the catalog stock fields, distinguishing in-stock and out-of-stock matches.
+
 For direct backend use, after authorizing the selected product for the vendor:
 
 ```python
