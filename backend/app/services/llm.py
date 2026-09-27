@@ -15,6 +15,7 @@ from app.logging_conf import logger
 ToolDispatcher = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 TOOL_DECLARATIONS = [
+    {"name": "showProductImage", "description": "Show a perfume/product photo when the customer requests an image. Search products first and use its exact productId.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}}, "required": ["productId"]}},
     {"name": "searchProducts", "description": "Use for stock, catalog, availability, product, or price questions. Use an empty query to browse everything.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
     {"name": "viewCart", "description": "Use for 'my cart', 'show cart', or a bare 'checkout' before an address is supplied. Show server-calculated items and total.", "parameters": {"type": "object", "properties": {}}},
     {"name": "addToCart", "description": "Use when the customer selects a catalog item. Resolve names or list numbers from the latest search result and copy its exact productId; quantity is required.", "parameters": {"type": "object", "properties": {"productId": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1}}, "required": ["productId", "quantity"]}},

@@ -71,7 +71,7 @@ def quick_reply(session, vendor, messages, customer_phone=None, history=None):
         name = re.sub(r"[*_~`]", "", " ".join(product.name.split()))[:120]
         line = f"{number}. {name} — ₦{product.price:,.2f}"
         image_url = getattr(product, "image_url", None)
-        if image_url:
+        if image_url and image_url.startswith("https://"):
             line += f"\n{image_url}"
         lines.append(line)
     lines.extend(["", templates["catalog_footer"]])
