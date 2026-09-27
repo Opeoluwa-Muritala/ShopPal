@@ -157,6 +157,7 @@ async def twilio_whatsapp_webhook(
                         "id": str(product.id),
                         "name": product.name,
                         "price": str(product.price),
+                        "stock": product.stock,
                         "description": product.description,
                     }
                     for product in products

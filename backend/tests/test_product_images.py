@@ -170,3 +170,14 @@ def test_reply_worker_sends_stored_image(monkeypatch):
     assert job.state == "accepted"
     assert job.outbound_message_id == "wamid.image"
     sender.assert_awaited_once_with(db, str(product.id), job.customer_phone, "Perfume")
+
+
+@pytest.mark.parametrize("stock,expected", [(3, "in stock (3 available)"), (0, "out of stock"), (None, "couldn't confirm its stock")])
+def test_image_match_availability_comes_from_catalog(stock, expected):
+    from app.services.llm import LLMService
+
+    service = LLMService(Settings(_env_file=None))
+    service._post = Mock(return_value={"candidates": [{"content": {"parts": [{"text": json.dumps({"product_id": "p1", "confidence": "high", "stock": 999})}]}}]})
+    reply = service.match_product_image(b"image", "image/jpeg", [{"id": "p1", "name": "Perfume", "price": "9000", "stock": stock}])
+    assert expected in reply
+    assert "999" not in reply

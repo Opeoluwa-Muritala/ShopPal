@@ -259,6 +259,7 @@ def generate_reply(session, job, owner, settings):
                 "id": str(product.id),
                 "name": product.name,
                 "price": str(product.price),
+                "stock": product.stock,
                 "description": product.description,
             }
             for product in session.scalars(
