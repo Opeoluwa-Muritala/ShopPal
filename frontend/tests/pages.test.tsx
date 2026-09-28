@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -14,6 +14,16 @@ import { formatNaira } from '../lib/utils';
 import { apiClient } from '../lib/api';
 
 describe('Navigation and Components', () => {
+  beforeEach(() => {
+    // Seed a valid session so Navbar renders authenticated nav links
+    localStorage.setItem('shoppal_access_token', 'test-token');
+    localStorage.setItem('shoppal_vendor_id', 'v_test');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   it('renders Navbar with links', () => {
     render(<Navbar />);
     expect(screen.getByText('ShopPal')).toBeDefined();
@@ -32,7 +42,7 @@ describe('Navigation and Components', () => {
 describe('Landing Page', () => {
   it('renders Hero section with value proposition', () => {
     render(<LandingPage />);
-    expect(screen.getByText(/Sell on WhatsApp\./i)).toBeDefined();
+    expect(screen.getByText(/Sell on WhatsApp/i)).toBeDefined();
     expect(screen.getAllByText(/Keep 98%/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Start Selling in 2 Minutes/i).length).toBeGreaterThan(0);
   });

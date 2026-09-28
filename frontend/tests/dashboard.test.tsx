@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import StatsCard from '../components/dashboard/StatsCard';
 import TopNavBar from '../components/common/TopNavBar';
@@ -11,7 +11,7 @@ import GettingStartedChecklist from '../components/dashboard/GettingStartedCheck
 import BroadcastModal from '../components/dashboard/BroadcastModal';
 import DashboardHome from '../components/dashboard/DashboardHome';
 import DashboardPage from '../app/dashboard/page';
-import { ordersApi, productsApi } from '../lib/api';
+import { ordersApi, productsApi, apiClient } from '../lib/api';
 import { ShoppingBag, ShoppingCart } from 'lucide-react';
 
 describe('StatsCard Component', () => {
@@ -309,8 +309,14 @@ describe('BroadcastModal Component', () => {
 describe('DashboardHome & DashboardPage Full Integration', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.useFakeTimers();
     vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
   });
 
   it('renders DashboardHome full page with stats, actions, recent orders and checklist', async () => {
@@ -334,6 +340,7 @@ describe('DashboardHome & DashboardPage Full Integration', () => {
   });
 
   it('reloads products after authentication changes', async () => {
+    vi.useRealTimers();
     vi.spyOn(ordersApi, 'list').mockResolvedValue({ data: { vendor_id: 'v1', count: 0, orders: [] } });
     const listProducts = vi.spyOn(productsApi, 'list')
       .mockResolvedValueOnce({ data: { vendor_id: 'v1', count: 0, products: [] } })
@@ -355,6 +362,7 @@ describe('DashboardHome & DashboardPage Full Integration', () => {
   });
 
   it('handles copying shop link and triggers toast notification', async () => {
+    vi.useRealTimers();
     // Mock navigator.clipboard
     Object.assign(navigator, {
       clipboard: {
