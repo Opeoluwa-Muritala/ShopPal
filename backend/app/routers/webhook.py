@@ -2,6 +2,7 @@
 
 import json
 from asyncio import to_thread
+from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
@@ -16,7 +17,7 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -25,6 +26,7 @@ from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService
+from app.services.paystack import PaystackError, verify_transaction
 from app.services.security import (
     check_phone_rate_limit,
     is_paystack_event_processed,
@@ -35,6 +37,7 @@ from app.services.security import (
     verify_twilio_signature,
 )
 from app.services.transcription import TranscriptionError, transcribe_audio
+from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/webhook", tags=["Provider Webhooks"])
 
@@ -154,6 +157,7 @@ async def twilio_whatsapp_webhook(
                         "id": str(product.id),
                         "name": product.name,
                         "price": str(product.price),
+                        "stock": product.stock,
                         "description": product.description,
                     }
                     for product in products
@@ -277,14 +281,65 @@ async def paystack_webhook(
         return {"status": "ignored_duplicate", "event_id": event_id}
 
     if event_type == "charge.success" and reference and session is not None:
-        # Mark order as paid
-        stmt = (
-            update(Order)
-            .where(Order.order_code == reference)
-            .values(payment_status="paid", status="processing")
+        order = session.scalar(
+            select(Order).where(Order.order_code == reference).with_for_update()
         )
-        session.execute(stmt)
-        session.commit()
+        # Ignore valid Paystack events for orders that do not belong to this app.
+        # This also keeps webhook handling idempotent for already-removed orders.
+        if isinstance(order, Order):
+            try:
+                verified = await to_thread(verify_transaction, reference, settings)
+            except PaystackError:
+                logger.warning(
+                    "Paystack transaction verification failed",
+                    extra={"step": "paystack_transaction_verification", "status": "retryable"},
+                )
+                raise HTTPException(status_code=503, detail="Payment verification unavailable") from None
+            verified_reference = verified.get("reference")
+            verified_status = verified.get("status")
+            verified_amount = verified.get("amount")
+            requested_amount = verified.get("requested_amount")
+            verified_currency = str(verified.get("currency") or "").upper()
+            expected_amount = int((order.total * 100).to_integral_exact())
+            try:
+                amount_requested_by_customer = int(
+                    requested_amount if requested_amount is not None else verified_amount
+                )
+                amount_charged = int(verified_amount)
+            except (TypeError, ValueError):
+                amount_requested_by_customer = -1
+                amount_charged = -1
+            if (
+                verified_reference != reference
+                or verified_status != "success"
+                or verified_currency != "NGN"
+                or amount_requested_by_customer != expected_amount
+                or amount_charged < expected_amount
+            ):
+                logger.warning(
+                    "Paystack transaction did not match the order",
+                    extra={"step": "paystack_transaction_verification", "status": "rejected"},
+                )
+                raise HTTPException(status_code=400, detail="Payment verification failed")
+            was_already_paid = order.payment_status == "paid"
+            order.payment_status = "paid"
+            order.status = "processing"
+            order.payment_confirmed_at = datetime.now(UTC)
+            order.payment_confirmation_source = "paystack_webhook"
+            session.commit()
+            if not was_already_paid and order.customer_phone:
+                try:
+                    await send_whatsapp_text(
+                        order.customer_phone,
+                        f"Payment received for order {order.order_code}. Your order is now being processed.",
+                        settings,
+                    )
+                except Exception:
+                    logger.error("Payment verified but customer notification failed", extra={
+                        "step": "paystack_payment_notification",
+                        "order_code": order.order_code,
+                        "error_type": "whatsapp_send_failed",
+                    })
 
     # Record event ID in idempotency store
     mark_paystack_event_processed(event_id)

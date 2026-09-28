@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { formatNaira } from '../../lib/utils';
 
-export type OrderStatus = 'New' | 'Processing' | 'Paid' | 'Shipped' | 'Delivered';
+export type OrderStatus = 'Pending' | 'New' | 'Processing' | 'Paid' | 'Shipped' | 'Delivered';
 
 export interface DashboardOrder {
   id: string;
@@ -20,6 +20,7 @@ export interface DashboardOrder {
   items: string;
   total: number;
   status: OrderStatus;
+  paymentStatus?: string;
   timestamp: string;
   paystackRef?: string;
 }
@@ -35,6 +36,12 @@ export default function RecentOrdersSection({
 }: RecentOrdersSectionProps) {
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
+      case 'Pending':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+            Pending
+          </span>
+        );
       case 'New':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
@@ -168,7 +175,7 @@ export default function RecentOrdersSection({
                         {formatNaira(order.total)}
                       </td>
                       <td className="py-3 px-3">
-                        {getStatusBadge(order.status)}
+                        {getStatusBadge(order.paymentStatus === 'paid' ? 'Paid' : order.status)}
                       </td>
                       <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
                         {order.timestamp}

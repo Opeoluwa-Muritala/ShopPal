@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -66,6 +67,9 @@ class Product(Identity, Timestamps, Base):
     vendor_id: Mapped[UUID] = mapped_column(
         ForeignKey("vendors.id", ondelete="CASCADE")
     )
+    image_media_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("whatsapp_media.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(120))
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     stock: Mapped[int] = mapped_column(Integer, server_default=text("0"))
@@ -111,6 +115,9 @@ class Order(Identity, Timestamps, Base):
         String(30), server_default=text("'pending_payment'")
     )
     paystack_ref: Mapped[str | None] = mapped_column(String(120))
+    payment_confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"))
+    payment_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payment_confirmation_source: Mapped[str | None] = mapped_column(String(30))
 
 
 class Conversation(Identity, Base):
@@ -199,6 +206,26 @@ class WhatsAppMessage(Identity, Base):
     )
 
 
+class WhatsAppMedia(Identity, Base):
+    __tablename__ = "whatsapp_media"
+    __table_args__ = (
+        UniqueConstraint("wa_media_id"),
+        Index("idx_whatsapp_media_order_id", "order_id"),
+    )
+
+    order_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("orders.id", ondelete="SET NULL")
+    )
+    wa_media_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    message_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    transcript: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+
 class ReplyJob(Identity, Timestamps, Base):
     __tablename__ = "whatsapp_reply_jobs"
     __table_args__ = (Index("idx_reply_jobs_due", "state", "next_attempt_at"),)
@@ -233,4 +260,11 @@ class ReplyToolResult(Identity, Base):
     name: Mapped[str] = mapped_column(String(40))
     arguments: Mapped[dict] = mapped_column(JSONB)
     result: Mapped[dict] = mapped_column(JSONB)
+
+
+class ReplyTemplate(Base):
+    __tablename__ = "whatsapp_reply_templates"
+
+    key: Mapped[str] = mapped_column(String(60), primary_key=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
 

@@ -1,17 +1,32 @@
 """Vendor-scoped products and CSV upload router protected by JWT authentication and input sanitization."""
 
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Account, Product
+from app.db.models import Account, Product, WhatsAppMedia
 from app.db.session import get_db
 from app.services.auth import get_current_account
+from app.services.product_images import (
+    MAX_PRODUCT_IMAGE_UPLOAD_BYTES,
+    ProductImageError,
+    compress_product_image,
+)
 from app.services.security import parse_and_sanitize_catalog_csv
 
 router = APIRouter(prefix="/api/products", tags=["Frontend Products"])
@@ -57,6 +72,8 @@ def list_vendor_products(
                 "price": str(p.price),
                 "stock": p.stock,
                 "image_url": p.image_url,
+                "has_uploaded_image": p.image_media_id is not None,
+                "description": p.description,
                 "status": p.status,
             }
             for p in products
@@ -103,6 +120,74 @@ def create_product(
         "name": product.name,
         "price": str(product.price),
         "stock": product.stock,
+        "status": product.status,
+    }
+
+
+@router.post("/with-image", status_code=status.HTTP_201_CREATED)
+async def create_product_with_image(
+    name: str = Form(..., min_length=1, max_length=120),
+    price: Decimal = Form(..., gt=0, decimal_places=2),
+    stock: int = Form(default=0, ge=0),
+    description: str | None = Form(default=None, max_length=100),
+    image: UploadFile = File(...),
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a vendor-scoped product with a validated, compressed database image."""
+    if session is None:
+        raise HTTPException(status_code=503, detail="Product storage unavailable")
+    if not name.strip():
+        raise HTTPException(status_code=422, detail="Product name is required")
+    extension = Path(image.filename or "").suffix.casefold()
+    if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Image filename must end in .jpg, .jpeg, .png, or .webp",
+        )
+    try:
+        raw_image = await image.read(MAX_PRODUCT_IMAGE_UPLOAD_BYTES + 1)
+        compressed_image = compress_product_image(raw_image, image.content_type)
+    except ProductImageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from None
+    finally:
+        await image.close()
+
+    product_id = uuid4()
+    media_id = uuid4()
+    image_url = f"/api/products/{product_id}/image"
+    media = WhatsAppMedia(
+        id=media_id,
+        wa_media_id=f"product-image:{product_id}",
+        mime_type="image/jpeg",
+        content=compressed_image,
+        message_type="image",
+    )
+    product = Product(
+        id=product_id,
+        vendor_id=current_account.vendor_id,
+        image_media_id=media_id,
+        name=name.strip(),
+        price=price,
+        stock=stock,
+        image_url=image_url,
+        description=description.strip() if description else None,
+        status="active",
+    )
+    session.add(media)
+    session.flush()
+    session.add(product)
+    session.commit()
+    return {
+        "id": str(product.id),
+        "name": product.name,
+        "price": str(product.price),
+        "stock": product.stock,
+        "image_url": product.image_url,
+        "has_uploaded_image": True,
         "status": product.status,
     }
 
@@ -164,3 +249,32 @@ async def upload_catalog_csv(
         "products_created": created_count,
         "status": "success",
     }
+
+
+@router.get("/{product_id}/image")
+def get_product_image(
+    product_id: UUID,
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Return a product image only to its authenticated vendor."""
+    if session is None:
+        raise HTTPException(status_code=404, detail="Product image not found")
+    row = session.execute(
+        select(WhatsAppMedia.content, WhatsAppMedia.mime_type)
+        .join(Product, Product.image_media_id == WhatsAppMedia.id)
+        .where(
+            Product.id == product_id,
+            Product.vendor_id == current_account.vendor_id,
+        )
+    ).one_or_none()
+    if row is None or not row.content:
+        raise HTTPException(status_code=404, detail="Product image not found")
+    return Response(
+        content=row.content,
+        media_type=row.mime_type,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
