@@ -71,43 +71,45 @@ export default function Navbar() {
             <span>ShopPal</span>
           </Link>
 
-          {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-            <Link
-              href="/dashboard"
-              className={`transition ${
-                pathname === '/dashboard' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
-              }`}
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/products"
-              className={`transition ${
-                pathname === '/products' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
-              }`}
-            >
-              Products
-            </Link>
-            <Link
-              href="/orders"
-              className={`transition ${
-                pathname === '/orders' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
-              }`}
-            >
-              Orders
-            </Link>
-            <Link
-              href="/settings"
-              className={`transition ${
-                pathname === '/settings' || pathname.startsWith('/settings')
-                  ? 'text-emerald-700 font-semibold'
-                  : 'hover:text-emerald-600'
-              }`}
-            >
-              Settings
-            </Link>
-          </div>
+          {/* Desktop Navigation Links — only visible when authenticated */}
+          {session.isAuthenticated && (
+            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+              <Link
+                href="/dashboard"
+                className={`transition ${
+                  pathname === '/dashboard' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/products"
+                className={`transition ${
+                  pathname === '/products' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                }`}
+              >
+                Products
+              </Link>
+              <Link
+                href="/orders"
+                className={`transition ${
+                  pathname === '/orders' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                }`}
+              >
+                Orders
+              </Link>
+              <Link
+                href="/settings"
+                className={`transition ${
+                  pathname === '/settings' || pathname.startsWith('/settings')
+                    ? 'text-emerald-700 font-semibold'
+                    : 'hover:text-emerald-600'
+                }`}
+              >
+                Settings
+              </Link>
+            </div>
+          )}
         </div>
 
 

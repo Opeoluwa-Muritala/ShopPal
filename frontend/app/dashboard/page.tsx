@@ -1,5 +1,6 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
-import DashboardHome from '../../components/dashboard/DashboardHome';
 
 import Link from 'next/link';
 import { formatNaira } from '../../lib/utils';

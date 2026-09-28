@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ProductItem } from './CSVUploadZone';
 
 interface ProductManualEntryProps {
@@ -20,9 +20,11 @@ export default function ProductManualEntry({
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('5');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sampleProducts: ProductItem[] = [
     {
@@ -47,6 +49,28 @@ export default function ProductManualEntry({
       description: 'Formal attire',
     },
   ];
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file (JPG, PNG, WEBP, etc.)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be smaller than 5 MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    setImageFile(file);
+    setError(null);
+  };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,14 +98,15 @@ export default function ProductManualEntry({
       price: numPrice,
       stock: numStock,
       image_url:
-        imageUrl.trim() || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30',
+        imagePreview || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30',
       description: description.trim(),
     });
 
     setName('');
     setPrice('');
     setStock('5');
-    setImageUrl('');
+    setImageFile(null);
+    setImagePreview('');
     setDescription('');
     setIsOpen(false);
   };
@@ -170,15 +195,59 @@ export default function ProductManualEntry({
 
             <div>
               <label className="block font-semibold text-slate-900 mb-1">
-                Image URL (optional)
+                Product Image (optional)
               </label>
-              <input
-                type="url"
-                placeholder="https://example.com/image.jpg"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
-              />
+              <div
+                className="relative flex flex-col items-center justify-center gap-1 w-full border-2 border-dashed border-slate-300 rounded cursor-pointer hover:border-slate-500 hover:bg-slate-50 transition-colors"
+                style={{ minHeight: '72px' }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {imagePreview ? (
+                  <div className="flex items-center gap-3 px-3 py-2 w-full">
+                    <img
+                      src={imagePreview}
+                      alt="preview"
+                      className="w-12 h-12 object-cover rounded border border-slate-200 flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-800 truncate">{imageFile?.name}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {imageFile ? (imageFile.size / 1024).toFixed(0) : 0} KB
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setImageFile(null);
+                        setImagePreview('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="text-slate-400 hover:text-red-600 font-bold text-lg leading-none flex-shrink-0"
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-3 px-2 text-center pointer-events-none select-none">
+                    <svg className="w-6 h-6 text-slate-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    <span className="text-[11px] text-slate-500">
+                      <span className="font-semibold text-slate-700">Click to upload</span> or drag an image
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">JPG, PNG, WEBP · max 5 MB</span>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleImageChange}
+                />
+              </div>
             </div>
           </div>
 
