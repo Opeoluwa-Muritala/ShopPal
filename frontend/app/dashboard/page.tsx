@@ -8,21 +8,10 @@ import { ordersApi, productsApi } from '../../lib/api';
 import { getCurrentSession, UserSession } from '../../lib/auth';
 
 export default function DashboardPage() {
-  const [session, setSession] = useState<UserSession | null>(null);
+  const [session, setSession] = useState<UserSession | null>(() => getCurrentSession());
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    setSession(getCurrentSession());
-
-    const handleAuthChange = () => {
-      setSession(getCurrentSession());
-    };
-
-    window.addEventListener('shoppal-auth-changed', handleAuthChange);
-    return () => window.removeEventListener('shoppal-auth-changed', handleAuthChange);
-  }, []);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -44,7 +33,15 @@ export default function DashboardPage() {
       }
     }
 
-    loadDashboardData();
+    const handleAuthChange = () => {
+      setSession(getCurrentSession());
+      void loadDashboardData();
+    };
+
+    window.addEventListener('shoppal-auth-changed', handleAuthChange);
+    void loadDashboardData();
+
+    return () => window.removeEventListener('shoppal-auth-changed', handleAuthChange);
   }, []);
 
   const totalSales = orders.reduce((sum, o) => {

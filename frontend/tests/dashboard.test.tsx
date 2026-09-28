@@ -11,6 +11,7 @@ import GettingStartedChecklist from '../components/dashboard/GettingStartedCheck
 import BroadcastModal from '../components/dashboard/BroadcastModal';
 import DashboardHome from '../components/dashboard/DashboardHome';
 import DashboardPage from '../app/dashboard/page';
+import { ordersApi, productsApi } from '../lib/api';
 import { ShoppingBag, ShoppingCart } from 'lucide-react';
 
 describe('StatsCard Component', () => {
@@ -308,6 +309,7 @@ describe('BroadcastModal Component', () => {
 describe('DashboardHome & DashboardPage Full Integration', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -329,6 +331,27 @@ describe('DashboardHome & DashboardPage Full Integration', () => {
     render(<DashboardPage />);
     expect(screen.getByText('Vendor Dashboard')).toBeDefined();
     expect(screen.getByText('Total Sales')).toBeDefined();
+  });
+
+  it('reloads products after authentication changes', async () => {
+    vi.spyOn(ordersApi, 'list').mockResolvedValue({ data: { vendor_id: 'v1', count: 0, orders: [] } });
+    const listProducts = vi.spyOn(productsApi, 'list')
+      .mockResolvedValueOnce({ data: { vendor_id: 'v1', count: 0, products: [] } })
+      .mockResolvedValueOnce({
+        data: {
+          vendor_id: 'v1',
+          count: 1,
+          products: [{ id: 'p1', name: 'Uploaded Product', price: '1200.00', stock: 4, image_url: '' }],
+        },
+      });
+
+    render(<DashboardPage />);
+    await waitFor(() => expect(screen.getByText('0 Products')).toBeDefined());
+
+    window.dispatchEvent(new Event('shoppal-auth-changed'));
+
+    await waitFor(() => expect(screen.getByText('Uploaded Product')).toBeDefined());
+    expect(listProducts).toHaveBeenCalledTimes(2);
   });
 
   it('handles copying shop link and triggers toast notification', async () => {
