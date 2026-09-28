@@ -149,10 +149,10 @@ export default function ProductsPage() {
     setIsAdding(true);
     setAddError(null);
 
-    // Use the uploaded image preview (base64) or fall back to a placeholder
-    const imageUrl =
-      addImagePreview ||
+    const defaultImageUrl =
       'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&auto=format&fit=crop&q=80';
+    const hasLocalImagePreview = addImagePreview.startsWith('data:');
+    const imageUrl = hasLocalImagePreview ? defaultImageUrl : addImagePreview || defaultImageUrl;
 
     try {
       const res = await productsApi.create({
@@ -164,7 +164,11 @@ export default function ProductsPage() {
       });
 
       if (res.data?.id || res.status === 200 || res.status === 201) {
-        showNotification(`Product "${addName.trim()}" added to catalog.`);
+        showNotification(
+          hasLocalImagePreview
+            ? 'Product added. Local image previews are not saved; using the default image.'
+            : `Product "${addName.trim()}" added to catalog.`
+        );
         setShowAddModal(false);
         setAddName('');
         setAddPrice('');
