@@ -1,5 +1,6 @@
 """Meta WhatsApp Cloud API verification and event receiver."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -10,6 +11,7 @@ from typing import Any
 import httpx
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     Header,
     HTTPException,
@@ -27,6 +29,8 @@ from app.db.models import ReplyJob, WhatsAppMessage
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.security import check_phone_rate_limit, mask_phone
+from app.services.whatsapp import mark_whatsapp_message_read
+from app.services.whatsapp_media import process_whatsapp_media
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
@@ -94,6 +98,7 @@ def verify_whatsapp_webhook(
 )
 async def receive_whatsapp_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     x_hub_signature_256: str | None = Header(
         default=None, alias="X-Hub-Signature-256"
     ),
@@ -137,7 +142,18 @@ async def receive_whatsapp_webhook(
         raise HTTPException(status_code=400, detail="Malformed webhook payload")
     try:
         _validate_payload(payload)
-        await to_thread(process_whatsapp_payload, payload, settings)
+        read_receipts, media_jobs = await to_thread(process_whatsapp_payload, payload, settings)
+        for media_id, message_type, mime_type in media_jobs:
+            background_tasks.add_task(
+                process_whatsapp_media, media_id, message_type, settings, mime_type
+            )
+        for message_id, phone_number_id in read_receipts:
+            asyncio.create_task(
+                mark_whatsapp_message_read(message_id, phone_number_id, settings)
+            )
+        wakeup = getattr(request.app.state, "reply_wakeup", None)
+        if wakeup is not None:
+            wakeup.set()
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(status_code=400, detail="Malformed webhook payload") from None
     except Exception:
@@ -162,6 +178,13 @@ def _validate_payload(payload):
             metadata = value.get("metadata", {})
             if not isinstance(metadata, dict):
                 raise ValueError("Malformed metadata")
+            phone_number_id = metadata.get("phone_number_id", "")
+            if value.get("messages") and (
+                not isinstance(phone_number_id, str)
+                or not phone_number_id.isdigit()
+                or len(phone_number_id) > 40
+            ):
+                raise ValueError("Malformed phone number id")
             for field in ("phone_number_id", "display_phone_number"):
                 if not isinstance(metadata.get(field, ""), str) or len(metadata.get(field, "")) > 40:
                     raise ValueError("Malformed sender")
@@ -169,12 +192,20 @@ def _validate_payload(payload):
                 for field, limit in (("id", 255), ("from", 30), ("recipient_id", 30), ("type", 30), ("status", 30)):
                     if not isinstance(event.get(field, ""), str) or len(event.get(field, "")) > limit:
                         raise ValueError("Malformed event field")
-                if event.get("type") == "text":
+                if event.get("type") in {"text", "audio", "image"}:
                     if not event.get("id") or not event.get("from"):
                         raise ValueError("Missing message identity")
-                    content = event.get("text")
-                    if not isinstance(content, dict) or not isinstance(content.get("body"), str):
+                    content = event.get(event.get("type"))
+                    if not isinstance(content, dict):
+                        raise ValueError("Malformed message")
+                    if event.get("type") == "text" and not isinstance(content.get("body"), str):
                         raise ValueError("Malformed text")
+                    if event.get("type") in {"audio", "image"} and not isinstance(content.get("id"), str):
+                        raise ValueError("Malformed audio")
+                    if event.get("type") in {"audio", "image"} and not isinstance(content.get("mime_type"), str):
+                        raise ValueError("Malformed media")
+                    if event.get("type") == "audio" and "voice" in content and not isinstance(content.get("voice"), bool):
+                        raise ValueError("Malformed audio voice flag")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
@@ -196,19 +227,37 @@ def _message_body(message: dict[str, Any]) -> str | None:
 
 def process_whatsapp_payload(
     payload: dict[str, Any], settings: Settings | None = None
-) -> None:
+) -> tuple[list[tuple[str, str]], list[tuple[str, str, str]]]:
     """Commit incoming events and jobs before acknowledging; never call AI here."""
     settings = settings or get_settings()
     try:
         with Session(get_engine()) as session:
+            read_receipts: list[tuple[str, str]] = []
+            media_jobs: list[tuple[str, str, str]] = []
             for entry in payload.get("entry", []):
                 for change in entry.get("changes", []):
                     if change.get("field") != "messages":
                         continue
                     value = change.get("value", {})
-                    _persist_messages(session, value)
+                    for _, message in _persist_messages(session, value):
+                        read_receipts.append((
+                            str(message["id"]),
+                            str(value.get("metadata", {}).get("phone_number_id", "")),
+                        ))
+                        media = message.get(str(message.get("type", "")))
+                        message_type = message.get("type")
+                        if (
+                            isinstance(media, dict)
+                            and isinstance(media.get("id"), str)
+                            and isinstance(media.get("mime_type"), str)
+                        ):
+                            if message_type == "image":
+                                media_jobs.append((media["id"], "image", media["mime_type"]))
+                            elif message_type == "audio" and media.get("voice") is True:
+                                media_jobs.append((media["id"], "voice", media["mime_type"]))
                     _persist_statuses(session, value)
             session.commit()
+            return read_receipts, media_jobs
     except Exception:
         logger.error(
             "Meta WhatsApp background persistence failed",
@@ -242,7 +291,7 @@ def _persist_messages(
         inserted_id = session.execute(statement).scalar_one_or_none()
         if inserted_id is not None:
             inserted.append((value, message))
-            if message.get("type") == "text":
+            if message.get("type") in {"text", "audio", "image"}:
                 metadata = value.get("metadata", {})
                 phone = str(message.get("from", ""))
                 allowed = check_phone_rate_limit(phone)

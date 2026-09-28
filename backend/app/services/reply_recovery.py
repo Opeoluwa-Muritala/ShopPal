@@ -14,18 +14,37 @@ from sqlalchemy.orm import Session, aliased
 from app.config import get_settings
 from app.db.models import (
     Conversation,
+    Product,
     ReplyJob,
     ReplyToolResult,
     Vendor,
+    WhatsAppMedia,
     WhatsAppMessage,
 )
 from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
-from app.services.llm import GemmaError, LLMService
+from app.services.llm import GemmaError, LLMService, ai_cooldown_active
+from app.services.quick_replies import ai_failure_reply, quick_reply
+from app.services.transcription import TranscriptionError
+from app.services.whatsapp import send_whatsapp_product_image
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
+
+
+def recent_conversation_context(history: list[dict], per_role: int = 3) -> list[dict]:
+    """Keep the latest three customer and assistant messages in chronological order."""
+    if per_role < 1:
+        return []
+    selected_indexes: set[int] = set()
+    for role in ("user", "assistant"):
+        role_indexes = [
+            index for index, item in enumerate(history)
+            if isinstance(item, dict) and item.get("role") == role
+        ]
+        selected_indexes.update(role_indexes[-per_role:])
+    return [item for index, item in enumerate(history) if index in selected_indexes]
 
 
 class LeaseLost(RuntimeError):
@@ -38,6 +57,21 @@ def now():
 
 def normalize_number(value):
     return "".join(char for char in value if char.isdigit())
+
+
+def transcribe_whatsapp_audio(message, settings):
+    payload = message.raw_payload or {}
+    audio = payload.get("audio") if isinstance(payload, dict) else None
+    media_id = audio.get("id") if isinstance(audio, dict) else None
+    if not media_id:
+        raise TranscriptionError("Voice transcription is unavailable")
+    with Session(get_engine()) as media_session:
+        media = media_session.scalar(
+            select(WhatsAppMedia).where(WhatsAppMedia.wa_media_id == str(media_id))
+        )
+        if media is None or not media.transcript:
+            raise TranscriptionError("Voice transcription is still processing")
+        return media.transcript
 
 
 def validate_action(action):
@@ -53,6 +87,7 @@ def validate_action(action):
     name, args = action["tool"], action["arguments"]
     fields = {
         "searchProducts": {"query"},
+        "showProductImage": {"productId"},
         "viewCart": set(),
         "addToCart": {"productId", "quantity"},
         "updateCartItem": {"productId", "quantity"},
@@ -74,6 +109,19 @@ def validate_action(action):
         if key in args and (not isinstance(args[key], str) or len(args[key]) > limit):
             raise GemmaError("Invalid tool input")
     return action
+
+
+def ensure_payment_link(reply_text, transcript):
+    """Keep the Paystack checkout URL visible after checkout."""
+    for item in reversed(transcript or []):
+        action = item.get("action", {}) if isinstance(item, dict) else {}
+        result = item.get("result", {}) if isinstance(item, dict) else {}
+        payment_url = result.get("payment_url") if isinstance(result, dict) else None
+        if action.get("tool") == "checkoutCart" and payment_url:
+            if str(payment_url) not in reply_text:
+                return f"{reply_text}\n\nPay securely here: {payment_url}"
+            break
+    return reply_text
 
 
 def checkpoint(session, job, owner):
@@ -156,7 +204,7 @@ def generate_reply(session, job, owner, settings):
         )
         session.add(conversation)
         session.flush()
-    history = list(conversation.message_history or [])[-12:]
+    history = recent_conversation_context(list(conversation.message_history or []))
     message = session.scalar(
         select(WhatsAppMessage).where(WhatsAppMessage.message_id == job.message_id)
     )
@@ -190,22 +238,79 @@ def generate_reply(session, job, owner, settings):
         older.failure_category = f"merged_into:{job.id}"
         older.lease_owner = None
         older.lease_until = None
+    if message.message_type == "audio":
+        transcript_prefix = "__voice_transcript__:"
+        if not message.body or not message.body.startswith(transcript_prefix):
+            message.body = transcript_prefix + transcribe_whatsapp_audio(message, settings)
+            session.flush()
+        else:
+            message.body = message.body[len(transcript_prefix):]
+    if message.message_type == "image":
+        payload = message.raw_payload or {}
+        image = payload.get("image") if isinstance(payload, dict) else None
+        media_id = image.get("id") if isinstance(image, dict) else None
+        media = session.scalar(
+            select(WhatsAppMedia).where(WhatsAppMedia.wa_media_id == str(media_id))
+        ) if media_id else None
+        if media is None or not media.content:
+            raise GemmaError("Image media is still processing")
+        catalog = [
+            {
+                "id": str(product.id),
+                "name": product.name,
+                "price": str(product.price),
+                "stock": product.stock,
+                "description": product.description,
+            }
+            for product in session.scalars(
+                select(Product).where(
+                    Product.vendor_id == vendor.id,
+                    Product.status == "active",
+                )
+            ).all()
+        ]
+        image_reply = LLMService(settings).match_product_image(
+            media.content, media.mime_type, catalog
+        )
+        job.pending_action = {"reply": image_reply}
     customer_text = "\n".join(
         [
             *(f"Earlier queued customer message: {body}" for _, body in queued_messages),
             f"Latest customer message: {message.body}",
         ]
     )
+    if not job.pending_action and not job.transcript:
+        instant = quick_reply(
+            session,
+            vendor,
+            [body for _, body in queued_messages] + [message.body],
+            customer_phone=job.customer_phone,
+            history=history,
+        )
+        if instant:
+            job.pending_action = {"reply": instant}
     checkpoint(session, job, owner)
-    service = LLMService(settings)
+    service = None
     for _ in range(9):
         if not job.pending_action:
             if len(job.transcript) >= 8:
-                fail(session, job, "tool_limit", permanent=True)
+                job.reply_text = (
+                    "I want to help, but I need a little more detail. "
+                    "Are you asking about products, your cart, or checkout?"
+                )
+                job.pending_action = None
+                job.failure_category = "clarification_required"
+                checkpoint(session, job, owner)
                 return
             # End the read transaction before the external call.
             transcript = list(job.transcript)
             session.commit()
+            service = service or LLMService(settings)
+            if ai_cooldown_active():
+                cooldown_error = GemmaError("Customer assistant cooldown is active")
+                cooldown_error.provider = "openrouter"
+                cooldown_error.status_code = 500
+                raise cooldown_error
             action = validate_action(
                 service.next_action(customer_text, history, transcript)
             )
@@ -214,8 +319,21 @@ def generate_reply(session, job, owner, settings):
             checkpoint(session, job, owner)
         action = validate_action(job.pending_action)
         if "reply" in action:
-            job.reply_text = action["reply"]
+            job.reply_text = ensure_payment_link(action["reply"], job.transcript)
             job.pending_action = None
+            # Several workers can finish different messages for one customer while
+            # an AI request is in flight. Refresh and lock the row before merging;
+            # otherwise a later worker can overwrite the previous conversation
+            # history and the model loses product/quantity context.
+            conversation = session.scalar(
+                select(Conversation)
+                .where(
+                    Conversation.vendor_id == vendor.id,
+                    Conversation.customer_phone == job.customer_phone,
+                )
+                .execution_options(populate_existing=True)
+                .with_for_update()
+            )
             history_rows = [
                 *[
                     {"role": "user", "content": body, "message_id": message_id}
@@ -270,6 +388,8 @@ def generate_reply(session, job, owner, settings):
         ]
         job.pending_action = None
         # Tool writes, receipt, and agent checkpoint commit atomically.
+        if action["tool"] == "showProductImage" and cached.result.get("image_product_id"):
+            job.pending_action = {"reply": cached.result["caption"]}
         checkpoint(session, job, owner)
 
 
@@ -317,20 +437,42 @@ def send_reply(session, job, owner, settings):
     else:
         payload.update({
             "type": "text",
-            "text": {"preview_url": False, "body": job.reply_text},
+            "text": {"preview_url": True, "body": job.reply_text},
             "biz_opaque_callback_data": identifier,
         })
     checkpoint(session, job, owner)
     try:
-        response = httpx.post(
-            f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
-            headers={
-                "Authorization": "Bearer "
-                + settings.whatsapp_access_token.get_secret_value()
-            },
-            json=payload,
-            timeout=20,
-        )
+        image_request = next((entry.get("result", {}) for entry in reversed(job.transcript or [])
+                              if entry.get("action", {}).get("tool") == "showProductImage"
+                              and entry.get("result", {}).get("image_product_id")), None)
+        if image_request and not use_template:
+            # Re-authorize against the job's vendor before resolving stored bytes.
+            product = session.scalar(select(Product).where(
+                Product.id == UUID(image_request["image_product_id"]),
+                Product.vendor_id == job.vendor_id,
+                Product.status == "active",
+            ))
+            if product is None or product.image_media_id is None:
+                fail(session, job, "product_image_unavailable", permanent=True)
+                return
+            # This worker runs in a dedicated thread, outside the server event loop.
+            result = asyncio.run(send_whatsapp_product_image(
+                session, str(product.id), recipient, image_request["caption"],
+            ))
+            response = httpx.Response(
+                result.get("status_code", 503) if result.get("ok") is False else 200,
+                json=result,
+            )
+        else:
+            response = httpx.post(
+                f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
+                headers={
+                    "Authorization": "Bearer "
+                    + settings.whatsapp_access_token.get_secret_value()
+                },
+                json=payload,
+                timeout=20,
+            )
     except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
         session.refresh(job)
         if job.state != "sending":
@@ -380,6 +522,7 @@ def send_reply(session, job, owner, settings):
             "step": "meta_message_send",
             "job_id": identifier,
             "delivery_mode": "template" if use_template else "text",
+            "latency_ms": round((job.accepted_at - job.created_at).total_seconds() * 1000, 2),
         },
     )
 
@@ -438,6 +581,10 @@ def process_claim(engine, job_id, settings):
                 job.attempts += 1
                 job.state = "processing"
                 checkpoint(session, job, owner)
+                logger.info("Reply job picked up", extra={
+                    "step": "reply_claim", "job_id": str(job.id),
+                    "latency_ms": round((now() - job.created_at).total_seconds() * 1000, 2),
+                })
 
                 def guard():
                     try:
@@ -453,8 +600,9 @@ def process_claim(engine, job_id, settings):
                         )
                     )
                     if (
-                        inbound.wa_timestamp is None
-                        or now() - inbound.wa_timestamp >= timedelta(hours=24)
+                        (inbound is None or inbound.wa_timestamp is None
+                         or now() - inbound.wa_timestamp >= timedelta(hours=24))
+                        and not (job.reply_text and job.attempts > 1)
                     ):
                         fail(session, job, "messaging_window", permanent=True)
                         return True
@@ -470,32 +618,81 @@ def process_claim(engine, job_id, settings):
                     guard()
                     if job.lease_owner != owner:
                         return False
+                    if job.transcript or job.pending_action:
+                        fail(session, job, "gemma_unavailable")
+                        return True
                     code = getattr(exc, "status_code", None)
-                    fail(
-                        session,
-                        job,
-                        "gemma_http_" + str(code) if code else "gemma_unavailable",
-                        permanent=code in (400, 401, 403, 404),
-                    )
-                except Exception:
+                    vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
+                    inbound = session.scalar(select(WhatsAppMessage).where(
+                        WhatsAppMessage.message_id == job.message_id
+                    ))
+                    if vendor is not None and inbound is not None and inbound.body:
+                        job.reply_text = ai_failure_reply(
+                            session, vendor, inbound.body, job.customer_phone,
+                            structured=(
+                                getattr(exc, "provider", None) == "openrouter"
+                                and getattr(exc, "status_code", None) == 500
+                            ),
+                        )
+                        job.pending_action = None
+                        job.failure_category = (
+                            getattr(exc, "provider", "gemma") + "_http_" + str(code)
+                            if code else "gemma_unavailable"
+                        )
+                        # Persist the fallback before sending. Any send retry uses
+                        # this exact saved response and never calls AI again.
+                        checkpoint(session, job, owner)
+                        if job.state == "processing" and job.reply_text:
+                            send_reply(session, job, owner, settings)
+                        if job.state == "accepted":
+                            job.state = "needs_review"
+                            session.commit()
+                    else:
+                        fail(session, job, "ai_fallback_unavailable", permanent=True)
+                except Exception as exc:
                     session.rollback()
                     session.refresh(job)
                     guard()
                     if job.lease_owner != owner:
                         return False
+                    if job.transcript or job.pending_action:
+                        fail(session, job, "processing_failed")
+                        return True
+                    logger.error(
+                        "Reply job processing failed",
+                        extra={
+                            "step": "reply_processing",
+                            "job_id": str(job.id),
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:500],
+                        },
+                    )
                     if job.state == "sending":
                         job.state = "delivery_unknown"
                         job.failure_category = "send_interrupted"
                         session.commit()
                     else:
-                        fail(session, job, "processing_failed")
+                        vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
+                        inbound = session.scalar(select(WhatsAppMessage).where(
+                            WhatsAppMessage.message_id == job.message_id
+                        ))
+                        if vendor is not None and inbound is not None and inbound.body and not job.reply_text:
+                            job.reply_text = ai_failure_reply(
+                                session, vendor, inbound.body, job.customer_phone
+                            )
+                            job.pending_action = None
+                            job.failure_category = "processing_failed"
+                            checkpoint(session, job, owner)
+                            send_reply(session, job, owner, settings)
+                        else:
+                            fail(session, job, "processing_failed")
                 return True
             finally:
                 session.rollback()
                 # The outer transaction releases the advisory lock automatically.
 
 
-def recover_once(engine, settings):
+def ready_job_ids(engine, limit=20, exclude=()):
     with Session(engine) as session:
         ids = session.scalars(
             select(ReplyJob.id)
@@ -504,10 +701,16 @@ def recover_once(engine, settings):
                 ReplyJob.next_attempt_at <= now(),
                 or_(ReplyJob.lease_until.is_(None), ReplyJob.lease_until <= now()),
                 ~newer_pending(ReplyJob),
+                ReplyJob.id.not_in(exclude),
             )
             .order_by(ReplyJob.created_at, ReplyJob.id)
-            .limit(20)
+            .limit(limit)
         ).all()
+    return ids
+
+
+def recover_once(engine, settings):
+    ids = ready_job_ids(engine)
     if not ids:
         return
     # Different customers can be processed in parallel. process_claim still holds
@@ -526,24 +729,48 @@ def recover_once(engine, settings):
                 )
 
 
-async def recovery_loop(stop):
-    while not stop.is_set():
-        try:
-            await asyncio.to_thread(recover_once, get_engine(), get_settings())
-        except Exception as exc:
-            # Keep diagnostics useful without logging provider responses, tokens,
-            # customer text, or database URLs.
-            logger.error(
-                "Reply recovery poll failed",
-                extra={
-                    "step": "reply_recovery",
-                    "status": "poll_error",
-                    "error_type": type(exc).__name__,
-                },
-            )
-        try:
-            await asyncio.wait_for(
-                stop.wait(), timeout=get_settings().meta_reply_worker_poll_seconds
-            )
-        except TimeoutError:
-            pass
+async def recovery_loop(stop, wakeup=None):
+    # Keep polling while jobs run: a slow customer must not hold up free slots.
+    running = {}
+    settings = get_settings()
+    wakeup = wakeup or asyncio.Event()
+    stop_task = asyncio.create_task(stop.wait())
+    try:
+        while not stop.is_set():
+            wakeup.clear()
+            for identifier, task in list(running.items()):
+                if task.done():
+                    del running[identifier]
+                    try:
+                        task.result()
+                    except Exception:
+                        logger.error("Reply job thread failed", extra={"step": "reply_recovery", "status": "worker_error"})
+            try:
+                capacity = settings.meta_reply_worker_concurrency - len(running)
+                if capacity:
+                    engine = get_engine()
+                    ids = await asyncio.to_thread(ready_job_ids, engine, capacity, tuple(running))
+                    for identifier in ids:
+                        running[identifier] = asyncio.create_task(
+                            asyncio.to_thread(process_claim, engine, identifier, settings)
+                        )
+            except Exception as exc:
+                logger.error(
+                    "Reply recovery poll failed",
+                    extra={"step": "reply_recovery", "status": "poll_error", "error_type": type(exc).__name__},
+                )
+            wake_task = asyncio.create_task(wakeup.wait())
+            try:
+                await asyncio.wait(
+                    [stop_task, wake_task],
+                    timeout=settings.meta_reply_worker_poll_seconds,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                wake_task.cancel()
+                await asyncio.gather(wake_task, return_exceptions=True)
+    finally:
+        # Threads cannot be safely cancelled during a shopping action or send.
+        await asyncio.gather(*running.values(), return_exceptions=True)
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)

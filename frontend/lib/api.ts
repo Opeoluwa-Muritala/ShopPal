@@ -10,7 +10,9 @@ import {
   getFrontendApiKey,
 } from './auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Requests go through the Next.js server proxy so NEXT_PRIVATE_FRONTEND_API_KEY remains
+// server-only. The proxy forwards them to the configured backend.
+const API_BASE_URL = '/api/backend';
 
 export interface ApiResponse<T> {
   data?: T;
@@ -164,7 +166,14 @@ export async function apiClient<T>(
 
 export const authApi = {
   login: async (body: { email: string; password: string }) => {
-    return apiClient<{ access_token: string; refresh_token: string; token_type: string }>(
+    return apiClient<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      account_id?: string;
+      vendor_id?: string;
+      role?: string;
+    }>(
       '/api/auth/login',
       {
         method: 'POST',
@@ -174,7 +183,14 @@ export const authApi = {
   },
 
   refresh: async (refreshToken: string) => {
-    return apiClient<{ access_token: string; refresh_token: string; token_type: string }>(
+    return apiClient<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      account_id?: string;
+      vendor_id?: string;
+      role?: string;
+    }>(
       '/api/auth/refresh',
       {
         method: 'POST',
@@ -228,6 +244,26 @@ export const accountsApi = {
 };
 
 export const vendorsApi = {
+  getMe: async () => {
+    return apiClient<{
+      id: string;
+      vendor_id: string;
+      account_id: string;
+      name: string;
+      business_name: string;
+      email: string;
+      phone: string;
+      whatsapp_number: string;
+      bot_number?: string;
+      paystack_public_key?: string | null;
+      bank_account?: string | null;
+      greeting_message?: string | null;
+      preferred_language?: string | null;
+      is_active: boolean;
+      created_at?: string | null;
+    }>('/api/vendors/me');
+  },
+
   signup: async (body: {
     name: string;
     phone: string;
@@ -245,6 +281,8 @@ export const vendorsApi = {
       business_name: string;
       email: string;
       phone: string;
+      whatsapp_number: string;
+      bot_number: string;
       role: string;
     }>('/api/vendors/signup', {
       method: 'POST',
@@ -317,6 +355,8 @@ export const ordersApi = {
         status: string;
         payment_status: string;
         items: any[];
+        created_at?: string | null;
+        is_cart?: boolean;
       }>;
     }>('/api/orders');
   },

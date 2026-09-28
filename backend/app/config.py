@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_whatsapp_number: str = ""
     frontend_api_key: SecretStr = SecretStr("")
+    # Comma-separated browser origins allowed to call the vendor API.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # Meta WhatsApp Cloud API webhook authentication
     whatsapp_verify_token: SecretStr = SecretStr("")
@@ -40,9 +42,9 @@ class Settings(BaseSettings):
 
     # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
     gemma_api_key: SecretStr = SecretStr("")
-    gemma_model: str = "gemma-3-27b-it"
+    gemma_model: str = "gemma-4-26b-a4b-it"
     gemma_api_url: str = ""
-    gemma_timeout_seconds: int = Field(default=90, ge=10, le=120)
+    gemma_timeout_seconds: int = Field(default=20, ge=10, le=120)
     gemma_thinking_level: Literal["minimal", "high"] = "minimal"
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_model: str = "google/gemma-3-27b-it"

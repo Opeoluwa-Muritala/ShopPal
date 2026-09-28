@@ -4,11 +4,14 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Cart, Product, Vendor
+from app.config import get_settings
+from app.db.models import Cart, Product
 from app.services.orders import create_order_from_cart
+from app.services.paystack import PaystackError, initialize_transaction
 
 
 class CustomerToolDispatcher:
@@ -27,6 +30,7 @@ class CustomerToolDispatcher:
     def __call__(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handler = {
             "searchProducts": self.search_products,
+            "showProductImage": self.show_product_image,
             "viewCart": self.view_cart,
             "addToCart": self.add_to_cart,
             "updateCartItem": self.update_cart_item,
@@ -112,6 +116,12 @@ class CustomerToolDispatcher:
             "total": str(total.quantize(Decimal("0.01"))),
         }
 
+    def show_product_image(self, args: dict[str, Any]) -> dict[str, Any]:
+        product = self._product(str(args["productId"]))
+        if product is None or product.image_media_id is None:
+            return {"error": "A photo is unavailable for that product"}
+        return {"image_product_id": str(product.id), "caption": f"{product.name} — NGN {product.price:,.2f}"}
+
     def add_to_cart(self, args: dict[str, Any]) -> dict[str, Any]:
         product = self._product(str(args["productId"]))
         quantity = int(args["quantity"])
@@ -123,6 +133,7 @@ class CustomerToolDispatcher:
             (item for item in items if item["product_id"] == str(product.id)),
             None,
         )
+        previous_quantity = int(existing["qty"]) if existing else 0
         if existing:
             quantity += int(existing["qty"])
             if quantity > product.stock:
@@ -139,7 +150,13 @@ class CustomerToolDispatcher:
             )
         cart.items = items
         self._save()
-        return self.view_cart({})
+        result = self.view_cart({})
+        result.update({
+            "cart_action": "increased_existing" if existing else "added_new",
+            "added_quantity": int(args["quantity"]),
+            "previous_quantity": previous_quantity,
+        })
+        return result
 
     def update_cart_item(self, args: dict[str, Any]) -> dict[str, Any]:
         product = self._product(str(args["productId"]))
@@ -182,19 +199,30 @@ class CustomerToolDispatcher:
                 {"product_id": item["product_id"], "qty": item["qty"]}
                 for item in cart.items
             ],
-            commit=self.commit,
+            commit=False,
         )
-        vendor = self.session.get(Vendor, self.vendor_id)
+        try:
+            payment = initialize_transaction(
+                order_code=str(order.order_code),
+                amount=Decimal(str(order.total)),
+                customer_phone=self.customer_phone,
+                settings=get_settings(),
+            )
+        except PaystackError as exc:
+            raise HTTPException(status_code=503, detail="Payment checkout is unavailable") from exc
+        order.paystack_ref = payment["reference"]
+        if self.commit:
+            self.session.commit()
+        else:
+            self.session.flush()
         return {
             "order_code": order.order_code,
             "total": str(order.total),
             "status": order.status,
             "payment_status": order.payment_status,
             "delivery_address": order.delivery_address,
-            "payment_account": vendor.bank_account if vendor else None,
-            "payment_instruction": (
-                "Transfer the exact total to the vendor account shown, then wait for verified confirmation."
-                if vendor and vendor.bank_account
-                else "Payment details are not configured yet; please ask the vendor."
-            ),
+            "payment_provider": "paystack",
+            "payment_reference": payment["reference"],
+            "payment_url": payment["authorization_url"],
+            "payment_instruction": "Open the Paystack link to complete payment. Your order is confirmed after Paystack verification.",
         }

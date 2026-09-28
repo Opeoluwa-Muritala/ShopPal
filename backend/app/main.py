@@ -3,6 +3,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.config import get_settings
@@ -10,6 +11,7 @@ from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
     auth,
+    dashboard,
     health,
     logs,
     orders,
@@ -26,7 +28,12 @@ from app.services.reply_recovery import recovery_loop
 @asynccontextmanager
 async def lifespan(application):
     stop = asyncio.Event()
-    task = asyncio.create_task(recovery_loop(stop)) if get_settings().meta_reply_worker_enabled else None
+    application.state.reply_wakeup = asyncio.Event()
+    logger.info("Reply worker startup", extra={
+        "step": "reply_worker_startup",
+        "status": "enabled" if get_settings().meta_reply_worker_enabled else "disabled",
+    })
+    task = asyncio.create_task(recovery_loop(stop, application.state.reply_wakeup)) if get_settings().meta_reply_worker_enabled else None
     try:
         yield
     finally:
@@ -38,7 +45,7 @@ async def lifespan(application):
 def create_app() -> FastAPI:
     setup_logging()
     application = FastAPI(
-        title="Naija Marketplace API",
+        title="ShopPal API",
         description=(
             "ShopPal backend for vendor commerce and customer conversations over "
             "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
@@ -70,6 +77,19 @@ def create_app() -> FastAPI:
                 "description": "Public legal pages required by connected platforms.",
             },
         ],
+    )
+
+    configured_origins = [
+        origin.strip().rstrip("/")
+        for origin in get_settings().cors_origins.split(",")
+        if origin.strip()
+    ]
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=configured_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
 
     # Global timing and structured request logging middleware
@@ -135,6 +155,7 @@ def create_app() -> FastAPI:
     application.include_router(vendors.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
     application.include_router(accounts.router, dependencies=frontend_dependencies)
+    application.include_router(dashboard.router, dependencies=frontend_dependencies)
     application.include_router(orders.router, dependencies=frontend_dependencies)
     application.include_router(products.router, dependencies=frontend_dependencies)
     return application
