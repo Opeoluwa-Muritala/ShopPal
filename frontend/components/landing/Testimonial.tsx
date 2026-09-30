@@ -47,12 +47,12 @@ export default function Testimonial() {
 
       <section className="border-b border-white/10 bg-[#0d1014] py-16 md:py-20">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="grid items-center gap-8 lg:grid-cols-[0.75fr_1.45fr]">
-            <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#10151b] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+          <div className="grid min-w-0 items-center gap-8 lg:grid-cols-[0.75fr_1.45fr]">
+            <div className="min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[#10151b] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
               <img
-                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=80"
-                alt="African merchant smiling while using a mobile phone"
-                className="h-[420px] w-full object-cover object-center"
+                src="https://images.pexels.com/photos/7970843/pexels-photo-7970843.jpeg?auto=compress&cs=tinysrgb&w=1200"
+                alt="Black African woman holding and using a smartphone"
+                className="h-56 w-full object-cover object-center sm:h-72 lg:h-[420px]"
               />
               <div className="border-t border-white/10 bg-[#111a22] px-4 py-3 text-sm text-slate-200">
                 <p className="font-medium text-white">Ada & Co. Fashion</p>
@@ -60,30 +60,30 @@ export default function Testimonial() {
               </div>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <div className="mb-6">
                 <span className="inline-block rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-[#dfe9ff]">
                   Merchant feedback
                 </span>
-                <h2 className="mt-4 text-3xl font-light tracking-[-0.06em] text-white sm:text-5xl">
+                <h2 className="mt-4 text-3xl font-light leading-tight tracking-[-0.06em] text-white sm:text-5xl">
                   Real wins from real sellers.
                 </h2>
               </div>
 
-              <div className="overflow-hidden pb-2">
+              <div className="w-full min-w-0 overflow-hidden pb-2">
                 <div className="testimonial-track flex w-max gap-4">
                   {[...testimonials, ...testimonials].map((t, idx) => (
                     <article
                       key={`${t.name}-${idx}`}
-                      className="w-[300px] rounded-[24px] border border-white/10 bg-white/5 p-5 text-left backdrop-blur-sm"
+                      className="w-[min(82vw,300px)] shrink-0 rounded-[24px] border border-white/10 bg-white/5 p-5 text-left backdrop-blur-sm"
                     >
                       <p className="text-sm leading-6 text-slate-200">“{t.quote}”</p>
-                      <div className="mt-5 flex items-end justify-between gap-3 border-t border-white/10 pt-4">
+                      <div className="mt-5 flex flex-col items-start gap-3 border-t border-white/10 pt-4">
                         <div>
                           <p className="text-sm font-medium text-white">{t.name}</p>
                           <p className="text-[11px] text-slate-400">{t.business} • {t.location}</p>
                         </div>
-                        <span className="rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-2 py-1 text-[9px] font-medium uppercase tracking-[0.14em] text-[#dfe9ff]">
+                        <span className="max-w-full rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-2 py-1 text-[9px] font-medium uppercase tracking-[0.14em] text-[#dfe9ff]">
                           {t.salesGrowth}
                         </span>
                       </div>
