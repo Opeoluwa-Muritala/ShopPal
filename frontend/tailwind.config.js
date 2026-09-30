@@ -8,6 +8,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        cool: {
+          50: '#f4f7fa',
+          100: '#e7eef5',
+          200: '#cfdeeb',
+          500: '#607b96',
+          600: '#506b86',
+          700: '#40566f',
+          800: '#30445b',
+          900: '#203247',
+        },
         naija: {
           50: '#f0fdf4',
           100: '#dcfce7',

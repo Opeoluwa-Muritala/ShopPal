@@ -39,8 +39,8 @@ export const DEMO_VENDOR_SETTINGS: VendorSettings = {
     botWhatsAppNumber: '+1 415 523 8886',
   },
   paystack: {
-    key: 'pk_test_xxxx',
-    isConnected: true,
+    key: '',
+    isConnected: false,
     maskedKey: 'pk_test_••••••••xxxx',
   },
   bankAccount: {
@@ -180,11 +180,6 @@ function SettingsPageInner() {
             : prev.accountStatus.accountCreated,
           vendorId: profile.vendor_id || profile.id,
           botWhatsAppNumber: profile.bot_number || profile.whatsapp_number || prev.accountStatus.botWhatsAppNumber,
-        },
-        paystack: {
-          ...prev.paystack,
-          key: profile.paystack_public_key || prev.paystack.key,
-          isConnected: Boolean(profile.paystack_public_key),
         },
         bankAccount: {
           ...prev.bankAccount,

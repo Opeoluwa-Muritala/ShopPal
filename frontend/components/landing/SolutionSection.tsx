@@ -21,8 +21,8 @@ export default function SolutionSection() {
       badge: 'Maximum Profit',
       title: 'Keep 98% of Sales',
       description:
-        'Say goodbye to 30% marketplace cuts. We charge just 2% per completed transaction. Every payment is authorized securely by Paystack and deposited straight to your Nigerian bank.',
-      highlight: 'Direct bank settlement via Paystack',
+      'Say goodbye to 30% marketplace cuts. We charge just 2% per completed transaction. Every payment is authorized securely by Flutterwave and split directly to your Nigerian bank.',
+      highlight: 'Direct bank settlement via Flutterwave',
     },
   ];
 

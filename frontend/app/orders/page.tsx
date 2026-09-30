@@ -156,7 +156,7 @@ export default function OrdersPage() {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Customer orders placed through WhatsApp chat and verified via Paystack.
+            Customer orders placed through WhatsApp chat and verified via Flutterwave.
           </p>
         </div>
 
@@ -182,7 +182,7 @@ export default function OrdersPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <span className="text-xs font-medium text-slate-500 block mb-1">Settled Revenue</span>
           <span className="text-xl font-bold text-slate-900">{formatNaira(totalRevenue)}</span>
-          <span className="text-[11px] text-slate-400 mt-1 block">Verified by Paystack</span>
+          <span className="text-[11px] text-slate-400 mt-1 block">Verified by Flutterwave</span>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-4">

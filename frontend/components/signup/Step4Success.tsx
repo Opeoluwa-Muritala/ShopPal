@@ -8,7 +8,7 @@ export interface SuccessData {
   vendor_id?: string;
   bot_number: string;
   test_link: string;
-  sandbox_code: string;
+  sandbox_code?: string;
 }
 
 interface Step4Props {
@@ -24,16 +24,8 @@ export default function Step4Success({
   products,
   successData,
 }: Step4Props) {
-  const [copied, setCopied] = React.useState(false);
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(`join ${successData.sandbox_code}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const whatsappDirectUrl = `https://wa.me/${successData.bot_number.replace(/\D/g, '')}?text=${encodeURIComponent(
-    `join ${successData.sandbox_code}`
+    'Hello'
   )}`;
 
   return (
@@ -50,7 +42,7 @@ export default function Step4Success({
         </p>
       </div>
 
-      {/* Bot Connection Card */}
+      {/* WhatsApp Storefront Card */}
       <div className="p-5 bg-white border border-slate-200 rounded-lg text-left space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-900">
@@ -69,22 +61,11 @@ export default function Step4Success({
             </strong>
           </div>
 
-          <div className="bg-slate-50 p-3 rounded border border-slate-200 flex items-center justify-between">
-            <div>
-              <span className="text-slate-500 block text-xs">Sandbox Join Code:</span>
-              <strong className="text-slate-900 font-mono text-sm block mt-1">
-                join {successData.sandbox_code}
-              </strong>
-            </div>
-            <button
-              type="button"
-              onClick={copyCode}
-              title="Copy sandbox code"
-              className="px-2.5 py-1 text-xs rounded border border-slate-300 hover:bg-white text-slate-700 font-medium transition"
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-
+          <div className="bg-slate-50 p-3 rounded border border-slate-200">
+            <span className="text-slate-500 block text-xs">Checkout:</span>
+            <strong className="text-slate-900 text-sm block mt-1">
+              Flutterwave bank transfer inside WhatsApp
+            </strong>
           </div>
         </div>
 
@@ -128,7 +109,7 @@ export default function Step4Success({
         <span className="font-bold text-slate-900 block text-sm">Next Steps:</span>
         <ol className="space-y-1.5 text-slate-600 list-decimal list-inside">
           <li>
-            Open WhatsApp and send <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-slate-800">join {successData.sandbox_code}</code> to <span className="font-mono text-slate-800">{successData.bot_number}</span>.
+            Open WhatsApp and send <strong className="text-slate-800">Hello</strong> to <span className="font-mono text-slate-800">{successData.bot_number}</span>.
           </li>
           <li>
             Send a greeting like &quot;Hello&quot; or search for any of your products.

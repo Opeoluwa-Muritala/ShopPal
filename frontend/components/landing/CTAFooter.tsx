@@ -40,7 +40,7 @@ export default function CTAFooter() {
 
           <div className="pt-4 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
             <span className="text-emerald-400 font-bold">✓</span>
-            <span>Instant Paystack Settlement</span>
+            <span>Instant Flutterwave Settlement</span>
             <span>•</span>
             <span>2-Minute Setup</span>
             <span>•</span>

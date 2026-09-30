@@ -179,7 +179,7 @@ export default function HeroVisual() {
                     <p className="text-[12px] font-bold text-slate-900 mt-1">Total: ₦30,000</p>
                   </div>
                   <button className="w-full bg-emerald-600 text-white text-[10px] font-bold py-2 text-center">
-                    🔒 Pay ₦30,000 via Paystack
+                    🔒 Pay ₦30,000 via Flutterwave
                   </button>
                   <div className="px-2.5 py-1">
                     <span className="text-[9px] text-slate-400 block text-right">10:15 AM</span>

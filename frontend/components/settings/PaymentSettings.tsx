@@ -144,13 +144,24 @@ export default function PaymentSettings({
 
   return (
     <div className="space-y-6">
-      {/* Section: Paystack Credentials */}
+      <div className="bg-cool-50 border border-cool-200 rounded-lg p-6">
+        <h2 className="text-base font-bold text-slate-900">Flutterwave Payments</h2>
+        <p className="text-xs text-slate-600 mt-1">
+          Payment credentials are managed securely by the platform. They are never entered, displayed, or stored in this dashboard.
+        </p>
+        <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold">
+          <span className="h-2 w-2 rounded-full bg-emerald-600" aria-hidden="true" />
+          Provider managed and webhook verification enabled
+        </div>
+      </div>
+
+      {false && (
       <div className="bg-white border border-slate-200 rounded-lg p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Connected Paystack Account</h2>
+            <h2 className="text-base font-bold text-slate-900">Connected Flutterwave Account</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Customers make direct bank transfers and card payments verified via Paystack.
+              Customers complete secure card, bank, and transfer payments verified via Flutterwave.
             </p>
           </div>
           {!isEditingKey && (
@@ -264,18 +275,19 @@ export default function PaymentSettings({
         {testResult && (
           <div
             className={`mt-4 p-3 rounded border text-xs font-medium ${
-              testResult.success
+              testResult?.success
                 ? 'bg-slate-100 border-slate-300 text-slate-800'
                 : 'bg-red-50 border-red-200 text-red-800'
             }`}
           >
-            {testResult.success
+            {testResult?.success
               ? 'Connection successful: Live webhook and payment verification operational'
-              : `Invalid key: ${testResult.message}`}
+              : `Connection check failed: ${testResult?.message}`}
           </div>
         )}
 
       </div>
+      )}
 
       {/* Section: Bank Account */}
       <div className="bg-white border border-slate-200 rounded-lg p-6">
