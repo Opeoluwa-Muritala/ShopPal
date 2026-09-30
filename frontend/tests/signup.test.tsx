@@ -261,16 +261,11 @@ describe('Signup Flow Components', () => {
 
       expect(screen.getByText(/You're Live!/i)).toBeDefined();
       expect(screen.getAllByText('+1 415 523 8886').length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/join quick-lion/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Flutterwave bank transfer inside WhatsApp/i).length).toBeGreaterThan(0);
       expect(screen.getByRole('link', { name: /Go to Dashboard/i })).toBeDefined();
     });
 
-    it('allows copying the sandbox code', () => {
-      Object.assign(navigator, {
-        clipboard: {
-          writeText: vi.fn(),
-        },
-      });
+    it('opens WhatsApp with a normal greeting, without a provider sandbox join code', () => {
       render(
         <Step4Success
           vendorName="Tunde"
@@ -284,8 +279,8 @@ describe('Signup Flow Components', () => {
         />
       );
 
-      const copyBtn = screen.getByTitle(/Copy sandbox code/i);
-      fireEvent.click(copyBtn);
+      expect(screen.queryByTitle(/Copy sandbox code/i)).toBeNull();
+      expect(screen.getAllByRole('link', { name: /Open in WhatsApp|Test on WhatsApp/i })[0].getAttribute('href')).toContain('text=Hello');
     });
   });
 
