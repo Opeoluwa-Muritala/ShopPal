@@ -26,7 +26,7 @@ export default function CTAFooter() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Link
               href="/signup"
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-lg shadow-lg shadow-emerald-500/20 transition-all"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-lg shadow-lg shadow-black/30 transition-all"
             >
               Start Selling in 2 Minutes
             </Link>

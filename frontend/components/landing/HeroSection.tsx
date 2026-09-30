@@ -28,14 +28,14 @@ export default function HeroSection() {
       <div
         className="absolute top-0 right-0 w-[600px] h-[600px] pointer-events-none"
         style={{
-          background: 'radial-gradient(circle at 80% 20%, rgba(34,197,94,0.10) 0%, transparent 60%)',
+          background: 'radial-gradient(circle at 80% 20%, rgba(176,132,99,0.15) 0%, transparent 60%)',
         }}
       />
       {/* Bottom-left subtle glow */}
       <div
         className="absolute bottom-0 left-0 w-[400px] h-[400px] pointer-events-none"
         style={{
-          background: 'radial-gradient(circle at 20% 80%, rgba(34,197,94,0.06) 0%, transparent 60%)',
+          background: 'radial-gradient(circle at 20% 80%, rgba(176,132,99,0.09) 0%, transparent 60%)',
         }}
       />
       {/* Fine grid texture */}

@@ -10,11 +10,11 @@ export default function CTAButtons() {
         className="
           group relative inline-flex items-center justify-center
           px-7 py-[15px] min-h-[52px]
-          bg-green-500 hover:bg-green-600
+          bg-[#2A52BE] hover:bg-[#0054B4]
           text-white font-bold text-[15px] tracking-tight
           rounded-lg
-          shadow-[0_4px_24px_rgba(34,197,94,0.35)]
-          hover:shadow-[0_6px_32px_rgba(34,197,94,0.5)]
+          shadow-[0_4px_24px_rgba(42,82,190,0.4)]
+          hover:shadow-[0_6px_32px_rgba(42,82,190,0.55)]
           transition-all duration-200 ease-out
           hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]
           w-full sm:w-auto
@@ -42,9 +42,9 @@ export default function CTAButtons() {
           group inline-flex items-center justify-center
           px-7 py-[14px] min-h-[52px]
           bg-transparent
-          text-green-400 font-semibold text-[15px]
-          border-2 border-green-500/50 hover:border-green-500
-          hover:bg-green-500 hover:text-white
+          text-[#DDEBFF] font-semibold text-[15px]
+          border-2 border-[#2A52BE]/60 hover:border-[#2A52BE]
+          hover:bg-[#2A52BE] hover:text-white
           rounded-lg
           transition-all duration-200 ease-out
           hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]
