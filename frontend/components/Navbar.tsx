@@ -56,6 +56,12 @@ export default function Navbar() {
 
   const displayName = session.businessName || session.name || session.email || 'Vendor';
 
+  // The landing page owns its own hero/CTA composition; keep the app navigation
+  // available on authenticated and utility routes only.
+  if (pathname === '/') {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
