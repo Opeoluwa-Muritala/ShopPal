@@ -28,6 +28,7 @@ describe('Signup Flow Components', () => {
             business_name: '',
             category: 'Clothing',
             email: '',
+            password: '',
           }}
           onChange={mockChange}
           onNext={mockNext}
@@ -51,6 +52,7 @@ describe('Signup Flow Components', () => {
             business_name: '',
             category: 'Clothing',
             email: '',
+            password: '',
           }}
           onChange={() => {}}
           onNext={() => {
