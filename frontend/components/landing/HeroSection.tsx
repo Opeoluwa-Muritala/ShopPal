@@ -18,57 +18,24 @@ export default function HeroSection() {
     <section
       className="relative overflow-hidden text-white"
       style={{
-        background: 'linear-gradient(135deg, #0d1117 0%, #0f1f3d 50%, #0a1628 100%)',
-        paddingTop: 'clamp(64px, 10vw, 100px)',
-        paddingBottom: 'clamp(64px, 10vw, 100px)',
+        background: 'linear-gradient(180deg, #111417 0%, #1a1d21 100%)',
+        paddingTop: 'clamp(36px, 8vw, 72px)',
+        paddingBottom: 'clamp(36px, 8vw, 64px)',
       }}
     >
-      {/* ── Background decorations ── */}
-      {/* Top-right radial glow */}
-      <div
-        className="absolute top-0 right-0 w-[600px] h-[600px] pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle at 80% 20%, rgba(176,132,99,0.15) 0%, transparent 60%)',
-        }}
-      />
-      {/* Bottom-left subtle glow */}
-      <div
-        className="absolute bottom-0 left-0 w-[400px] h-[400px] pointer-events-none"
-        style={{
-          background: 'radial-gradient(circle at 20% 80%, rgba(176,132,99,0.09) 0%, transparent 60%)',
-        }}
-      />
-      {/* Fine grid texture */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-        }}
-      />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),transparent_45%)]" />
+      <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)', backgroundSize: '64px 64px' }} />
 
-      {/* ── Content container ── */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-10">
-        <div
-          className="
-            grid grid-cols-1 lg:grid-cols-2
-            gap-12 lg:gap-16 xl:gap-20
-            items-center
-          "
-        >
-          {/* Left: Content */}
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-[1.05fr_1.1fr] lg:gap-4">
           <HeroContent />
 
-          {/* Right: Visual (phone mockup) */}
           <div
             ref={visualRef}
-            className="flex justify-center lg:justify-end transition-all duration-700 ease-out"
+            className="flex justify-center transition-all duration-700 ease-out lg:justify-end"
             style={{
               opacity: visualVisible ? 1 : 0,
-              transform: visualVisible ? 'translateY(0)' : 'translateY(32px)',
+              transform: visualVisible ? 'translateY(0)' : 'translateY(24px)',
             }}
           >
             <HeroVisual />

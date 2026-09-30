@@ -37,9 +37,9 @@ export default function SignupForm() {
 
   const [successData, setSuccessData] = useState<SuccessData>({
     vendor_id: '',
-    bot_number: '+1 415 523 8886',
-    test_link: 'https://wa.me/14155238886?text=join%20sandbox-code',
-    sandbox_code: 'bold-elephant',
+    bot_number: '',
+    test_link: '',
+    sandbox_code: '',
   });
 
   // Load from localStorage on mount (deferred to avoid cascading render lint error)
@@ -49,7 +49,9 @@ export default function SignupForm() {
       if (saved) {
         const parsed = JSON.parse(saved);
         setTimeout(() => {
-          if (parsed.formData) setFormData(parsed.formData);
+          if (parsed.formData) {
+            setFormData({ ...parsed.formData, email: '', password: '' });
+          }
           if (parsed.currentStep && parsed.currentStep < 4) setCurrentStep(parsed.currentStep);
         }, 0);
       }
@@ -66,7 +68,7 @@ export default function SignupForm() {
           STORAGE_KEY,
           JSON.stringify({
             currentStep,
-            formData,
+            formData: { ...formData, email: '', password: '' },
           })
         );
       } catch {
@@ -92,7 +94,7 @@ export default function SignupForm() {
     const cleanPhone = formData.phone.replace(/\D/g, '');
     const cleanWhatsapp = formData.whatsapp_number.replace(/\D/g, '') || cleanPhone;
     const vendorEmail = formData.email?.trim() || `${cleanPhone}@vendor.shoppal.ng`;
-    const vendorPassword = formData.password?.trim() || 'Passw0rd123!';
+    const vendorPassword = formData.password;
 
     try {
       const res = await vendorsApi.signup({
@@ -168,23 +170,7 @@ export default function SignupForm() {
       });
       setCurrentStep(4);
     } catch {
-      // Graceful fallback for mock/offline demo
-      const fallbackId = `v_${Math.floor(1000 + Math.random() * 9000)}`;
-      setStoredTokens({
-        vendor_id: fallbackId,
-        email: vendorEmail,
-        role: 'owner',
-        name: formData.name,
-        business_name: formData.business_name || formData.name,
-        phone: cleanPhone,
-      });
-      setSuccessData({
-        vendor_id: fallbackId,
-        bot_number: cleanWhatsapp,
-        test_link: `https://wa.me/${cleanWhatsapp}?text=Hello%20${encodeURIComponent(formData.business_name || formData.name)}`,
-        sandbox_code: 'bold-elephant',
-      });
-      setCurrentStep(4);
+      setSubmitError('Unable to create your account. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

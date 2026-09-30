@@ -1,3 +1,5 @@
+'use client';
+
 import React from 'react';
 
 export default function Testimonial() {
@@ -7,7 +9,7 @@ export default function Testimonial() {
       business: 'Fabrics & Lace Merchant',
       location: 'Lagos',
       quote:
-        'Before ShopPal, I spent hours every day sending pictures and answering "how much last" to customers. Now the WhatsApp bot handles routine inquiries and generates Paystack links directly.',
+        'Before ShopPal, I spent hours every day sending pictures and answering “how much last” to customers. Now the WhatsApp bot handles routine inquiries and generates Paystack links directly.',
       salesGrowth: '+114% order throughput',
     },
     {
@@ -29,70 +31,70 @@ export default function Testimonial() {
   ];
 
   return (
-    <section className="py-16 md:py-24 bg-white border-b border-slate-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <>
+      <style jsx>{`
+        @keyframes slideLeft {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .testimonial-track {
+          animation: slideLeft 18s linear infinite;
+        }
+        .testimonial-track:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
 
-        {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-14 space-y-3">
-          <span className="text-emerald-800 bg-emerald-50 border border-emerald-200 text-xs font-semibold uppercase tracking-wider px-3.5 py-1 rounded-full inline-block">
-            Merchant Feedback
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-            Real feedback from Nigerian traders
-          </h2>
-          <p className="text-slate-600 text-base sm:text-lg">
-            See how merchants are boosting revenue and saving hours with WhatsApp commerce.
-          </p>
-        </div>
-
-        {/* Stats Bar */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 mb-12 max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center shadow-xs">
-          <div>
-            <span className="text-2xl sm:text-3xl font-extrabold text-emerald-700 block">450+</span>
-            <span className="text-xs text-slate-500 font-medium">Active Merchants</span>
-          </div>
-          <div>
-            <span className="text-2xl sm:text-3xl font-extrabold text-emerald-700 block">₦45M+</span>
-            <span className="text-xs text-slate-500 font-medium">Transactions Settled</span>
-          </div>
-          <div>
-            <span className="text-2xl sm:text-3xl font-extrabold text-emerald-700 block">98%</span>
-            <span className="text-xs text-slate-500 font-medium">Kept by Merchants</span>
-          </div>
-          <div>
-            <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 block">4.9/5</span>
-            <span className="text-xs text-slate-500 font-medium">Merchant Rating</span>
-          </div>
-        </div>
-
-        {/* Testimonial Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {testimonials.map((t, idx) => (
-            <div
-              key={idx}
-              className="bg-white rounded-xl p-6 border border-slate-200 hover:border-slate-300 flex flex-col justify-between transition-shadow hover:shadow-xs"
-            >
-              <div>
-                <p className="text-xs text-slate-700 italic leading-relaxed mb-4">
-                  &ldquo;{t.quote}&rdquo;
-                </p>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{t.name}</p>
-                  <p className="text-[11px] text-slate-500">{t.business} • {t.location}</p>
-                </div>
-                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                  {t.salesGrowth}
-                </span>
+      <section className="border-b border-white/10 bg-[#0d1014] py-16 md:py-20">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-center gap-8 lg:grid-cols-[0.75fr_1.45fr]">
+            <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#10151b] shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+              <img
+                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=80"
+                alt="African merchant smiling while using a mobile phone"
+                className="h-[420px] w-full object-cover object-center"
+              />
+              <div className="border-t border-white/10 bg-[#111a22] px-4 py-3 text-sm text-slate-200">
+                <p className="font-medium text-white">Ada & Co. Fashion</p>
+                <p className="text-xs text-slate-400">Lagos, Nigeria</p>
               </div>
             </div>
-          ))}
+
+            <div>
+              <div className="mb-6">
+                <span className="inline-block rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-[#dfe9ff]">
+                  Merchant feedback
+                </span>
+                <h2 className="mt-4 text-3xl font-light tracking-[-0.06em] text-white sm:text-5xl">
+                  Real wins from real sellers.
+                </h2>
+              </div>
+
+              <div className="overflow-hidden pb-2">
+                <div className="testimonial-track flex w-max gap-4">
+                  {[...testimonials, ...testimonials].map((t, idx) => (
+                    <article
+                      key={`${t.name}-${idx}`}
+                      className="w-[300px] rounded-[24px] border border-white/10 bg-white/5 p-5 text-left backdrop-blur-sm"
+                    >
+                      <p className="text-sm leading-6 text-slate-200">“{t.quote}”</p>
+                      <div className="mt-5 flex items-end justify-between gap-3 border-t border-white/10 pt-4">
+                        <div>
+                          <p className="text-sm font-medium text-white">{t.name}</p>
+                          <p className="text-[11px] text-slate-400">{t.business} • {t.location}</p>
+                        </div>
+                        <span className="rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-2 py-1 text-[9px] font-medium uppercase tracking-[0.14em] text-[#dfe9ff]">
+                          {t.salesGrowth}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
