@@ -38,7 +38,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
     ├── LLM Engine (Google Gemma 3 - Pidgin/English + System Prompt)
     ├── Inventory & Session Cache (Redis)
     ├── Relational Database (PostgreSQL)
-    └── Payment Gateway (Paystack API & Webhooks)
+    └── Payment Gateway (Flutterwave virtual accounts & webhooks)
           ▲
           │  (REST API / JWT Auth)
 [ Next.js Vendor Dashboard (Web & Mobile) ]
@@ -57,7 +57,7 @@ EcomBot transforms WhatsApp into an automated, interactive digital storefront. S
 | **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Google Gemma API (Gemma 3 27B) |
 | **Data Persistence** | Relational store for merchants, products, orders, and logs | PostgreSQL 15 |
 | **Session & State Cache** | Multi-turn chat context, cart state, rate limits | Redis 7 |
-| **Payment Gateway** | Generation of checkout links, payment verification, webhook callbacks | Paystack Payments API |
+| **Payment Gateway** | Dynamic virtual-account instructions, exact-amount payment verification, webhook callbacks | Flutterwave v4 API; Paystack legacy support |
 | **Vendor Dashboard** | Merchant signup, CSV inventory upload, orders management, analytics | Next.js 14, React 18, Tailwind CSS |
 
 ---

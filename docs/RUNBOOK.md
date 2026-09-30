@@ -77,5 +77,5 @@ Reference: https://render.com/docs/native-runtimes
    - Verify `GEMMA_API_KEY` quota and rate limits.
    - Fall back to standard keyword-matching catalog search routine.
 
-3. **If Paystack Webhook Fails in Local Dev**:
+3. **If Flutterwave Webhook Fails in Local Dev**:
    - Resend payment verification request manually using transaction reference via `GET /api/payments/verify/{reference}`.
