@@ -18,24 +18,14 @@ interface LoginFormProps {
   onSuccess?: (data: LoginResponse) => void;
 }
 
-const REMEMBER_KEY = 'shoppal_remembered_identifier';
 const VENDOR_ID_KEY = 'shoppal_vendor_id';
 const TOKEN_KEY = 'shoppal_auth_token';
-
-function generateDemoVendorId(): string {
-  return `v_${Math.floor(1000 + Math.random() * 9000)}`;
-}
-
-function generateDemoToken(): string {
-  return `demo_jwt_${Date.now()}`;
-}
 
 export default function LoginForm({ onSuccess }: LoginFormProps) {
   const router = useRouter();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [errors, setErrors] = useState<{ identifier?: string; password?: string }>({});
@@ -53,20 +43,6 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const remembered = localStorage.getItem(REMEMBER_KEY);
-      if (remembered) {
-        setTimeout(() => {
-          setIdentifier(remembered);
-          setRememberMe(true);
-        }, 0);
-      }
-    } catch {
-      // Ignore
-    }
-  }, []);
 
   const validateIdentifier = (val: string): string | undefined => {
     const trimmed = val.trim();
@@ -157,18 +133,18 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
       });
 
       const token = res.data?.access_token || (res.data as any)?.token;
-      const vendorId = (res.data as any)?.vendor_id || generateDemoVendorId();
+      const vendorId = (res.data as any)?.vendor_id;
       const refreshToken = res.data?.refresh_token || token;
 
       if (token) {
         setStoredTokens({
           access_token: token,
           refresh_token: refreshToken,
-          vendor_id: vendorId,
+          vendor_id: vendorId || '',
           email: emailToSend,
         });
 
-        persistSession(vendorId, token);
+        persistSession(vendorId || '', token);
         setToastMessage('Logged in! Welcome back. Redirecting...');
 
         if (onSuccess) onSuccess({ vendor_id: vendorId, token, access_token: token, refresh_token: refreshToken });
@@ -180,10 +156,10 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
       } else if (res.error && res.status !== 0 && res.status !== 500) {
         setSubmitError(res.error);
       } else {
-        handleDemoFallback();
+        setSubmitError('Login failed. Please check your credentials and try again.');
       }
     } catch {
-      handleDemoFallback();
+      setSubmitError('Login failed. Please check your credentials and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -191,38 +167,13 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
 
   const persistSession = (vendorId: string, token: string) => {
     try {
-      localStorage.setItem(VENDOR_ID_KEY, vendorId);
-      localStorage.setItem(TOKEN_KEY, token);
-
-      if (rememberMe) {
-        localStorage.setItem(REMEMBER_KEY, identifier.trim());
-      } else {
-        localStorage.removeItem(REMEMBER_KEY);
+      if (vendorId) {
+        localStorage.setItem(VENDOR_ID_KEY, vendorId);
       }
+      localStorage.setItem(TOKEN_KEY, token);
     } catch {
       // Ignore
     }
-  };
-
-  const handleDemoFallback = () => {
-    const demoVendorId = generateDemoVendorId();
-    const demoToken = generateDemoToken();
-    persistSession(demoVendorId, demoToken);
-
-    setStoredTokens({
-      access_token: demoToken,
-      vendor_id: demoVendorId,
-      email: identifier.includes('@') ? identifier.trim() : `${identifier.trim()}@vendor.shoppal.ng`,
-      name: 'Vendor',
-      business_name: 'Store',
-    });
-
-    setToastMessage('Demo mode: Logged in with stored vendor ID');
-
-    if (onSuccess) onSuccess({ vendor_id: demoVendorId, token: demoToken });
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 500);
   };
 
   const handleRequestResetToken = async (e: React.FormEvent) => {
@@ -319,7 +270,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate autoComplete="off" className="space-y-4">
         {/* Email or Phone Input */}
         <div>
           <label htmlFor="identifier" className="block text-xs font-semibold text-slate-700 mb-1">
@@ -329,7 +280,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
             id="identifier"
             name="identifier"
             type="text"
-            autoComplete="username"
+            autoComplete="off"
             placeholder="e.g. 08012345678 or merchant@example.com"
             value={identifier}
             onChange={handleIdentifierChange}
@@ -368,7 +319,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
               id="password"
               name="password"
               type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
+              autoComplete="new-password"
               placeholder="Min 6 characters"
               value={password}
               onChange={handlePasswordChange}
@@ -395,21 +346,6 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
               {errors.password}
             </p>
           )}
-        </div>
-
-        {/* Remember Me Checkbox */}
-        <div className="flex items-center justify-between pt-1">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              id="rememberMe"
-              name="rememberMe"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 rounded text-slate-900 border-slate-300 focus:ring-0 cursor-pointer"
-            />
-            <span className="text-xs text-slate-600">Remember me</span>
-          </label>
         </div>
 
         {/* Submit Button */}
