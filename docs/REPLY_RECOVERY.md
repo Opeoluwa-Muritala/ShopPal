@@ -76,7 +76,7 @@ The prompt directs Gemma to answer the latest message first, merge queued messag
 without repeating prior answers, mirror Nigerian Pidgin or English, use `viewCart`
 for a bare cart or checkout request, and use `checkoutCart` only after receiving a
 delivery address. Checkout returns the configured vendor transfer account; payment
-remains pending until the signed Paystack webhook.
+remains pending until the signed Flutterwave webhook (or the legacy Paystack webhook for an existing Paystack order).
 
 Gemma credentials now travel in the `x-goog-api-key` header rather than URL query
 parameters. Logs contain job IDs and failure categories, never provider bodies,

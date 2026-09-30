@@ -13,7 +13,7 @@
 | **Database & Cache** | PostgreSQL 15, Redis | Relational data persistence, conversation state management, session cache |
 | **Messaging Gateway** | Twilio WhatsApp and Meta Cloud API | Bi-directional customer chat messaging interface |
 | **AI / Intelligence** | Google Gemma (via Gemma 3 generateContent API) | Natural language product discovery, Nigerian Pidgin understanding, cart intent |
-| **Payments** | Paystack | Automated payment link generation, checkout, and webhook verification |
+| **Payments** | Flutterwave (Paystack legacy support) | Automated checkout, split settlement, transaction verification, and signed webhooks |
 | **Testing** | Pytest, Vitest, React Testing Library | Backend unit/integration tests and frontend UI component tests |
 | **CI / CD** | GitHub Actions | Automated linting, test suites, coverage checks, and deployment webhooks |
 | **Hosting** | Render / Railway (Backend), Vercel (Frontend) | Cloud application hosting and continuous deployment |
@@ -29,9 +29,20 @@ Ensure you have the following installed on your development machine (versions sp
 - **Redis 7+**
 - **ngrok** (for tunneling incoming WhatsApp webhooks to localhost)
 
+### WhatsApp bank-transfer checkout
+
+New orders use Flutterwave dynamic virtual accounts and stay entirely in WhatsApp:
+
+1. Copy `backend/.env.example` to `backend/.env` and set `FLW_CLIENT_ID`, `FLW_CLIENT_SECRET`, `FLW_ENV=sandbox`, `FLW_WEBHOOK_SECRET_HASH`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `DATABASE_URL`, and `ORDER_EXPIRY_MINUTES`.
+2. Run `cd backend; ..\\.venv\\Scripts\\Activate.ps1; alembic upgrade head; uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`.
+3. Configure Meta's webhook URL as `https://<ngrok-host>/webhooks/whatsapp` and Flutterwave's webhook URL as `https://<ngrok-host>/webhooks/flutterwave`.
+4. Start the frontend separately with `cd frontend; npm install; npm run dev`; no Flutterwave or WhatsApp credentials belong in the frontend.
+
+Sandbox checklist: create a cart, tap `Pay`, confirm the returned dynamic account has the exact order amount and expiry, send a mocked/sandbox transfer, verify the signed `charge.completed` callback, retry the same callback, tap `I've paid` before and after settlement, test wrong-amount review, and wait for expiry.
+
 ---
 
-## Deployment Runbook (Render / Railway / Twilio)
+## Deployment Runbook (Render / Railway / Meta WhatsApp)
 
 ### 1. Backend Web Service Creation (Render / Railway)
 - **Environment**: Docker or Python 3.11 Runtime
@@ -54,11 +65,6 @@ SECRET_KEY=<generated-32-char-random-key>
 DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<dbname>?sslmode=require
 REDIS_URL=rediss://<user>:<password>@<host>:<port>
 
-# Twilio WhatsApp Gateway
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=<twilio-auth-token>
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
-
 # Meta WhatsApp Cloud API
 WHATSAPP_VERIFY_TOKEN=<random-webhook-verification-token>
 WHATSAPP_APP_SECRET=<meta-app-secret>
@@ -75,7 +81,22 @@ META_REPLY_WORKER_ENABLED=true
 META_REPLY_WORKER_CONCURRENCY=4
 META_REPLY_WORKER_POLL_SECONDS=1
 
-# Paystack Payment Gateway
+# Flutterwave v4 dynamic virtual accounts (platform-managed)
+FLW_CLIENT_ID=your-flutterwave-client-id
+FLW_CLIENT_SECRET=your-flutterwave-client-secret
+FLW_ENV=sandbox
+FLW_WEBHOOK_SECRET_HASH=your-flutterwave-webhook-secret-hash
+FLW_ENCRYPTION_KEY=optional-v3-encryption-key
+ORDER_EXPIRY_MINUTES=30
+
+# Legacy v3 credentials, only for the isolated fallback adapter
+FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-X
+FLUTTERWAVE_PUBLIC_KEY=FLWPUBK_TEST-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-X
+FLUTTERWAVE_SECRET_HASH=your-flutterwave-webhook-secret-hash
+FLUTTERWAVE_REDIRECT_URL=https://your-frontend.example.com/payment/callback
+FLUTTERWAVE_PLATFORM_FEE_PERCENT=0.02
+
+# Legacy Paystack support for existing orders only
 PAYSTACK_SECRET_KEY=paystack_sk_test_placeholder_key
 PAYSTACK_PUBLIC_KEY=paystack_pk_test_placeholder_key
 PAYSTACK_WEBHOOK_SECRET=paystack_webhook_secret_hash
@@ -86,16 +107,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
-### 3. Twilio Sandbox Webhook Configuration
-1. Open the **Twilio Console** and navigate to:
-   `Messaging` > `Try it out` > `Send a WhatsApp message` > `Sandbox Settings`.
-2. Under **"When a message comes in"**:
-   - Select **HTTP POST**.
-   - Set the URL to your live backend endpoint:
-     `https://<your-service-name>.onrender.com/webhook/whatsapp` (or local ngrok forwarding URL during staging).
-3. Under **"Status callback URL"**:
-   - Set to: `https://<your-service-name>.onrender.com/webhook/status`.
-4. Click **Save**.
+### 3. Meta and Flutterwave webhook configuration
+1. Set Meta's callback URL to `https://<your-service-name>.onrender.com/webhooks/whatsapp` and configure the verify token and app secret.
+2. Set Flutterwave's webhook URL to `https://<your-service-name>.onrender.com/webhooks/flutterwave` and configure the v4 webhook secret hash.
+3. Use HTTPS in production and keep all provider credentials in the backend environment only.
 
 ### 4. Meta WhatsApp Cloud API Configuration
 
@@ -132,7 +147,7 @@ naija-marketplace/
 │   ├── app/
 │   │   ├── db/                 # Database models and session connection
 │   │   ├── routers/            # FastAPI route handlers (auth, accounts, vendors, orders, products, webhooks)
-│   │   ├── services/           # Auth & JWT service, LLM agent, Twilio client, Paystack integrations
+│   │   ├── services/           # Auth & JWT service, LLM agent, Twilio client, payment integrations
 │   │   ├── logging_conf.py     # Structured JSON logging & recent logs buffer
 │   │   └── main.py             # FastAPI entrypoint with error recovery middleware
 │   ├── tests/                  # Pytest test suite & conftest fixtures
