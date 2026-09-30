@@ -4,6 +4,7 @@ from functools import lru_cache
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 
@@ -40,3 +41,25 @@ def get_db() -> Iterator[Session]:
         return
     with Session(get_engine()) as session:
         yield session
+
+
+@lru_cache
+def get_async_engine() -> AsyncEngine:
+    settings = get_settings()
+    if settings.database_url is None:
+        raise RuntimeError("DATABASE_URL is not configured")
+    url = database_url(str(settings.database_url)).set(drivername="postgresql+psycopg")
+    return create_async_engine(
+        url,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 10},
+    )
+
+
+@lru_cache
+def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(get_async_engine(), expire_on_commit=False)

@@ -23,7 +23,8 @@ class VendorSignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
     preferred_language: str | None = Field(default="pidgin", max_length=20)
-    bank_account: str | None = Field(default=None, max_length=50)
+    bank_account: str | None = Field(default=None, min_length=10, max_length=10, pattern=r"^\d{10}$")
+    flutterwave_bank_code: str | None = Field(default=None, max_length=20, pattern=r"^[0-9A-Za-z_-]+$")
 
 
 @router.get("/me")
@@ -46,8 +47,8 @@ def get_current_vendor(
         "phone": vendor.phone,
         "whatsapp_number": vendor.whatsapp_number,
         "bot_number": vendor.bot_number or vendor.whatsapp_number,
-        "paystack_public_key": vendor.paystack_public_key,
         "bank_account": vendor.bank_account,
+        "flutterwave_bank_code": vendor.flutterwave_bank_code,
         "greeting_message": vendor.greeting_message,
         "preferred_language": vendor.preferred_language,
         "is_active": bool(vendor.is_active),
@@ -93,6 +94,7 @@ def signup_vendor(
             bot_number=req.whatsapp_number,
             business_name=req.business_name or req.name,
             bank_account=req.bank_account,
+            flutterwave_bank_code=req.flutterwave_bank_code,
             preferred_language=req.preferred_language,
             is_active=True,
         )

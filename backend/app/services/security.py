@@ -129,6 +129,13 @@ def verify_paystack_signature(
     return hmac.compare_digest(computed.lower(), signature.lower())
 
 
+def verify_flutterwave_signature(secret_hash: str, signature: str | None) -> bool:
+    """Validate Flutterwave's configured verif-hash header."""
+    if not secret_hash or not signature:
+        return False
+    return hmac.compare_digest(secret_hash, signature)
+
+
 def verify_meta_signature(
     app_secret: str,
     signature_header: str | None,
