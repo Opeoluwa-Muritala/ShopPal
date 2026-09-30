@@ -20,7 +20,10 @@ from app.routers import (
     vendors,
     webhook,
     whatsapp_webhook,
+    flutterwave,
 )
+from app.jobs.expiry import expiry_loop
+from app.jobs.reconcile import reconciliation_loop
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
 
@@ -34,12 +37,18 @@ async def lifespan(application):
         "status": "enabled" if get_settings().meta_reply_worker_enabled else "disabled",
     })
     task = asyncio.create_task(recovery_loop(stop, application.state.reply_wakeup)) if get_settings().meta_reply_worker_enabled else None
+    expiry_task = asyncio.create_task(expiry_loop(stop, get_settings())) if get_settings().database_url else None
+    reconciliation_task = asyncio.create_task(reconciliation_loop(stop, get_settings())) if get_settings().database_url else None
     try:
         yield
     finally:
         stop.set()
         if task is not None:
             await task
+        if expiry_task is not None:
+            await expiry_task
+        if reconciliation_task is not None:
+            await reconciliation_task
 
 
 def create_app() -> FastAPI:
@@ -48,7 +57,7 @@ def create_app() -> FastAPI:
         title="ShopPal API",
         description=(
             "ShopPal backend for vendor commerce and customer conversations over "
-            "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
+            "Meta WhatsApp Cloud API. Vendor API routes require "
             "the configured frontend API key and applicable account credentials; "
             "provider webhooks use provider-specific signature verification. "
             "Frontend endpoint mapping is documented in docs/FRONTEND_API.md."
@@ -65,7 +74,8 @@ def create_app() -> FastAPI:
             {"name": "System", "description": "Service health checks."},
             {"name": "Provider Webhooks", "description": "Inbound provider callbacks; these are not frontend dashboard calls."},
             {"name": "Twilio WhatsApp", "description": "Signed Twilio WhatsApp customer messages."},
-            {"name": "Paystack", "description": "Signed Paystack payment callbacks."},
+            {"name": "Paystack", "description": "Signed legacy Paystack payment callbacks."},
+            {"name": "Flutterwave", "description": "Signed Flutterwave payment callbacks."},
             {
                 "name": "Meta WhatsApp",
                 "description": (
@@ -150,6 +160,7 @@ def create_app() -> FastAPI:
     application.include_router(logs.router)
     application.include_router(webhook.router)
     application.include_router(whatsapp_webhook.router)
+    application.include_router(flutterwave.router)
     application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
