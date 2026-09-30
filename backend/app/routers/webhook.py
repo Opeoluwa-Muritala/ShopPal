@@ -1,4 +1,4 @@
-"""Webhook routers for Twilio WhatsApp and Paystack with signature verification, rate limiting, and replay defense."""
+"""Webhook routers for messaging and payment providers with signature verification and replay defense."""
 
 import json
 from asyncio import to_thread
@@ -26,7 +26,8 @@ from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService
-from app.services.paystack import PaystackError, verify_transaction
+from app.services.flutterwave import FlutterwaveError, verify_transaction as verify_flutterwave_transaction
+from app.services.paystack import PaystackError, verify_transaction as verify_paystack_transaction
 from app.services.security import (
     check_phone_rate_limit,
     is_paystack_event_processed,
@@ -34,6 +35,7 @@ from app.services.security import (
     mask_phone,
     validate_media_url,
     verify_paystack_signature,
+    verify_flutterwave_signature,
     verify_twilio_signature,
 )
 from app.services.transcription import TranscriptionError, transcribe_audio
@@ -288,7 +290,7 @@ async def paystack_webhook(
         # This also keeps webhook handling idempotent for already-removed orders.
         if isinstance(order, Order):
             try:
-                verified = await to_thread(verify_transaction, reference, settings)
+                verified = await to_thread(verify_paystack_transaction, reference, settings)
             except PaystackError:
                 logger.warning(
                     "Paystack transaction verification failed",
@@ -344,4 +346,85 @@ async def paystack_webhook(
     # Record event ID in idempotency store
     mark_paystack_event_processed(event_id)
 
+    return {"status": "success", "event_id": event_id}
+
+
+@router.post("/flutterwave", tags=["Flutterwave"])
+async def flutterwave_webhook(
+    request: Request,
+    verif_hash: str | None = Header(default=None, alias="verif-hash"),
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_db),
+):
+    """Verify and fulfill a Flutterwave payment notification exactly once."""
+    raw_body = await request.body()
+    secret_hash = settings.flutterwave_secret_hash.get_secret_value()
+    if not verify_flutterwave_signature(secret_hash, verif_hash):
+        logger.warning(
+            "Flutterwave webhook signature verification failed",
+            extra={"step": "flutterwave_signature_check", "status": "rejected"},
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Flutterwave signature header")
+    try:
+        payload: dict[str, Any] = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed JSON body") from exc
+
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    reference = data.get("tx_ref")
+    transaction_id = str(data.get("id") or "")
+    event_id = str(payload.get("id") or transaction_id or reference or "")
+    if not event_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing payment event identifier")
+    if is_paystack_event_processed(event_id):
+        return {"status": "ignored_duplicate", "event_id": event_id}
+
+    if payload.get("event") == "charge.completed" and reference and transaction_id:
+        order = session.scalar(
+            select(Order).where(
+                Order.order_code == reference,
+                Order.payment_provider == "flutterwave",
+            ).with_for_update()
+        )
+        if isinstance(order, Order):
+            try:
+                verified = await to_thread(verify_flutterwave_transaction, transaction_id, settings)
+            except FlutterwaveError:
+                raise HTTPException(status_code=503, detail="Payment verification unavailable") from None
+            expected_amount = int((order.total * 100).to_integral_exact())
+            try:
+                verified_amount = int(verified.get("amount"))
+                charged_amount = int(verified.get("charged_amount", verified_amount))
+            except (TypeError, ValueError):
+                verified_amount = charged_amount = -1
+            if (
+                str(verified.get("tx_ref")) != reference
+                or str(verified.get("id")) != transaction_id
+                or verified.get("status") != "successful"
+                or str(verified.get("currency") or "").upper() != "NGN"
+                or verified_amount != expected_amount
+                or charged_amount < expected_amount
+            ):
+                raise HTTPException(status_code=400, detail="Payment verification failed")
+            was_already_paid = order.payment_status == "paid"
+            order.payment_status = "paid"
+            order.payment_reference = reference
+            order.payment_transaction_id = transaction_id
+            order.status = "processing"
+            order.payment_confirmed_at = datetime.now(UTC)
+            order.payment_confirmation_source = "flutterwave_webhook"
+            session.commit()
+            if not was_already_paid and order.customer_phone:
+                try:
+                    await send_whatsapp_text(
+                        order.customer_phone,
+                        f"Payment received for order {order.order_code}. Your order is now being processed.",
+                        settings,
+                    )
+                except Exception:
+                    logger.error(
+                        "Payment verified but customer notification failed",
+                        extra={"step": "flutterwave_payment_notification", "order_code": order.order_code},
+                    )
+    mark_paystack_event_processed(event_id)
     return {"status": "success", "event_id": event_id}
