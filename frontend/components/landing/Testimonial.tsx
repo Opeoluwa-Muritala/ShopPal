@@ -7,7 +7,7 @@ export default function Testimonial() {
       business: 'Fabrics & Lace Merchant',
       location: 'Lagos',
       quote:
-        'Before ShopPal, I spent hours every day sending pictures and answering "how much last" to customers. Now the WhatsApp bot handles routine inquiries and generates Paystack links directly.',
+        'Before ShopPal, I spent hours every day sending pictures and answering "how much last" to customers. Now the WhatsApp bot handles routine inquiries and creates Flutterwave bank-transfer instructions directly.',
       salesGrowth: '+114% order throughput',
     },
     {
@@ -15,7 +15,7 @@ export default function Testimonial() {
       business: 'Leather Goods Retailer',
       location: 'Abuja',
       quote:
-        'No more fake payment alert issues. Customers pay directly through the Paystack link on WhatsApp, and the funds enter my bank account immediately. It is reliable and simple.',
+        'No more fake payment alert issues. Customers pay the exact amount into a Flutterwave virtual account on WhatsApp, and the bot confirms only after verification.',
       salesGrowth: 'Direct bank payouts',
     },
     {

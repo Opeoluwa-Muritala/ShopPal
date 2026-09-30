@@ -82,7 +82,7 @@ export default function ProblemSection() {
 
               <ul className="space-y-2 text-xs text-slate-700 pt-2">
                 <li>• <strong className="text-emerald-800">Keep 98%:</strong> Only 2% fee when you make a completed sale.</li>
-                <li>• <strong className="text-emerald-800">Instant Paystack Settlement:</strong> Verified funds sent directly to your Nigerian bank.</li>
+                <li>• <strong className="text-emerald-800">Instant Flutterwave Settlement:</strong> Verified funds sent directly to your Nigerian bank.</li>
                 <li>• <strong className="text-emerald-800">AI Speaks Pidgin &amp; English:</strong> Answers inquiries and closes sales anytime.</li>
                 <li>• <strong className="text-emerald-800">Zero app download:</strong> Shoppers buy directly inside WhatsApp.</li>
               </ul>

@@ -255,8 +255,9 @@ export const vendorsApi = {
       phone: string;
       whatsapp_number: string;
       bot_number?: string;
-      paystack_public_key?: string | null;
       bank_account?: string | null;
+      flutterwave_bank_code?: string | null;
+      flutterwave_subaccount_id?: string | null;
       greeting_message?: string | null;
       preferred_language?: string | null;
       is_active: boolean;
@@ -273,6 +274,7 @@ export const vendorsApi = {
     password: string;
     preferred_language?: string;
     bank_account?: string;
+    flutterwave_bank_code?: string;
   }) => {
     return apiClient<{
       vendor_id: string;

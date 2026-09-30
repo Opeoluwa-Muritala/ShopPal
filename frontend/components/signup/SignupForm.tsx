@@ -28,9 +28,9 @@ export default function SignupForm() {
     password: '',
     business_name: '',
     category: 'Clothing',
-    paystack_key: '',
     bank_account: '',
     bank_name: '',
+    flutterwave_bank_code: '',
     account_name: '',
     products: [],
   });
@@ -38,7 +38,7 @@ export default function SignupForm() {
   const [successData, setSuccessData] = useState<SuccessData>({
     vendor_id: '',
     bot_number: '+1 415 523 8886',
-    test_link: 'https://wa.me/14155238886?text=join%20sandbox-code',
+    test_link: 'https://wa.me/14155238886?text=Hello',
     sandbox_code: 'bold-elephant',
   });
 
@@ -103,6 +103,7 @@ export default function SignupForm() {
         email: vendorEmail,
         password: vendorPassword,
         bank_account: formData.bank_account || undefined,
+        flutterwave_bank_code: formData.flutterwave_bank_code || undefined,
         preferred_language: 'en',
       });
 
@@ -163,7 +164,7 @@ export default function SignupForm() {
       setSuccessData({
         vendor_id: assignedVendorId,
         bot_number: res.data?.bot_number || res.data?.whatsapp_number || cleanWhatsapp,
-        test_link: `https://wa.me/${(res.data?.bot_number || res.data?.whatsapp_number || cleanWhatsapp).replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(returnedBusinessName)}`,
+        test_link: `https://wa.me/${(res.data?.bot_number || res.data?.whatsapp_number || cleanWhatsapp).replace(/\D/g, '')}?text=Hello`,
         sandbox_code: assignedVendorId,
       });
       setCurrentStep(4);

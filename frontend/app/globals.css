@@ -2,9 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .bg-slate-900 { background-color: #40566f !important; }
+  .bg-slate-800 { background-color: #30445b !important; }
+  .hover\:bg-slate-800:hover { background-color: #30445b !important; }
+  .text-slate-900 { color: #203247 !important; }
+  .border-slate-900 { border-color: #40566f !important; }
+  .focus\:border-slate-900:focus { border-color: #40566f !important; }
+}
+
 :root {
   --foreground-rgb: 15, 23, 42;
   --background-rgb: 255, 255, 255;
+  --cool-primary: #40566f;
+  --cool-primary-hover: #30445b;
+  --cool-surface: #eef3f8;
+  --whatsapp-green: #128c4a;
 }
 
 body {
@@ -13,6 +26,11 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #dce8f2;
+  color: #203247;
 }
 
 /* Remove default heavy box shadows across cards and buttons */

@@ -3,9 +3,10 @@
 import React from 'react';
 
 export interface Step2Data {
-  paystack_key: string;
+  paystack_key?: string;
   bank_account: string;
   bank_name: string;
+  flutterwave_bank_code?: string;
   account_name: string;
 }
 
@@ -48,32 +49,32 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-1">
-          Connect your Paystack account to receive direct customer payments into your Nigerian bank account.
+          Connect your Flutterwave settlement account to receive customer payments directly into your Nigerian bank account.
         </p>
       </div>
 
       {/* Skip Notice Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
         <span className="font-semibold block text-slate-900">Optional for setup — Skip for now.</span>
-        You can test the WhatsApp bot immediately with test checkout links and configure your live Paystack keys whenever you are ready.
+        You can test the WhatsApp bot immediately. Live checkout requires a verified Flutterwave settlement account.
       </div>
 
 
-      {/* Paystack Public Key */}
+      {/* Flutterwave settlement */}
       <div>
-        <label htmlFor="paystackKey" className="block text-xs font-semibold text-slate-900 mb-1">
-          Paystack Public Key <span className="text-slate-500 font-normal">(optional)</span>
+        <label htmlFor="flutterwaveBankCode" className="block text-xs font-semibold text-slate-900 mb-1">
+          Flutterwave Bank Code <span className="text-slate-500 font-normal">(required for live settlement)</span>
         </label>
         <input
-          id="paystackKey"
+          id="flutterwaveBankCode"
           type="text"
-          placeholder="pk_test_xxxxxxxx or pk_live_xxxxxxxx"
-          value={data.paystack_key}
-          onChange={(e) => onChange({ paystack_key: e.target.value })}
+          placeholder="e.g. 044"
+          value={data.flutterwave_bank_code}
+          onChange={(e) => onChange({ flutterwave_bank_code: e.target.value.trim() })}
           className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono"
         />
         <p className="mt-1 text-[11px] text-slate-500">
-          Find this in your Paystack Dashboard under Settings &gt; API Keys &amp; Webhooks.
+          Use the Flutterwave bank code for the selected Nigerian bank.
         </p>
       </div>
 

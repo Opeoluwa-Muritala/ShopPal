@@ -16,13 +16,13 @@ export default function HowItWorks() {
       title: 'Shoppers Buy on WhatsApp',
       subtitle: 'Natural Pidgin & English conversations',
       description:
-        'Customers message your WhatsApp bot to view items, check availability, and receive secure Paystack checkout links right inside the chat.',
+        'Customers message your WhatsApp bot to view items, check availability, and receive secure Flutterwave bank-transfer instructions right inside the chat.',
       badgeText: 'Step 2: Automated Sales',
     },
     {
       number: '03',
       title: 'Manage Orders & Receive Payouts',
-      subtitle: 'Instant Paystack bank settlements',
+      subtitle: 'Instant Flutterwave bank settlements',
       description:
         'Orders appear in real-time on your dashboard. Dispatch items via your preferred courier while verified funds land directly in your Nigerian bank account.',
       badgeText: 'Step 3: Fulfillment',

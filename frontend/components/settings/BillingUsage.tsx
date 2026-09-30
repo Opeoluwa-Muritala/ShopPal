@@ -45,7 +45,7 @@ export default function BillingUsage({ billing }: BillingUsageProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
               <div>• WhatsApp Commerce Storefront</div>
               <div>• Product Catalog Operations</div>
-              <div>• Paystack Direct Settlement</div>
+              <div>• Flutterwave Direct Settlement</div>
               <div>• Real-time Orders Dashboard</div>
             </div>
           </div>

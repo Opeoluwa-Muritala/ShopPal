@@ -105,7 +105,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 uppercase tracking-wider">
             <span>Total Sales</span>
             <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 text-[11px] font-bold">
-              Paystack
+              Flutterwave
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 my-2">

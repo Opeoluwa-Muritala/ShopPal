@@ -295,7 +295,7 @@ export default function DashboardHome() {
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 {language === 'pcm'
                   ? 'Your WhatsApp bot dey work 24/7 dey answer customers and close sales.'
-                  : 'Your automated WhatsApp commerce bot is active, receiving customer inquiries, and settling via Paystack.'}
+                  : 'Your automated WhatsApp commerce bot is active, receiving customer inquiries, and settling via Flutterwave.'}
               </p>
             </div>
 
@@ -357,7 +357,7 @@ export default function DashboardHome() {
                 iconBgColor="bg-emerald-50"
                 iconColor="text-emerald-700"
                 href="/orders"
-                tooltip="Gross settled customer transactions processed via Paystack"
+                tooltip="Gross settled customer transactions processed via Flutterwave"
                 testId="stats-total-revenue"
               />
 
