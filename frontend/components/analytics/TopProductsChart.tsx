@@ -29,7 +29,7 @@ const DEFAULT_TOP_PRODUCTS: TopProduct[] = [
   { product_id: 'prod_005', name: 'Denim Jeans', orders: 3, revenue: 72000 },
 ];
 
-const BAR_COLORS = ['#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6'];
+const BAR_COLORS = ['#003153', '#2A52BE', '#0054B4', '#8EA9F4', '#BFD4FF'];
 
 export default function TopProductsChart({
   products = DEFAULT_TOP_PRODUCTS,

@@ -35,7 +35,7 @@ export default function HeroVisual() {
     >
       {/* Ambient glow behind phone */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-64 h-64 rounded-full bg-green-500/15 blur-3xl" />
+        <div className="w-64 h-64 rounded-full bg-[#2A52BE]/25 blur-3xl" />
       </div>
 
       {/* Phone frame */}
@@ -217,7 +217,7 @@ export default function HeroVisual() {
         </div>
 
         {/* Floating badge - 98% */}
-        <div className="absolute -top-3 -right-8 bg-green-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-lg shadow-green-500/30 animate-float">
+        <div className="absolute -top-3 -right-8 bg-[#003153] text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-lg shadow-[#003153]/35 animate-float">
           Keep 98% 💸
         </div>
 
