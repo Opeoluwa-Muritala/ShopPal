@@ -31,6 +31,7 @@ from app.logging_conf import logger
 from app.services.security import check_phone_rate_limit, mask_phone
 from app.services.whatsapp import mark_whatsapp_message_read
 from app.services.whatsapp_media import process_whatsapp_media
+from app.services.payments import handle_whatsapp_payment_action
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
@@ -143,6 +144,8 @@ async def receive_whatsapp_webhook(
     try:
         _validate_payload(payload)
         read_receipts, media_jobs = await to_thread(process_whatsapp_payload, payload, settings)
+        for action, tx_ref, wa_number, bot_number in _extract_payment_actions(payload):
+            background_tasks.add_task(handle_whatsapp_payment_action, action, tx_ref=tx_ref, wa_number=wa_number, bot_number=bot_number, settings=settings)
         for media_id, message_type, mime_type in media_jobs:
             background_tasks.add_task(
                 process_whatsapp_media, media_id, message_type, settings, mime_type
@@ -160,6 +163,29 @@ async def receive_whatsapp_webhook(
         logger.error("Meta event persistence unavailable", extra={"step": "whatsapp_webhook_persistence"})
         raise HTTPException(status_code=503, detail="Please try again shortly") from None
     return {"status": "accepted"}
+
+
+def _extract_payment_actions(payload: dict[str, Any]) -> list[tuple[str, str | None, str, str | None]]:
+    """Extract only our signed-inbound WhatsApp payment buttons."""
+    actions: list[tuple[str, str | None, str, str | None]] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            metadata = value.get("metadata", {})
+            bot_number = metadata.get("display_phone_number")
+            for message in value.get("messages", []):
+                interactive = message.get("interactive") or {}
+                reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+                identifier = reply.get("id")
+                if not isinstance(identifier, str):
+                    continue
+                if identifier == "pay":
+                    actions.append(("pay", None, str(message.get("from", "")), bot_number))
+                elif identifier.startswith("payment_paid:"):
+                    actions.append(("paid", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("payment_cancel:"):
+                    actions.append(("cancel", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+    return actions
 
 
 def _validate_payload(payload):

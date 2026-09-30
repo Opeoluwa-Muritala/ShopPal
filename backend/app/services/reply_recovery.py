@@ -112,7 +112,7 @@ def validate_action(action):
 
 
 def ensure_payment_link(reply_text, transcript):
-    """Keep the Paystack checkout URL visible after checkout."""
+    """Keep legacy hosted-payment links out of new WhatsApp replies."""
     for item in reversed(transcript or []):
         action = item.get("action", {}) if isinstance(item, dict) else {}
         result = item.get("result", {}) if isinstance(item, dict) else {}
@@ -426,6 +426,8 @@ def send_reply(session, job, owner, settings):
         "recipient_type": "individual",
         "to": recipient,
     }
+    payment_result = next((entry.get("result", {}) for entry in reversed(job.transcript or []) if entry.get("action", {}).get("tool") == "checkoutCart" and isinstance(entry.get("result"), dict) and entry.get("result", {}).get("account_number")), None)
+    cart_result = next((entry.get("result", {}) for entry in reversed(job.transcript or []) if entry.get("action", {}).get("tool") == "viewCart" and isinstance(entry.get("result"), dict) and entry.get("result", {}).get("items")), None)
     if use_template:
         payload.update({
             "type": "template",
@@ -435,11 +437,36 @@ def send_reply(session, job, owner, settings):
             },
         })
     else:
-        payload.update({
-            "type": "text",
-            "text": {"preview_url": True, "body": job.reply_text},
-            "biz_opaque_callback_data": identifier,
-        })
+        if payment_result:
+            tx_ref = str(payment_result.get("payment_reference") or payment_result.get("order_code"))
+            payload.update({
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": job.reply_text},
+                    "action": {"buttons": [
+                        {"type": "reply", "reply": {"id": f"payment_paid:{tx_ref}", "title": "I've paid"}},
+                        {"type": "reply", "reply": {"id": f"payment_cancel:{tx_ref}", "title": "Cancel"}},
+                    ]},
+                },
+                "biz_opaque_callback_data": identifier,
+            })
+        elif cart_result:
+            payload.update({
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": job.reply_text},
+                    "action": {"buttons": [{"type": "reply", "reply": {"id": "pay", "title": "Pay"}}]},
+                },
+                "biz_opaque_callback_data": identifier,
+            })
+        else:
+            payload.update({
+                "type": "text",
+                "text": {"preview_url": False, "body": job.reply_text},
+                "biz_opaque_callback_data": identifier,
+            })
     checkpoint(session, job, owner)
     try:
         image_request = next((entry.get("result", {}) for entry in reversed(job.transcript or [])

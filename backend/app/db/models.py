@@ -49,6 +49,8 @@ class Vendor(Identity, Timestamps, Base):
     business_name: Mapped[str | None] = mapped_column(String(120))
     paystack_public_key: Mapped[str | None] = mapped_column(String(255))
     bank_account: Mapped[str | None] = mapped_column(String(50))
+    flutterwave_bank_code: Mapped[str | None] = mapped_column(String(20))
+    flutterwave_subaccount_id: Mapped[str | None] = mapped_column(String(80))
     greeting_message: Mapped[str | None] = mapped_column(
         Text, server_default=text("'Hey! Welcome to our shop!'")
     )
@@ -99,6 +101,8 @@ class Order(Identity, Timestamps, Base):
     __table_args__ = (
         Index("idx_orders_vendor_id", "vendor_id"),
         Index("idx_orders_status", "status"),
+        Index("idx_orders_expires_at", "expires_at"),
+        Index("idx_orders_wa_number", "wa_number"),
     )
 
     order_code: Mapped[str | None] = mapped_column(String(20), unique=True)
@@ -114,10 +118,37 @@ class Order(Identity, Timestamps, Base):
     payment_status: Mapped[str | None] = mapped_column(
         String(30), server_default=text("'pending_payment'")
     )
+    payment_provider: Mapped[str | None] = mapped_column(
+        String(30), server_default=text("'flutterwave'"), nullable=False
+    )
+    payment_reference: Mapped[str | None] = mapped_column(String(120))
+    payment_transaction_id: Mapped[str | None] = mapped_column(String(120))
     paystack_ref: Mapped[str | None] = mapped_column(String(120))
     payment_confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("accounts.id"))
     payment_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     payment_confirmation_source: Mapped[str | None] = mapped_column(String(30))
+    wa_number: Mapped[str | None] = mapped_column(String(30), index=True)
+    currency: Mapped[str] = mapped_column(String(3), server_default=text("'NGN'"))
+    tx_ref: Mapped[str | None] = mapped_column(String(42), unique=True)
+    fw_reference: Mapped[str | None] = mapped_column(String(120))
+    account_number: Mapped[str | None] = mapped_column(String(20))
+    bank_name: Mapped[str | None] = mapped_column(String(120))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fw_transaction_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+
+
+class Customer(Identity, Timestamps, Base):
+    __tablename__ = "customers"
+    wa_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    fw_customer_id: Mapped[str | None] = mapped_column(String(120))
+
+
+class WebhookEvent(Identity, Base):
+    __tablename__ = "webhook_events"
+    fw_transaction_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Conversation(Identity, Base):

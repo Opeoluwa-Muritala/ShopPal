@@ -94,6 +94,35 @@ async def send_whatsapp_text(
         raise
 
 
+async def _send_meta_payload(to_phone: str, payload: dict[str, Any], settings: Any) -> None:
+    """Send a single Cloud API payload without exposing the bearer token to logs."""
+    phone_number_id = settings.whatsapp_phone_number_id
+    access_token = settings.whatsapp_token
+    if not phone_number_id or not access_token:
+        logger.warning("WhatsApp Cloud API is not configured", extra={"step": "whatsapp_send", "status": "not_configured"})
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v25.0/{phone_number_id}/messages",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.error("WhatsApp Cloud API request failed", extra={"step": "whatsapp_send", "status": "failed", "error_type": type(exc).__name__})
+
+
+async def send_whatsapp_buttons(to_phone: str, body: str, buttons: list[tuple[str, str]], settings: Any) -> None:
+    if len(buttons) > 3:
+        raise ValueError("WhatsApp supports at most three reply buttons")
+    await _send_meta_payload(to_phone, {"messaging_product": "whatsapp", "to": to_phone, "type": "interactive", "interactive": {"type": "button", "body": {"text": body}, "action": {"buttons": [{"type": "reply", "reply": {"id": button_id, "title": title[:20]}} for button_id, title in buttons]}}}, settings)
+
+
+async def send_whatsapp_template(to_phone: str, template_name: str, language: str, parameters: list[str], settings: Any) -> None:
+    await _send_meta_payload(to_phone, {"messaging_product": "whatsapp", "to": to_phone, "type": "template", "template": {"name": template_name, "language": {"code": language}, "components": [{"type": "body", "parameters": [{"type": "text", "text": value} for value in parameters]}]}}, settings)
+
+
 async def send_whatsapp_image_from_db(
     db: Session,
     media_row_id: str,

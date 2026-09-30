@@ -1,5 +1,7 @@
 """Allowlisted customer shopping tools available to Gemma."""
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -9,9 +11,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import Cart, Product
+from app.db.models import Cart, Customer, Product, Vendor
 from app.services.orders import create_order_from_cart
-from app.services.paystack import PaystackError, initialize_transaction
+from app.services.flutterwave_v4 import FlutterwaveClientError, get_virtual_account_provider
 
 
 class CustomerToolDispatcher:
@@ -201,16 +203,30 @@ class CustomerToolDispatcher:
             ],
             commit=False,
         )
+        vendor = self.session.get(Vendor, self.vendor_id)
         try:
-            payment = initialize_transaction(
-                order_code=str(order.order_code),
-                amount=Decimal(str(order.total)),
-                customer_phone=self.customer_phone,
-                settings=get_settings(),
-            )
-        except PaystackError as exc:
-            raise HTTPException(status_code=503, detail="Payment checkout is unavailable") from exc
-        order.paystack_ref = payment["reference"]
+            settings = get_settings()
+            customer = self.session.scalar(select(Customer).where(Customer.wa_number == self.customer_phone).with_for_update())
+            if customer is None:
+                customer = Customer(wa_number=self.customer_phone)
+                self.session.add(customer)
+                self.session.flush()
+            provider = get_virtual_account_provider(settings)
+            if not customer.fw_customer_id:
+                customer.fw_customer_id = asyncio.run(provider.create_customer(self.customer_phone))
+            account = asyncio.run(provider.create_virtual_account(customer_id=customer.fw_customer_id, tx_ref=str(order.order_code), amount=Decimal(str(order.total)), expires_seconds=settings.order_expiry_minutes * 60))
+            order.tx_ref = str(order.order_code)
+            order.wa_number = self.customer_phone
+            order.currency = "NGN"
+            order.status = "pending"
+            order.expires_at = datetime.now(UTC) + timedelta(minutes=settings.order_expiry_minutes)
+            order.fw_reference = account.provider_reference
+            order.account_number = account.account_number
+            order.bank_name = account.bank_name
+        except FlutterwaveClientError as exc:
+            raise HTTPException(status_code=503, detail="Bank transfer checkout is temporarily unavailable") from exc
+        order.payment_provider = "flutterwave"
+        order.payment_reference = str(order.order_code)
         if self.commit:
             self.session.commit()
         else:
@@ -221,8 +237,11 @@ class CustomerToolDispatcher:
             "status": order.status,
             "payment_status": order.payment_status,
             "delivery_address": order.delivery_address,
-            "payment_provider": "paystack",
-            "payment_reference": payment["reference"],
-            "payment_url": payment["authorization_url"],
-            "payment_instruction": "Open the Paystack link to complete payment. Your order is confirmed after Paystack verification.",
+            "payment_provider": "flutterwave",
+            "payment_reference": order.payment_reference,
+            "payment_url": None,
+            "bank_name": order.bank_name,
+            "account_number": order.account_number,
+            "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+            "payment_instruction": "Transfer the exact amount to the bank account shown in WhatsApp. Tap I've paid after sending; your order is confirmed only after Flutterwave verifies the transfer.",
         }
