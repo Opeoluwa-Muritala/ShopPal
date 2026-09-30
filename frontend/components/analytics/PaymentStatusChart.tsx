@@ -25,7 +25,7 @@ const DEFAULT_PAYMENT_STATUS: PaymentStatus = {
 const STATUS_CONFIG = {
   paid: {
     label: 'Paid & Settled',
-    color: '#22c55e', // Emerald Green
+    color: '#003153',
     icon: CheckCircle2,
     badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   },
@@ -45,7 +45,7 @@ const STATUS_CONFIG = {
 
 export default function PaymentStatusChart({
   paymentStatus = DEFAULT_PAYMENT_STATUS,
-  isLoading = false,
+  isLoading = false,   
 }: PaymentStatusChartProps) {
   if (isLoading) {
     return (

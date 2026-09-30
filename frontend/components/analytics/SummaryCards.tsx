@@ -89,7 +89,7 @@ export default function SummaryCards({
               <svg viewBox="0 0 90 28" className="w-full h-full overflow-visible">
                 <polyline
                   fill="none"
-                  stroke="#10b981"
+                  stroke="#003153"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"

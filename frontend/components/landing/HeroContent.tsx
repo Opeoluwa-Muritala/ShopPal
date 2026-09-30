@@ -23,8 +23,8 @@ export default function HeroContent() {
       }}
     >
       {/* Pill badge */}
-      <div className="inline-flex w-fit items-center gap-2 px-3.5 py-1.5 rounded-full bg-green-500/10 border border-green-500/25 text-green-400 text-xs font-semibold tracking-wide">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+      <div className="inline-flex w-fit items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2A52BE]/15 border border-[#2A52BE]/30 text-[#DDEBFF] text-xs font-semibold tracking-wide">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#2A52BE] animate-pulse" />
         Built for Nigerian Vendors
       </div>
 
@@ -55,21 +55,21 @@ export default function HeroContent() {
         }}
       >
         <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
           </svg>
           Paystack Verified Partner
         </span>
         <span className="text-slate-600">·</span>
         <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
           </svg>
           No credit card required
         </span>
         <span className="text-slate-600">·</span>
         <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
           </svg>
           Cancel anytime
