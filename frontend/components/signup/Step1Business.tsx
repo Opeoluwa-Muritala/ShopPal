@@ -9,7 +9,7 @@ export interface Step1Data {
   business_name: string;
   category: string;
   email: string;
-  password?: string;
+  password: string;
 }
 
 interface Step1Props {
@@ -72,7 +72,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
       newErrors.email = 'Please enter a valid email address';
     }
 
-    if (data.password && data.password.length > 0 && data.password.length < 8) {
+    if (data.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters long';
     }
 
@@ -91,7 +91,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
   };
 
   return (
-    <form onSubmit={handleContinue} className="space-y-5" noValidate>
+    <form onSubmit={handleContinue} className="space-y-5" noValidate autoComplete="off">
       <div>
         <h2 className="text-xl font-bold text-slate-900">Create Vendor Account</h2>
         <p className="text-xs text-slate-600 mt-1">
@@ -107,6 +107,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="fullName"
           type="text"
+          autoComplete="off"
           placeholder="Your Full Name"
           value={data.name}
           onChange={(e) => {
@@ -128,6 +129,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="phoneNumber"
           type="tel"
+          autoComplete="off"
           placeholder="0803 123 4567"
           value={data.phone}
           onChange={handlePhoneChange}
@@ -162,6 +164,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="whatsappNumber"
           type="tel"
+          autoComplete="off"
           placeholder="0803 123 4567"
           value={data.whatsapp_number}
           onChange={handleWhatsAppChange}
@@ -183,6 +186,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="businessName"
           type="text"
+          autoComplete="off"
           placeholder="Your Business Name"
           value={data.business_name}
           onChange={(e) => {
@@ -225,6 +229,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="email"
           type="email"
+          autoComplete="off"
           placeholder="vendor@example.com"
           value={data.email}
           onChange={(e) => {
@@ -246,7 +251,7 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
       <div>
         <div className="flex justify-between items-center mb-1">
           <label htmlFor="passwordField" className="block text-xs font-semibold text-slate-900">
-            Password <span className="text-slate-500 font-normal">(optional)</span>
+            Password <span className="text-red-600">*</span>
           </label>
           <button
             type="button"
@@ -259,6 +264,8 @@ export default function Step1Business({ data, onChange, onNext }: Step1Props) {
         <input
           id="passwordField"
           type={showPassword ? 'text' : 'password'}
+          autoComplete="new-password"
+          required
           placeholder="Min 8 chars, 1 number, 1 symbol"
           value={data.password || ''}
           onChange={(e) => {

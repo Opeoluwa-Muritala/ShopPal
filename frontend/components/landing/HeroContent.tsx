@@ -16,64 +16,43 @@ export default function HeroContent() {
   return (
     <div
       ref={ref}
-      className="flex flex-col gap-8 max-w-[600px] mx-auto lg:mx-0 transition-all duration-700 ease-out"
+      className="flex flex-col items-center gap-6 text-center lg:items-start lg:text-left transition-all duration-700 ease-out"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(24px)',
       }}
     >
-      {/* Pill badge */}
-      <div className="inline-flex w-fit items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#2A52BE]/15 border border-[#2A52BE]/30 text-[#DDEBFF] text-xs font-semibold tracking-wide">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#2A52BE] animate-pulse" />
-        Built for Nigerian Vendors
+      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.22em] text-slate-200 backdrop-blur-sm">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#f59e0b]" />
+        Built for modern retailers
       </div>
 
-      {/* Headline */}
-      <div className="flex flex-col gap-4">
-        <h1
-          className="text-[clamp(36px,6vw,64px)] font-extrabold text-white leading-[1.1] tracking-tight"
-        >
-          Sell on WhatsApp
+      <div className="max-w-[820px]">
+        <h1 className="text-[clamp(3.4rem,8vw,8rem)] font-light leading-[0.8] tracking-[-0.08em] text-white">
+          ShopPal
         </h1>
-
-        {/* Subheading */}
-        <p className="text-[clamp(16px,2vw,20px)] text-[#d1d5db] leading-[1.55] font-normal max-w-[480px]">
-          Keep 98% of your sales.{' '}
-          <span className="text-white font-medium">No app. No chaos.</span>
-        </p>
+        <div className="mt-4 flex items-center justify-center gap-3 lg:justify-start">
+          <span className="inline-flex items-center rounded-full border border-[#2a52be]/40 bg-[#2a52be]/10 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-[#dfe9ff]">
+            WhatsApp commerce
+          </span>
+        </div>
       </div>
 
-      {/* CTA Buttons */}
+      <p className="max-w-lg text-sm text-slate-300 sm:text-base">
+        Turn conversations into sales with a clean storefront, instant Paystack checkout, and less admin work.
+      </p>
+
       <CTAButtons />
 
-      {/* Trust micro-copy */}
-      <div
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-slate-400 transition-all duration-700 ease-out"
-        style={{
-          opacity: visible ? 1 : 0,
-          transitionDelay: '200ms',
-        }}
-      >
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-slate-400 lg:justify-start">
         <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-          Paystack Verified Partner
+          <svg className="h-3.5 w-3.5 text-[#f59e0b]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+          Paystack ready
         </span>
-        <span className="text-slate-600">·</span>
-        <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-          No credit card required
-        </span>
-        <span className="text-slate-600">·</span>
-        <span className="flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5 text-[#2A52BE] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-          Cancel anytime
-        </span>
+        <span className="text-slate-600">•</span>
+        <span>2-minute setup</span>
+        <span className="text-slate-600">•</span>
+        <span>98% payout</span>
       </div>
     </div>
   );

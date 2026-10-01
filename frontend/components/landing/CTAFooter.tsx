@@ -3,53 +3,35 @@ import Link from 'next/link';
 
 export default function CTAFooter() {
   return (
-    <section className="relative bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950 text-white py-20 md:py-28 overflow-hidden border-t border-emerald-900/30">
-      {/* Decorative Blur */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+    <section className="relative overflow-hidden border-t border-white/10 bg-[#0b0d10] py-20 md:py-24">
+      <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#f59e0b]/10 blur-3xl" />
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto text-center space-y-6">
+      <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+        <span className="inline-block rounded-full border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-[#f5c982]">
+          Launch your storefront
+        </span>
+        <h2 className="mt-6 text-3xl font-light tracking-[-0.06em] text-white sm:text-5xl">
+          Sell better. Keep more.
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+          Set up your WhatsApp storefront in minutes and turn conversations into revenue.
+        </p>
 
-          <span className="inline-block px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider backdrop-blur-sm">
-            Join 450+ Nigerian merchants selling on WhatsApp
-          </span>
-
-          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">
-            Ready to stop losing 30% to marketplaces?
-          </h2>
-
-          <p className="text-slate-300 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
-            Set up your automated WhatsApp storefront in 2 minutes. Start closing sales 24/7 and keep 98% of your revenue.
-          </p>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link
-              href="/signup"
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-lg shadow-lg shadow-black/30 transition-all"
-            >
-              Start Selling in 2 Minutes
-            </Link>
-            <Link
-              href="/dashboard"
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-white/10 hover:bg-white/15 text-white font-semibold text-sm rounded-lg border border-white/20 backdrop-blur-sm transition"
-            >
-              See Dashboard
-            </Link>
-          </div>
-
-          <div className="pt-4 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-            <span className="text-emerald-400 font-bold">✓</span>
-            <span>Instant Paystack Settlement</span>
-            <span>•</span>
-            <span>2-Minute Setup</span>
-            <span>•</span>
-            <span>Zero Monthly Subscriptions</span>
-          </div>
-
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Link
+            href="/signup"
+            className="inline-flex h-12 items-center justify-center rounded-full bg-[#f59e0b] px-7 text-sm font-medium text-[#111417] transition hover:bg-[#f8b64d]"
+          >
+            Get Started For Free
+          </Link>
+          {/* <Link
+            href="/dashboard"
+            className="inline-flex h-12 items-center justify-center rounded-full border border-white/15 bg-white/5 px-7 text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            View dashboard
+          </Link> */}
         </div>
       </div>
     </section>
-
   );
 }
