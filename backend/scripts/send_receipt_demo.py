@@ -22,6 +22,7 @@ from app.services.receipt_images import render_payment_receipt  # noqa: E402
 from app.services.whatsapp import (  # noqa: E402
     send_whatsapp_cta_url,
     send_whatsapp_image_bytes,
+    send_whatsapp_image_buttons_bytes,
     send_whatsapp_template,
     send_whatsapp_text,
 )
@@ -112,7 +113,7 @@ async def main() -> None:
         ],
         paid_at=datetime.now(UTC),
     )
-    result = await send_whatsapp_image_bytes(
+    result = await send_whatsapp_image_buttons_bytes(
         recipient,
         receipt,
         "image/png",
@@ -121,12 +122,16 @@ async def main() -> None:
             f"Payment received for order {reference}.\n"
             "Amount: ₦25,000.00\n\n"
             "Keep this image for your records. We’ll message you when your order is ready.\n\n"
-            "Use the action buttons that follow to continue shopping or get help."
+            "Tap below if you need help with this order."
         ),
+        [(f"receipt_reorder:{reference}", "Order again"), (f"receipt_help:{reference}", "Get help")],
         settings,
     )
     if result.get("ok") is False:
         raise RuntimeError(f"Meta rejected the receipt image: {result.get('error', 'unknown error')}")
+    if "--receipt-only" in sys.argv:
+        print("The combined receipt image and action were accepted by Meta.")
+        return
     result = await send_whatsapp_cta_url(
         recipient,
         "Want to see another item? Tap below to request product images.",

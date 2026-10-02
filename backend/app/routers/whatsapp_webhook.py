@@ -185,6 +185,14 @@ def _extract_payment_actions(payload: dict[str, Any]) -> list[tuple[str, str | N
                     actions.append(("paid", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
                 elif identifier.startswith("payment_cancel:"):
                     actions.append(("cancel", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("receipt_reorder:"):
+                    actions.append(("reorder", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("receipt_help:"):
+                    actions.append(("help", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("product_add:"):
+                    actions.append(("product_add", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier == "product_more":
+                    actions.append(("product_more", None, str(message.get("from", "")), bot_number))
     return actions
 
 
