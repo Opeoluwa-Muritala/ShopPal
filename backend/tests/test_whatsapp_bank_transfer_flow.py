@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from app.config import Settings
 from app.services.flutterwave_v4 import VerifiedCharge
 from app.services.payments import confirm_verified_charge
+from app.services.payments import _confirmation_caption
 from app.routers.flutterwave import _signature_is_valid
 
 
@@ -86,3 +87,11 @@ def test_wrong_amount_moves_order_to_review_without_fulfilment(monkeypatch):
     assert order.status == "review"
     assert order.payment_transaction_id is None
     assert len(sent) == 1
+
+
+def test_receipt_caption_keeps_action_url_out_of_image_text():
+    order = SimpleNamespace(tx_ref="ord-help", total=Decimal("2500.00"))
+    caption = _confirmation_caption(order)
+    assert "Payment received" in caption
+    assert "₦2,500.00" in caption
+    assert "https://" not in caption

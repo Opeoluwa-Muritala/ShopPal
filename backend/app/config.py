@@ -38,6 +38,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WHATSAPP_TOKEN", "WHATSAPP_ACCESS_TOKEN"),
     )
     whatsapp_phone_number_id: str = ""
+    # Public, dialable business number used only for customer-facing wa.me links.
+    whatsapp_public_number: str = ""
     whatsapp_reengagement_template_name: str = ""
     whatsapp_reengagement_template_language: str = "en_US"
     whatsapp_template_payment_instructions: str = ""

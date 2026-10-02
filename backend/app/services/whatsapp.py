@@ -3,6 +3,7 @@
 import io
 import time
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -119,6 +120,69 @@ async def send_whatsapp_buttons(to_phone: str, body: str, buttons: list[tuple[st
     await _send_meta_payload(to_phone, {"messaging_product": "whatsapp", "to": to_phone, "type": "interactive", "interactive": {"type": "button", "body": {"text": body}, "action": {"buttons": [{"type": "reply", "reply": {"id": button_id, "title": title[:20]}} for button_id, title in buttons]}}}, settings)
 
 
+async def send_whatsapp_cta_url(
+    to_phone: str,
+    body: str,
+    button_text: str,
+    url: str,
+    settings: Any,
+) -> dict[str, Any]:
+    """Send a native WhatsApp CTA URL button restricted to safe wa.me targets."""
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "wa.me"
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or not parsed.path.strip("/").isdigit()
+    ):
+        raise ValueError("CTA URL must be an HTTPS wa.me phone link")
+    if not body or len(body) > 1024:
+        raise ValueError("CTA body must contain between 1 and 1024 characters")
+    if not button_text or len(button_text) > 20:
+        raise ValueError("CTA button text must contain between 1 and 20 characters")
+
+    phone_number_id = settings.whatsapp_phone_number_id
+    access_token = settings.whatsapp_access_token.get_secret_value()
+    if not phone_number_id or not access_token:
+        return {"ok": False, "error": "whatsapp_credentials_not_configured"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": body},
+            "action": {
+                "name": "cta_url",
+                "parameters": {"display_text": button_text, "url": url},
+            },
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v25.0/{phone_number_id}/messages",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result if isinstance(result, dict) else {"ok": False, "error": "invalid_meta_response"}
+    except httpx.HTTPStatusError as exc:
+        response_body = exc.response.text.replace(access_token, "[redacted]").replace(to_phone, "[redacted]")[:2000]
+        logger.error(
+            "WhatsApp CTA API returned an error body: %s",
+            response_body,
+            extra={"step": "whatsapp_cta_send", "status": "failed"},
+        )
+        return {"ok": False, "error": "whatsapp_meta_api_error", "status_code": exc.response.status_code}
+
+
 async def send_whatsapp_template(to_phone: str, template_name: str, language: str, parameters: list[str], settings: Any) -> None:
     await _send_meta_payload(to_phone, {"messaging_product": "whatsapp", "to": to_phone, "type": "template", "template": {"name": template_name, "language": {"code": language}, "components": [{"type": "body", "parameters": [{"type": "text", "text": value} for value in parameters]}]}}, settings)
 
@@ -163,6 +227,29 @@ async def send_whatsapp_image_from_db(
         raise ValueError("caption is too long for a WhatsApp image message")
 
     settings = get_settings()
+    return await send_whatsapp_image_bytes(
+        recipient_number, media.content, mime_type, caption, settings
+    )
+
+
+async def send_whatsapp_image_bytes(
+    recipient_number: str,
+    content: bytes,
+    mime_type: str,
+    caption: str | None,
+    settings: Any,
+) -> dict[str, Any]:
+    """Upload trusted image bytes to Meta and send them with an optional caption."""
+    if not content:
+        raise ValueError("image content must not be empty")
+    normalized_mime = mime_type.split(";", 1)[0].strip().lower()
+    if normalized_mime not in {"image/jpeg", "image/png"}:
+        raise ValueError("image must be a JPEG or PNG")
+    if not recipient_number or len(recipient_number) > 30:
+        raise ValueError("recipient_number must be a valid WhatsApp phone number")
+    if caption is not None and len(caption) > 1024:
+        raise ValueError("caption is too long for a WhatsApp image message")
+
     phone_number_id = settings.whatsapp_phone_number_id
     access_token = settings.whatsapp_access_token.get_secret_value()
     if not phone_number_id or not access_token:
@@ -181,9 +268,9 @@ async def send_whatsapp_image_from_db(
             upload_response = await client.post(
                 f"{base_url}/media",
                 headers=headers,
-                data={"messaging_product": "whatsapp", "type": mime_type},
+                data={"messaging_product": "whatsapp", "type": normalized_mime},
                 files={
-                    "file": ("outbound-image", io.BytesIO(media.content), mime_type)
+                    "file": ("outbound-image", io.BytesIO(content), normalized_mime)
                 },
             )
             upload_response.raise_for_status()
@@ -385,6 +472,24 @@ async def send_whatsapp_template(
             extra={"template": template_name},
         )
 
+    except httpx.HTTPStatusError as exc:
+        response_body = (
+            exc.response.text.replace(access_token, "[redacted]")
+            .replace(to_phone, "[redacted]")[:2000]
+        )
+        log_external_call(
+            service="whatsapp_cloud",
+            operation="send_template",
+            start_time=start,
+            success=False,
+            error=exc,
+        )
+        logger.error(
+            "WhatsApp template API returned an error body: %s",
+            response_body,
+            extra={"step": "send_template", "status": "failed", "template": template_name},
+        )
+        raise
     except Exception as exc:
         log_external_call(
             service="whatsapp_cloud",
