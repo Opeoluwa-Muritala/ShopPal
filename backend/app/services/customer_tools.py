@@ -102,6 +102,7 @@ class CustomerToolDispatcher:
                     "price": str(product.price),
                     "stock": product.stock,
                     "description": product.description,
+                    "has_image": product.image_media_id is not None,
                 }
                 for product in products
             ]

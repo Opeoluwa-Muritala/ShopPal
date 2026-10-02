@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import quote
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -13,11 +14,54 @@ from app.config import Settings
 from app.db.models import Cart, Customer, Order, Vendor, WebhookEvent
 from app.logging_conf import logger
 from app.services.flutterwave_v4 import FlutterwaveClientError, VirtualAccountProvider, get_virtual_account_provider
-from app.services.whatsapp import send_whatsapp_buttons, send_whatsapp_text
+from app.services.receipt_images import render_payment_receipt
+from app.services.whatsapp import send_whatsapp_buttons, send_whatsapp_cta_url, send_whatsapp_image_bytes, send_whatsapp_text
 
 
 def _money(value: Decimal) -> str:
     return f"₦{value:,.2f}"
+
+
+def _confirmation_caption(order: Order) -> str:
+    reference = order.tx_ref or getattr(order, "order_code", None) or str(getattr(order, "id", "order"))
+    lines = [
+        "Payment received ✅",
+        f"Order {reference} for {_money(Decimal(order.total))} is confirmed.",
+        "Keep this receipt for your records. We’ll message you when your order is ready.",
+    ]
+    return "\n\n".join(lines)
+
+
+async def _send_payment_confirmation(order: Order, settings: Settings, public_number: str = "") -> None:
+    """Send a visual receipt, falling back to its full caption on media failure."""
+    caption = _confirmation_caption(order)
+    reference = order.tx_ref or getattr(order, "order_code", None) or str(getattr(order, "id", "order"))
+    receipt = render_payment_receipt(
+        business_name="ShopPal",
+        order_reference=order.tx_ref or getattr(order, "order_code", None) or str(getattr(order, "id", "order")),
+        amount=Decimal(order.total),
+        items=list(getattr(order, "items", None) or []),
+        paid_at=order.paid_at,
+    )
+    result = await send_whatsapp_image_bytes(
+        order.wa_number or order.customer_phone,
+        receipt,
+        "image/png",
+        caption,
+        settings,
+    )
+    if result.get("ok") is False:
+        await send_whatsapp_text(order.wa_number or order.customer_phone, caption, settings)
+    digits = "".join(ch for ch in public_number if ch.isdigit())
+    if digits:
+        prompt = quote(f"Hi, I need help with order {reference}", safe="")
+        await send_whatsapp_cta_url(
+            order.wa_number or order.customer_phone,
+            f"Need help with order {reference}? Tap below to open a prefilled support message.",
+            "Get order help",
+            f"https://wa.me/{digits}?text={prompt}",
+            settings,
+        )
 
 
 async def create_bank_transfer_order(
@@ -67,10 +111,19 @@ async def confirm_verified_charge(session: AsyncSession, *, transaction_id: str,
     """Verify a provider notification, then atomically transition one order."""
     provider = provider or get_virtual_account_provider(settings)
     verified = await provider.verify_charge(transaction_id)
+    public_number = settings.whatsapp_public_number
     async with session.begin():
         order = await session.scalar(select(Order).where(Order.tx_ref == verified.reference).with_for_update())
         if order is None:
             return "ignored"
+        vendor_id = getattr(order, "vendor_id", None)
+        if vendor_id is not None:
+            vendor = await session.scalar(select(Vendor).where(Vendor.id == vendor_id))
+            public_number = (
+                getattr(vendor, "bot_number", None)
+                or getattr(vendor, "whatsapp_number", None)
+                or public_number
+            )
         expected = Decimal(order.total)
         if verified.status not in {"succeeded", "successful"} or order.currency != verified.currency or expected != verified.amount or order.payment_status != "pending_payment" or (order.expires_at and order.expires_at <= datetime.now(UTC)):
             order.payment_status = "review"
@@ -89,7 +142,7 @@ async def confirm_verified_charge(session: AsyncSession, *, transaction_id: str,
     if review_recipient:
         await send_whatsapp_text(review_recipient, review_message, settings)
         return "review"
-    await send_whatsapp_text(order.wa_number or order.customer_phone, f"Payment received ✅\nOrder {order.tx_ref} for {_money(Decimal(order.total))} is confirmed.", settings)
+    await _send_payment_confirmation(order, settings, public_number)
     return "paid"
 
 

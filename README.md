@@ -29,6 +29,44 @@ Ensure you have the following installed on your development machine (versions sp
 - **Redis 7+**
 - **ngrok** (for tunneling incoming WhatsApp webhooks to localhost)
 
+## Demo Login and Usage
+
+The seeded ShopPal demo merchant account is intended for judging and local demo use only:
+
+| Field | Value |
+| --- | --- |
+| Login page | `/login` on the deployed frontend, or `http://localhost:3000/login` locally |
+| Email | `demo.perfumes@shoppal.ng` |
+| Password | `DemoShopPal123!` |
+| WhatsApp demo | [Open ShopPal chat](https://wa.me/2349110501393?text=Hi) |
+
+If the account is missing, run `cd backend` followed by
+`..\.venv\Scripts\python.exe scripts\seed_demo_vendor.py`. The seeder refreshes the
+demo merchant, login, perfume catalog, stock, and product images.
+
+### Suggested demo flow
+
+1. Sign in with the credentials above to view the dashboard, products, orders, analytics, and settings.
+2. Open the WhatsApp demo link and send `Hi`. This also opens Meta's 24-hour customer-service window for free-form replies and images.
+3. Send `What do you sell?` to browse the live catalog.
+4. Send `Can I get images?`, then reply with a listed product name. A direct request such as `Send me an image of Lagos Bloom` also works.
+5. Add an item with a quantity, view the cart, and request checkout. Supply a delivery address when prompted.
+6. Use the returned payment controls to test the Flutterwave bank-transfer flow. A verified payment produces a receipt image, explanatory caption, and prefilled WhatsApp action links.
+
+WhatsApp `wa.me` links prefill a message; the customer must still tap **Send**. Outside
+the 24-hour window, Meta permits only approved message templates, so start a fresh demo
+by sending `Hi` from the customer phone.
+
+### Conversation context
+
+Yes—the model receives context from the conversation, including both earlier customer
+messages and ShopPal's responses. The database retains the latest 40 conversation
+entries, while each model call receives the most recent three customer messages and
+three assistant responses in chronological order. The current message, queued customer
+messages, and durable tool results for the active reply are supplied separately. This
+allows follow-ups such as `that one`, a quantity-only answer, or a product name selected
+from the preceding image list without sending the whole conversation to the model.
+
 ### WhatsApp bank-transfer checkout
 
 New orders use Flutterwave dynamic virtual accounts and stay entirely in WhatsApp:

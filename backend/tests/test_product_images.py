@@ -111,6 +111,38 @@ def test_malformed_upload_response_is_handled(sender):
     assert result["ok"] is False
 
 
+def test_native_cta_url_payload_and_url_allowlist(monkeypatch):
+    settings = Settings(_env_file=None, whatsapp_access_token="test-token", whatsapp_phone_number_id="123")
+    original = httpx.AsyncClient
+
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload["interactive"] == {
+            "type": "cta_url",
+            "body": {"text": "See our products"},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "Browse products",
+                    "url": "https://wa.me/2349110501393?text=What%20do%20you%20sell%3F",
+                },
+            },
+        }
+        return httpx.Response(200, json={"messages": [{"id": "wamid.cta"}]})
+
+    monkeypatch.setattr(whatsapp.httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    result = asyncio.run(whatsapp.send_whatsapp_cta_url(
+        "2347064408491", "See our products", "Browse products",
+        "https://wa.me/2349110501393?text=What%20do%20you%20sell%3F", settings,
+    ))
+    assert result["messages"][0]["id"] == "wamid.cta"
+
+    with pytest.raises(ValueError, match="wa.me"):
+        asyncio.run(whatsapp.send_whatsapp_cta_url(
+            "2347064408491", "Unsafe", "Open", "https://evil.example/phish", settings,
+        ))
+
+
 def test_upload_api_stores_compressed_image_for_authenticated_vendor():
     from fastapi.testclient import TestClient
 

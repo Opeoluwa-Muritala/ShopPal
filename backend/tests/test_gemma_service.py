@@ -85,6 +85,56 @@ def test_gemma_selects_tools_for_natural_customer_commands():
     assert service.next_action("checkout", [], []) == {"tool": "viewCart", "arguments": {}}
 
 
+def test_generic_image_request_uses_catalog_then_lists_products_with_photos():
+    service = LLMService(_settings())
+    assert service.next_action("Can I get images", [], []) == {
+        "tool": "searchProducts",
+        "arguments": {"query": ""},
+    }
+    transcript = [{
+        "action": {"tool": "searchProducts", "arguments": {"query": ""}},
+        "result": {"products": [
+            {"name": "Lagos Bloom", "has_image": True},
+            {"name": "No-photo item", "has_image": False},
+            {"name": "Oud Royale", "has_image": True},
+        ]},
+    }]
+    action = service.next_action("Can I get images", [], transcript)
+    assert "Lagos Bloom" in action["reply"]
+    assert "Oud Royale" in action["reply"]
+    assert "No-photo item" not in action["reply"]
+    assert "Reply with the product name" in action["reply"]
+
+
+def test_named_image_request_is_resolved_without_model_guessing():
+    service = LLMService(_settings())
+    assert service.next_action("Get an image of Lagos Bloom", [], []) == {
+        "tool": "searchProducts",
+        "arguments": {"query": "lagos bloom"},
+    }
+    transcript = [{
+        "action": {"tool": "searchProducts", "arguments": {"query": "lagos bloom"}},
+        "result": {"products": [{
+            "product_id": "acff33f8-9a11-464e-a542-a101670add1e",
+            "name": "Lagos Bloom 50ml",
+            "has_image": True,
+        }]},
+    }]
+    assert service.next_action("Get an image of Lagos Bloom", [], transcript) == {
+        "tool": "showProductImage",
+        "arguments": {"productId": "acff33f8-9a11-464e-a542-a101670add1e"},
+    }
+
+
+def test_product_name_after_image_list_continues_image_flow():
+    service = LLMService(_settings())
+    history = [{"role": "assistant", "content": "Which product image would you like? Reply with the product name."}]
+    assert service.next_action("Caramel Cloud 30ml", history, []) == {
+        "tool": "searchProducts",
+        "arguments": {"query": "caramel cloud 30ml"},
+    }
+
+
 def test_openrouter_native_tool_call_is_converted_to_validated_action():
     service = LLMService(
         Settings(
