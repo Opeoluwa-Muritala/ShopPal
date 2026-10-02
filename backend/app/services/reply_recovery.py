@@ -27,7 +27,7 @@ from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService, ai_cooldown_active
 from app.services.quick_replies import ai_failure_reply, quick_reply
 from app.services.transcription import TranscriptionError
-from app.services.whatsapp import send_whatsapp_product_image
+from app.services.whatsapp import send_whatsapp_product_image, send_whatsapp_product_image_buttons
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
@@ -483,8 +483,12 @@ def send_reply(session, job, owner, settings):
                 fail(session, job, "product_image_unavailable", permanent=True)
                 return
             # This worker runs in a dedicated thread, outside the server event loop.
-            result = asyncio.run(send_whatsapp_product_image(
-                session, str(product.id), recipient, image_request["caption"],
+            result = asyncio.run(send_whatsapp_product_image_buttons(
+                session,
+                str(product.id),
+                recipient,
+                image_request["caption"],
+                [(f"product_add:{product.id}", "Add to cart"), ("product_more", "More images")],
             ))
             response = httpx.Response(
                 result.get("status_code", 503) if result.get("ok") is False else 200,

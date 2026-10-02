@@ -12,6 +12,7 @@ from app.services.flutterwave_v4 import VerifiedCharge
 from app.services.payments import confirm_verified_charge
 from app.services.payments import _confirmation_caption
 from app.routers.flutterwave import _signature_is_valid
+from app.routers.whatsapp_webhook import _extract_payment_actions
 
 
 class FakeProvider:
@@ -49,6 +50,22 @@ def test_flutterwave_signature_uses_constant_time_value_match():
     assert _signature_is_valid("hook", "hook") is True
     assert _signature_is_valid("forged", "hook") is False
     assert _signature_is_valid(None, "hook") is False
+
+
+def test_receipt_action_buttons_are_extracted_for_the_payment_handler():
+    payload = {"entry": [{"changes": [{"value": {
+        "metadata": {"display_phone_number": "2349110501393"},
+        "messages": [{
+            "from": "2347064408491",
+            "interactive": {"button_reply": {
+                "id": "receipt_reorder:ord-demo",
+                "title": "Order again",
+            }},
+        }],
+    }}]}]}
+    assert _extract_payment_actions(payload) == [
+        ("reorder", "ord-demo", "2347064408491", "2349110501393")
+    ]
 
 
 def test_verified_charge_marks_order_paid_once(monkeypatch):
