@@ -145,7 +145,7 @@ async def main() -> None:
     )
     if result.get("ok") is False:
         raise RuntimeError(f"Meta rejected the help CTA: {result.get('error', 'unknown error')}")
-    count = 2 if "--skip-intro" in sys.argv else 3
+    count = 3 if "--skip-intro" in sys.argv else 4
     print(f"{count} receipt demo messages were accepted by Meta.")
 
 
