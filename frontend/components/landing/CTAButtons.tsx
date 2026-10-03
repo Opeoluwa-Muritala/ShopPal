@@ -43,8 +43,8 @@ export default function CTAButtons() {
           px-7 py-[14px] min-h-[52px]
           bg-transparent
           text-blue-300 font-semibold text-[15px]
-          border-2 border-blue-500/60 hover:border-blue-400
-          hover:bg-white hover:text-black/80
+          border-2 border-blue-500/60 hover:bg-white
+          hover:text-white/80
           rounded-lg
           transition-all duration-200 ease-out
           hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]
