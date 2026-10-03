@@ -471,6 +471,13 @@ def test_quick_reply_sends_and_persists_history_without_ai(
     assert expected in job.reply_text
     agent.assert_not_called()
     send.assert_called_once()
+    payload = send.call_args.kwargs["json"]
+    if body == "hello":
+        assert payload["type"] == "interactive"
+        assert [
+            button["reply"]["id"]
+            for button in payload["interactive"]["action"]["buttons"]
+        ] == ["quick_browse", "quick_cart", "quick_help"]
     with Session(test_engine) as session:
         history = session.scalar(select(Conversation).where(Conversation.vendor_id == setup_job[2])).message_history
         assert history[-2]["content"] == body
