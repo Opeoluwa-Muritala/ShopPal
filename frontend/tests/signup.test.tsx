@@ -128,7 +128,7 @@ describe('Signup Flow Components', () => {
         />
       );
 
-      expect(screen.getByText('Payment Setup')).toBeDefined();
+      expect(screen.getByText('Payment & Payout Setup')).toBeDefined();
       expect(screen.getByText(/Skip for now/i)).toBeDefined();
 
       fireEvent.change(screen.getByLabelText('Bank Name'), {
@@ -308,7 +308,7 @@ describe('Signup Flow Components', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Payment Setup/i }));
 
       // Now at Step 2
-      expect(screen.getByText('Payment Setup')).toBeDefined();
+      expect(screen.getByText('Payment & Payout Setup')).toBeDefined();
       fireEvent.click(screen.getByRole('button', { name: /Continue to Product Upload/i }));
 
       // Now at Step 3
