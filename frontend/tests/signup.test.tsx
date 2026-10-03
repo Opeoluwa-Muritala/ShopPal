@@ -103,9 +103,10 @@ describe('Signup Flow Components', () => {
   });
 
   describe('Step 2: Payment Setup', () => {
-    it('renders payment fields and allows skipping', () => {
+    it('renders payment fields, derives the bank code, and allows skipping', () => {
       let nextCalled = false;
       let backCalled = false;
+      let paymentChange: Record<string, string> = {};
 
       render(
         <Step2Payment
@@ -115,7 +116,9 @@ describe('Signup Flow Components', () => {
             bank_name: '',
             account_name: '',
           }}
-          onChange={() => {}}
+          onChange={(change) => {
+            paymentChange = change as Record<string, string>;
+          }}
           onNext={() => {
             nextCalled = true;
           }}
@@ -127,6 +130,15 @@ describe('Signup Flow Components', () => {
 
       expect(screen.getByText('Payment Setup')).toBeDefined();
       expect(screen.getByText(/Skip for now/i)).toBeDefined();
+
+      fireEvent.change(screen.getByLabelText('Bank Name'), {
+        target: { value: 'Guaranty Trust Bank (GTBank)' },
+      });
+      expect(paymentChange).toEqual({
+        bank_name: 'Guaranty Trust Bank (GTBank)',
+        flutterwave_bank_code: '058',
+      });
+      expect(screen.queryByLabelText(/Flutterwave Bank Code/i)).toBeNull();
 
       const backBtn = screen.getByRole('button', { name: /Back/i });
       fireEvent.click(backBtn);

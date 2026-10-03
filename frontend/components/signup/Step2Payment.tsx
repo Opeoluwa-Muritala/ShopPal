@@ -19,19 +19,19 @@ interface Step2Props {
 
 export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Props) {
   const nigerianBanks = [
-    'Access Bank',
-    'Guaranty Trust Bank (GTBank)',
-    'Zenith Bank',
-    'First Bank of Nigeria',
-    'United Bank for Africa (UBA)',
-    'Kuda Microfinance Bank',
-    'OPay Digital Services',
-    'Palmpay',
-    'Moniepoint MFB',
-    'Stanbic IBTC Bank',
-    'Fidelity Bank',
-    'Wema Bank / ALAT',
-    'Union Bank of Nigeria',
+    { name: 'Access Bank', code: '044' },
+    { name: 'Guaranty Trust Bank (GTBank)', code: '058' },
+    { name: 'Zenith Bank', code: '057' },
+    { name: 'First Bank of Nigeria', code: '011' },
+    { name: 'United Bank for Africa (UBA)', code: '033' },
+    { name: 'Kuda Microfinance Bank', code: '090267' },
+    { name: 'OPay Digital Services', code: '999992' },
+    { name: 'Palmpay', code: '999991' },
+    { name: 'Moniepoint MFB', code: '090405' },
+    { name: 'Stanbic IBTC Bank', code: '221' },
+    { name: 'Fidelity Bank', code: '070' },
+    { name: 'Wema Bank / ALAT', code: '035' },
+    { name: 'Union Bank of Nigeria', code: '032' },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -59,25 +59,6 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
         You can test the WhatsApp bot immediately. These details are not the customer payment virtual account.
       </div>
 
-
-      {/* Flutterwave bank identification */}
-      <div>
-        <label htmlFor="flutterwaveBankCode" className="block text-xs font-semibold text-slate-900 mb-1">
-          Flutterwave Bank Code <span className="text-slate-500 font-normal">(business bank identifier)</span>
-        </label>
-        <input
-          id="flutterwaveBankCode"
-          type="text"
-          placeholder="e.g. 044"
-          value={data.flutterwave_bank_code}
-          onChange={(e) => onChange({ flutterwave_bank_code: e.target.value.trim() })}
-          className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono"
-        />
-        <p className="mt-1 text-[11px] text-slate-500">
-          Use the Flutterwave bank code for the selected Nigerian bank.
-        </p>
-      </div>
-
       {/* Bank Details */}
       <div className="pt-2 border-t border-slate-200 space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
@@ -92,16 +73,27 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           <select
             id="bankName"
             value={data.bank_name}
-            onChange={(e) => onChange({ bank_name: e.target.value })}
+            onChange={(e) => {
+              const bank = nigerianBanks.find((item) => item.name === e.target.value);
+              onChange({
+                bank_name: bank?.name || '',
+                flutterwave_bank_code: bank?.code || '',
+              });
+            }}
             className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
             <option value="">Select your Nigerian Bank...</option>
             {nigerianBanks.map((bank) => (
-              <option key={bank} value={bank}>
-                {bank}
+              <option key={bank.code} value={bank.name}>
+                {bank.name}
               </option>
             ))}
           </select>
+          {data.flutterwave_bank_code && (
+            <p className="mt-1 text-[11px] text-blue-700" aria-live="polite">
+              Flutterwave bank code selected automatically: {data.flutterwave_bank_code}
+            </p>
+          )}
         </div>
 
         {/* NUBAN Account Number */}
