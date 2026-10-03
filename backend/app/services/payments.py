@@ -224,7 +224,28 @@ async def handle_whatsapp_payment_action(action: str, *, tx_ref: str | None, wa_
             if amount <= 0:
                 await send_whatsapp_text(wa_number, "Your cart is empty. Please add an item before paying.", settings)
                 return
-            order = await create_bank_transfer_order(session, vendor_id=vendor.id, wa_number=wa_number, amount=amount, items=items, delivery_address=None, settings=settings)
+            try:
+                order = await create_bank_transfer_order(
+                    session,
+                    vendor_id=vendor.id,
+                    wa_number=wa_number,
+                    amount=amount,
+                    items=items,
+                    delivery_address=None,
+                    settings=settings,
+                )
+            except FlutterwaveClientError:
+                await session.rollback()
+                logger.warning(
+                    "WhatsApp payment account creation failed",
+                    extra={"step": "payment_account_create", "status": "retryable"},
+                )
+                await send_whatsapp_text(
+                    wa_number,
+                    "Payment setup is temporarily unavailable. Please tap Pay again shortly.",
+                    settings,
+                )
+                return
             await send_payment_instructions(order, settings)
             return
         if not tx_ref:

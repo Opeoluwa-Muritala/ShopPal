@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db.models import WhatsAppMessage
 from app.main import app
-from app.routers.whatsapp_webhook import _send_meta_message
+from app.routers.whatsapp_webhook import _message_body, _send_meta_message, _validate_payload
 
 VERIFY_TOKEN = "meta-verify-token"
 APP_SECRET = "meta-app-secret"
@@ -66,6 +66,35 @@ def _signed_body(payload):
         APP_SECRET.encode(), body, hashlib.sha256
     ).hexdigest()
     return body, signature
+
+
+def test_allowlisted_quick_action_becomes_customer_intent():
+    message = {
+        "type": "interactive",
+        "interactive": {
+            "type": "button_reply",
+            "button_reply": {"id": "quick_browse", "title": "Browse products"},
+        },
+    }
+    assert _message_body(message) == "What do you sell?"
+
+
+def test_interactive_reply_validation_rejects_oversized_identifier():
+    payload = {
+        "entry": [{"changes": [{"field": "messages", "value": {
+            "metadata": {"phone_number_id": "123", "display_phone_number": "2349110501393"},
+            "messages": [{
+                "id": "wamid.quick", "from": "2347064408491", "type": "interactive",
+                "interactive": {"button_reply": {"id": "x" * 257, "title": "Browse"}},
+            }],
+        }}]}],
+    }
+    try:
+        _validate_payload(payload)
+    except ValueError as exc:
+        assert "interactive" in str(exc).lower()
+    else:
+        raise AssertionError("Oversized interactive action must be rejected")
 
 
 

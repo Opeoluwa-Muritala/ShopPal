@@ -240,6 +240,19 @@ def _validate_payload(payload):
                         raise ValueError("Malformed media")
                     if event.get("type") == "audio" and "voice" in content and not isinstance(content.get("voice"), bool):
                         raise ValueError("Malformed audio voice flag")
+                if event.get("type") == "interactive":
+                    content = event.get("interactive")
+                    if not event.get("id") or not event.get("from") or not isinstance(content, dict):
+                        raise ValueError("Malformed interactive reply")
+                    reply = content.get("button_reply") or content.get("list_reply")
+                    if not isinstance(reply, dict):
+                        raise ValueError("Malformed interactive reply")
+                    identifier, title = reply.get("id"), reply.get("title", "")
+                    if (
+                        not isinstance(identifier, str) or not identifier
+                        or len(identifier) > 256 or not isinstance(title, str) or len(title) > 20
+                    ):
+                        raise ValueError("Malformed interactive reply")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
@@ -254,6 +267,16 @@ def _message_body(message: dict[str, Any]) -> str | None:
     typed = message.get(message_type)
     if message_type == "text" and isinstance(typed, dict):
         return str(typed.get("body", ""))
+    if message_type == "interactive" and isinstance(typed, dict):
+        reply = typed.get("button_reply") or typed.get("list_reply") or {}
+        action_text = {
+            "quick_browse": "What do you sell?",
+            "quick_cart": "Show my cart",
+            "quick_help": "How do I shop?",
+            "quick_images": "Can I get images?",
+        }.get(reply.get("id") if isinstance(reply, dict) else None)
+        if action_text:
+            return action_text
     if typed is None:
         return None
     return json.dumps(typed, separators=(",", ":"), default=str)
@@ -325,7 +348,13 @@ def _persist_messages(
         inserted_id = session.execute(statement).scalar_one_or_none()
         if inserted_id is not None:
             inserted.append((value, message))
-            if message.get("type") in {"text", "audio", "image"}:
+            is_quick_action = (
+                message.get("type") == "interactive"
+                and _message_body(message) in {
+                    "What do you sell?", "Show my cart", "How do I shop?", "Can I get images?"
+                }
+            )
+            if message.get("type") in {"text", "audio", "image"} or is_quick_action:
                 metadata = value.get("metadata", {})
                 phone = str(message.get("from", ""))
                 allowed = check_phone_rate_limit(phone)
