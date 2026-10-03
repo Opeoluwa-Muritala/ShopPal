@@ -75,7 +75,7 @@ export default function TopProductsSection({
               </p>
               <Link
                 href="/products"
-                className="mt-3 inline-block bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition"
+                className="mt-3 inline-block bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition"
               >
                 Upload First Product
               </Link>

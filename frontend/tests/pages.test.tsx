@@ -15,6 +15,7 @@ import { apiClient } from '../lib/api';
 
 describe('Navigation and Components', () => {
   it('renders Navbar with links', () => {
+    localStorage.setItem('shoppal_access_token', 'test-access-token');
     render(<Navbar />);
     expect(screen.getByText('ShopPal')).toBeDefined();
     expect(screen.getByText('Dashboard')).toBeDefined();
@@ -69,9 +70,17 @@ describe('Landing Page', () => {
 
 describe('Boilerplate App Pages', () => {
   it('renders Dashboard overview page', () => {
+    localStorage.setItem('shoppal_access_token', 'test-access-token');
     render(<DashboardPage />);
     expect(screen.getByText('Vendor Dashboard')).toBeDefined();
     expect(screen.getByText('Total Sales')).toBeDefined();
+  });
+
+  it('does not render dashboard content while signed out', () => {
+    localStorage.clear();
+    render(<DashboardPage />);
+    expect(screen.queryByText('Vendor Dashboard')).toBeNull();
+    expect(screen.getByText(/Taking you to sign in/i)).toBeDefined();
   });
 
   it('renders Products catalog page', () => {

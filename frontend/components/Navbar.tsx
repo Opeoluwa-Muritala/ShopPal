@@ -69,20 +69,20 @@ export default function Navbar() {
         <div className="flex items-center gap-8">
           <Link
             href={session.isAuthenticated ? '/dashboard' : '/'}
-            className="flex items-center gap-2 text-xl font-bold text-slate-900 tracking-tight hover:text-emerald-700 transition"
+            className="flex items-center gap-2 text-xl font-bold text-slate-900 tracking-tight hover:text-blue-700 transition"
           >
-            <span className="w-7 h-7 rounded bg-emerald-600 text-white flex items-center justify-center font-extrabold text-sm">
+            <span className="w-7 h-7 rounded bg-blue-600 text-white flex items-center justify-center font-extrabold text-sm">
               S
             </span>
             <span>ShopPal</span>
           </Link>
 
           {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+          {session.isAuthenticated && <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
             <Link
               href="/dashboard"
               className={`transition ${
-                pathname === '/dashboard' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                pathname === '/dashboard' ? 'text-blue-700 font-semibold' : 'hover:text-blue-600'
               }`}
             >
               Dashboard
@@ -90,7 +90,7 @@ export default function Navbar() {
             <Link
               href="/products"
               className={`transition ${
-                pathname === '/products' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                pathname === '/products' ? 'text-blue-700 font-semibold' : 'hover:text-blue-600'
               }`}
             >
               Products
@@ -98,7 +98,7 @@ export default function Navbar() {
             <Link
               href="/orders"
               className={`transition ${
-                pathname === '/orders' ? 'text-emerald-700 font-semibold' : 'hover:text-emerald-600'
+                pathname === '/orders' ? 'text-blue-700 font-semibold' : 'hover:text-blue-600'
               }`}
             >
               Orders
@@ -107,13 +107,13 @@ export default function Navbar() {
               href="/settings"
               className={`transition ${
                 pathname === '/settings' || pathname.startsWith('/settings')
-                  ? 'text-emerald-700 font-semibold'
-                  : 'hover:text-emerald-600'
+                  ? 'text-blue-700 font-semibold'
+                  : 'hover:text-blue-600'
               }`}
             >
               Settings
             </Link>
-          </div>
+          </div>}
         </div>
 
 
@@ -136,13 +136,13 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <Link
                 href="/login"
-                className="text-sm font-medium text-slate-700 hover:text-emerald-700 px-3 py-1.5 transition"
+                className="text-sm font-medium text-slate-700 hover:text-blue-700 px-3 py-1.5 transition"
               >
                 Log in
               </Link>
               <Link
                 href="/signup"
-                className="text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg shadow-sm transition"
+                className="text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg shadow-sm transition"
               >
                 Sign up
               </Link>
