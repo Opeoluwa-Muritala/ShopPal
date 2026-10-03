@@ -38,7 +38,7 @@ def upgrade():
         ("paid_at", sa.DateTime(timezone=True)),
         ("fw_transaction_id", sa.String(120)),
     ):
-        op.add_column("orders", sa.Column(column.name, column, nullable=True))
+        op.add_column("orders", sa.Column(name, column, nullable=True))
     op.alter_column("orders", "currency", server_default="NGN")
     op.create_index("idx_orders_expires_at", "orders", ["expires_at"])
     op.create_index("idx_orders_wa_number", "orders", ["wa_number"])
