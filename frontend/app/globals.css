@@ -14,8 +14,8 @@
 :root {
   --foreground-rgb: 15, 23, 42;
   --background-rgb: 255, 255, 255;
-  --cool-primary: #40566f;
-  --cool-primary-hover: #30445b;
+  --cool-primary: #2563eb;
+  --cool-primary-hover: #1d4ed8;
   --cool-surface: #eef3f8;
   --whatsapp-green: #128c4a;
 }
@@ -29,8 +29,8 @@ body {
 }
 
 ::selection {
-  background: #dce8f2;
-  color: #203247;
+  background: #dbeafe;
+  color: #1e3a8a;
 }
 
 /* Remove default heavy box shadows across cards and buttons */

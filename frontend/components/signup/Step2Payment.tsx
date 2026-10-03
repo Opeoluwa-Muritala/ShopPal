@@ -43,27 +43,27 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       <div>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900">Payment &amp; Payout Setup</h2>
+          <h2 className="text-xl font-bold text-slate-900">Payment Setup</h2>
           <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
             Optional
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-1">
-          Connect your Flutterwave settlement account to receive customer payments directly into your Nigerian bank account.
+          Add your business bank details. Customer checkout uses a separate, order-specific Flutterwave virtual account.
         </p>
       </div>
 
       {/* Skip Notice Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
         <span className="font-semibold block text-slate-900">Optional for setup — Skip for now.</span>
-        You can test the WhatsApp bot immediately. Live checkout requires a verified Flutterwave settlement account.
+        You can test the WhatsApp bot immediately. These details are not the customer payment virtual account.
       </div>
 
 
-      {/* Flutterwave settlement */}
+      {/* Flutterwave bank identification */}
       <div>
         <label htmlFor="flutterwaveBankCode" className="block text-xs font-semibold text-slate-900 mb-1">
-          Flutterwave Bank Code <span className="text-slate-500 font-normal">(required for live settlement)</span>
+          Flutterwave Bank Code <span className="text-slate-500 font-normal">(business bank identifier)</span>
         </label>
         <input
           id="flutterwaveBankCode"
@@ -81,7 +81,7 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
       {/* Bank Details */}
       <div className="pt-2 border-t border-slate-200 space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-          Bank Settlement Account
+          Business Bank Details
         </h3>
 
         {/* Bank Name Dropdown */}
@@ -147,7 +147,7 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
         </button>
         <button
           type="submit"
-          className="flex-1 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded transition"
+          className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded transition"
         >
           Continue to Product Upload
         </button>

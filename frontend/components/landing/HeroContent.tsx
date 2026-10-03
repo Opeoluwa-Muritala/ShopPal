@@ -23,7 +23,7 @@ export default function HeroContent() {
       }}
     >
       {/* Pill badge */}
-      <div className="inline-flex w-fit items-center gap-2 px-3.5 py-1.5 rounded-full bg-green-500/10 border border-green-500/25 text-green-400 text-xs font-semibold tracking-wide">
+      <div className="inline-flex w-fit items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-300 text-xs font-semibold tracking-wide">
         <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
         Built for Nigerian Vendors
       </div>

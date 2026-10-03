@@ -85,7 +85,7 @@ export default function HowItWorks() {
         <div className="mt-12 text-center">
           <Link
             href="/signup"
-            className="inline-flex items-center justify-center px-8 h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-lg shadow-sm transition"
+            className="inline-flex items-center justify-center px-8 h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-lg shadow-sm transition"
           >
             Get Started Free
           </Link>

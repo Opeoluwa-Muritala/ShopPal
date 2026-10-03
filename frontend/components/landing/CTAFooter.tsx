@@ -5,12 +5,12 @@ export default function CTAFooter() {
   return (
     <section className="relative bg-gradient-to-br from-slate-950 via-emerald-950 to-slate-950 text-white py-20 md:py-28 overflow-hidden border-t border-emerald-900/30">
       {/* Decorative Blur */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center space-y-6">
 
-          <span className="inline-block px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider backdrop-blur-sm">
+          <span className="inline-block px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-semibold uppercase tracking-wider backdrop-blur-sm">
             Join 450+ Nigerian merchants selling on WhatsApp
           </span>
 
@@ -26,7 +26,7 @@ export default function CTAFooter() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Link
               href="/signup"
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm rounded-lg shadow-lg shadow-emerald-500/20 transition-all"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 h-12 bg-blue-500 hover:bg-blue-400 text-white font-bold text-sm rounded-lg shadow-lg shadow-blue-500/20 transition-all"
             >
               Start Selling in 2 Minutes
             </Link>

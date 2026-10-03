@@ -60,7 +60,7 @@ export default function Sidebar({
       <div>
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:scale-105 transition-transform">
               🛍️
             </div>
             <div>
@@ -84,7 +84,7 @@ export default function Sidebar({
         {/* Store Identifier Card */}
         <div className="p-4">
           <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-600/10 flex items-center justify-center text-emerald-700">
+            <div className="w-9 h-9 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-700">
               <Store className="w-5 h-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -109,7 +109,7 @@ export default function Sidebar({
                 onClick={onCloseMobile}
                 className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
                   isActive
-                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-200'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                 }`}
               >

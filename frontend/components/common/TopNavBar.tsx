@@ -116,7 +116,7 @@ export default function TopNavBar({
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
-            <span className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-base shadow-sm">
+            <span className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-base shadow-sm">
               🛍️
             </span>
             <span className="font-extrabold text-slate-900 text-lg tracking-tight hidden sm:inline">

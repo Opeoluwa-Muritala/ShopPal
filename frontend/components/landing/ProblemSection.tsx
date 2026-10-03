@@ -72,7 +72,7 @@ export default function ProblemSection() {
           {/* Scenario 3: ShopPal */}
           <div className="rounded-xl border-2 border-emerald-600 bg-emerald-50/40 p-6 flex flex-col justify-between shadow-sm ring-1 ring-emerald-500/20">
             <div className="space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-white bg-emerald-600 px-3 py-1 rounded-md inline-block">
+              <span className="text-xs font-bold uppercase tracking-wider text-white bg-blue-600 px-3 py-1 rounded-md inline-block">
                 ShopPal Solution
               </span>
 
