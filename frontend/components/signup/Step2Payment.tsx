@@ -43,26 +43,26 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
       <div>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900">Payment Setup</h2>
+          <h2 className="text-xl font-bold text-slate-900">Payment &amp; Payout Setup</h2>
           <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
             Optional
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-1">
-          Add your business bank details. Customer checkout uses a separate, order-specific Flutterwave virtual account.
+          Choose the bank account where Flutterwave should transfer your proceeds after receiving and verifying customer payments.
         </p>
       </div>
 
       {/* Skip Notice Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
         <span className="font-semibold block text-slate-900">Optional for setup — Skip for now.</span>
-        You can test the WhatsApp bot immediately. These details are not the customer payment virtual account.
+        Flutterwave receives each customer payment first. This account receives the vendor payout afterward.
       </div>
 
       {/* Bank Details */}
       <div className="pt-2 border-t border-slate-200 space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-          Business Bank Details
+          Vendor Payout Account
         </h3>
 
         {/* Bank Name Dropdown */}
