@@ -1,13 +1,16 @@
 import asyncio
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 
 import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.config import get_settings
+from app.db.session import get_async_session_factory
 from app.jobs.expiry import expiry_loop
 from app.jobs.reconcile import reconciliation_loop
 from app.logging_conf import logger, setup_logging
@@ -26,14 +29,23 @@ from app.routers import (
     webhook,
     whatsapp_webhook,
 )
+from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
 
 
 @asynccontextmanager
 async def lifespan(application):
-    get_settings().require_key_encryption_secret()
-    application.state.bumpa_http_client = httpx.AsyncClient(timeout=get_settings().bumpa_timeout_seconds)
+    settings = get_settings()
+    settings.require_key_encryption_secret()
+    application.state.bumpa_http_client = httpx.AsyncClient(timeout=settings.bumpa_timeout_seconds)
+    scheduler = AsyncIOScheduler()
+    if settings.database_url:
+        factory = get_async_session_factory()
+        job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
+        application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
+        scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
+        scheduler.start()
     stop = asyncio.Event()
     application.state.reply_wakeup = asyncio.Event()
     logger.info("Reply worker startup", extra={
@@ -47,6 +59,8 @@ async def lifespan(application):
         yield
     finally:
         stop.set()
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         if task is not None:
             await task
         if expiry_task is not None:

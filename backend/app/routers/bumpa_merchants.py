@@ -1,6 +1,6 @@
 """Owner-only Bumpa connection and merchant commerce settings."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
-from app.db.bumpa_repository import get_connection
+from app.db.bumpa_repository import claim_sync, get_connection
 from app.db.models import Account, BumpaConnection, PendingTransfer, SyncState, Vendor
 from app.db.session import get_async_db
 from app.integrations.bumpa.client import BumpaAuthError, BumpaClient, BumpaError
@@ -110,11 +110,36 @@ async def connect_bumpa(
     if await session.get(SyncState, merchant_id) is None:
         session.add(SyncState(merchant_id=merchant_id, running=False))
     await session.commit()
-    # TODO(BUMPA_INITIAL_SYNC): Step 5 registers the background sync callback.
     sync_callback = getattr(request.app.state, "bumpa_initial_sync", None)
     if sync_callback is not None:
         background_tasks.add_task(sync_callback, merchant_id)
     return {"status": "active", "location_id": body.location_id}
+
+
+@router.post("/{merchant_id}/bumpa/sync")
+async def refresh_bumpa_catalog(
+    merchant_id: UUID,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    account: Account = Depends(get_current_account),
+    session: AsyncSession = Depends(get_async_db),
+) -> dict[str, str]:
+    _require_owner(merchant_id, account)
+    vendor = await _require_vendor(session, merchant_id)
+    if vendor.catalog_provider != "bumpa":
+        raise HTTPException(status_code=404, detail="Bumpa catalog not connected")
+    sync_callback = getattr(request.app.state, "bumpa_initial_sync", None)
+    if sync_callback is None:
+        raise HTTPException(status_code=503, detail="Catalog sync is unavailable")
+    state = await session.get(SyncState, merchant_id)
+    if state and state.last_started_at and state.last_started_at > datetime.now(UTC) - timedelta(minutes=1):
+        raise HTTPException(status_code=429, detail="Catalog was refreshed recently")
+    if not await claim_sync(session, merchant_id):
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Catalog refresh already running")
+    await session.commit()
+    background_tasks.add_task(sync_callback, merchant_id, preclaimed=True)
+    return {"status": "queued"}
 
 
 @router.delete("/{merchant_id}/bumpa/connect")
