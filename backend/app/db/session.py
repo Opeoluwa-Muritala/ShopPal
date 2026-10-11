@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from functools import lru_cache
 from typing import cast
 
@@ -69,3 +69,8 @@ def get_async_engine() -> AsyncEngine:
 @lru_cache
 def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(get_async_engine(), expire_on_commit=False)
+
+
+async def get_async_db() -> AsyncIterator[AsyncSession]:
+    async with get_async_session_factory()() as session:
+        yield session

@@ -2,6 +2,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -13,6 +14,7 @@ from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
     auth,
+    bumpa_merchants,
     dashboard,
     flutterwave,
     health,
@@ -31,6 +33,7 @@ from app.services.reply_recovery import recovery_loop
 @asynccontextmanager
 async def lifespan(application):
     get_settings().require_key_encryption_secret()
+    application.state.bumpa_http_client = httpx.AsyncClient(timeout=get_settings().bumpa_timeout_seconds)
     stop = asyncio.Event()
     application.state.reply_wakeup = asyncio.Event()
     logger.info("Reply worker startup", extra={
@@ -50,6 +53,7 @@ async def lifespan(application):
             await expiry_task
         if reconciliation_task is not None:
             await reconciliation_task
+        await application.state.bumpa_http_client.aclose()
 
 
 def create_app() -> FastAPI:
@@ -165,6 +169,7 @@ def create_app() -> FastAPI:
     application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
+    application.include_router(bumpa_merchants.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
     application.include_router(accounts.router, dependencies=frontend_dependencies)
     application.include_router(dashboard.router, dependencies=frontend_dependencies)
