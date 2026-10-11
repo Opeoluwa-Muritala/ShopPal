@@ -1,0 +1,1 @@
+"""Bumpa Commerce API adapter."""
