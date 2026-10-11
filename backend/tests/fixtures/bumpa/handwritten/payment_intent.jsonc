@@ -1,0 +1,2 @@
+// HAND-WRITTEN FROM DOCS, NOT REAL BUMPA OUTPUT
+{"authorization_url":"https://paystack.com/pay/doc-only","reference":"doc-reference","amount":5000,"amount_minor":500000,"currency":"NGN","order_id":"order-doc-1"}
