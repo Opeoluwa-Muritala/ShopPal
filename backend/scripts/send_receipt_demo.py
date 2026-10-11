@@ -21,10 +21,8 @@ from app.db.session import get_engine  # noqa: E402
 from app.services.receipt_images import render_payment_receipt  # noqa: E402
 from app.services.whatsapp import (  # noqa: E402
     send_whatsapp_cta_url,
-    send_whatsapp_image_bytes,
     send_whatsapp_image_buttons_bytes,
     send_whatsapp_template,
-    send_whatsapp_text,
 )
 
 

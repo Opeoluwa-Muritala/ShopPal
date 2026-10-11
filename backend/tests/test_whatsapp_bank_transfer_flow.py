@@ -8,11 +8,10 @@ from types import SimpleNamespace
 from pydantic import SecretStr
 
 from app.config import Settings
-from app.services.flutterwave_v4 import VerifiedCharge
-from app.services.payments import confirm_verified_charge
-from app.services.payments import _confirmation_caption
 from app.routers.flutterwave import _signature_is_valid
 from app.routers.whatsapp_webhook import _extract_payment_actions
+from app.services.flutterwave_v4 import VerifiedCharge
+from app.services.payments import _confirmation_caption, confirm_verified_charge
 
 
 class FakeProvider:

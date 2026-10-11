@@ -6,7 +6,10 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db.models import Order
 from app.db.session import get_async_session_factory
-from app.services.flutterwave_v4 import FlutterwaveClientError, get_virtual_account_provider
+from app.services.flutterwave_v4 import (
+    FlutterwaveClientError,
+    get_virtual_account_provider,
+)
 from app.services.payments import confirm_verified_charge
 
 

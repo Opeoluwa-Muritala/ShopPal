@@ -7,8 +7,8 @@ from pydantic import SecretStr
 from app.config import Settings
 from app.services.flutterwave import (
     FlutterwaveError,
-    verify_bank_account,
     initialize_transaction,
+    verify_bank_account,
     verify_transaction,
 )
 

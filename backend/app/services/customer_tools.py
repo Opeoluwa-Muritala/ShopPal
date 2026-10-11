@@ -11,9 +11,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.models import Cart, Customer, Product, Vendor
+from app.db.models import Cart, Customer, Product
+from app.services.flutterwave_v4 import (
+    FlutterwaveClientError,
+    get_virtual_account_provider,
+)
 from app.services.orders import create_order_from_cart
-from app.services.flutterwave_v4 import FlutterwaveClientError, get_virtual_account_provider
 
 
 class CustomerToolDispatcher:
@@ -110,10 +113,10 @@ class CustomerToolDispatcher:
 
     def view_cart(self, _args: dict[str, Any]) -> dict[str, Any]:
         cart = self._cart()
-        total = sum(
+        total = sum((
             Decimal(str(item["price"])) * int(item["qty"])
             for item in (cart.items or [])
-        )
+        ), Decimal("0"))
         return {
             "items": cart.items or [],
             "total": str(total.quantize(Decimal("0.01"))),
@@ -204,7 +207,6 @@ class CustomerToolDispatcher:
             ],
             commit=False,
         )
-        vendor = self.session.get(Vendor, self.vendor_id)
         try:
             settings = get_settings()
             customer = self.session.scalar(select(Customer).where(Customer.wa_number == self.customer_phone).with_for_update())

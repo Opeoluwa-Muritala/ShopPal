@@ -27,7 +27,9 @@ from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService, ai_cooldown_active
 from app.services.quick_replies import ai_failure_reply, quick_intent, quick_reply
 from app.services.transcription import TranscriptionError
-from app.services.whatsapp import send_whatsapp_product_image, send_whatsapp_product_image_buttons
+from app.services.whatsapp import (
+    send_whatsapp_product_image_buttons,
+)
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")

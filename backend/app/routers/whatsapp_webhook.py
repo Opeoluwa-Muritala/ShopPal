@@ -28,10 +28,10 @@ from app.config import Settings, get_settings
 from app.db.models import ReplyJob, WhatsAppMessage
 from app.db.session import get_engine
 from app.logging_conf import logger
+from app.services.payments import handle_whatsapp_payment_action
 from app.services.security import check_phone_rate_limit, mask_phone
 from app.services.whatsapp import mark_whatsapp_message_read
 from app.services.whatsapp_media import process_whatsapp_media
-from app.services.payments import handle_whatsapp_payment_action
 
 router = APIRouter(prefix="/webhooks", tags=["Meta WhatsApp"])
 MAX_WEBHOOK_BYTES = 3 * 1024 * 1024
@@ -274,7 +274,7 @@ def _message_body(message: dict[str, Any]) -> str | None:
             "quick_cart": "Show my cart",
             "quick_help": "How do I shop?",
             "quick_images": "Can I get images?",
-        }.get(reply.get("id") if isinstance(reply, dict) else None)
+        }.get(str(reply.get("id") or "") if isinstance(reply, dict) else "")
         if action_text:
             return action_text
     if typed is None:

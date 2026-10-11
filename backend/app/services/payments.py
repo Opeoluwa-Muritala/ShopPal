@@ -12,9 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models import Cart, Customer, Order, Product, Vendor, WebhookEvent
 from app.logging_conf import logger
-from app.services.flutterwave_v4 import FlutterwaveClientError, VirtualAccountProvider, get_virtual_account_provider
+from app.services.flutterwave_v4 import (
+    FlutterwaveClientError,
+    VirtualAccountProvider,
+    get_virtual_account_provider,
+)
 from app.services.receipt_images import render_payment_receipt
-from app.services.whatsapp import send_whatsapp_buttons, send_whatsapp_image_buttons_bytes, send_whatsapp_image_bytes, send_whatsapp_text
+from app.services.whatsapp import (
+    send_whatsapp_buttons,
+    send_whatsapp_image_buttons_bytes,
+    send_whatsapp_image_bytes,
+    send_whatsapp_text,
+)
 
 
 def _money(value: Decimal) -> str:
@@ -211,11 +220,11 @@ async def handle_whatsapp_payment_action(action: str, *, tx_ref: str | None, wa_
             normalized_bot = "".join(ch for ch in (bot_number or "") if ch.isdigit())
             normalized_customer = "".join(ch for ch in wa_number if ch.isdigit())
             result = await session.execute(select(Cart, Vendor).join(Vendor, Vendor.id == Cart.vendor_id).where(Cart.customer_phone.in_([wa_number, normalized_customer]), Vendor.is_active.is_(True)).order_by(Cart.updated_at.desc()))
-            row = result.first()
-            if row is None:
+            cart_row = result.first()
+            if cart_row is None:
                 await send_whatsapp_text(wa_number, "I couldn't find an active cart. Please choose your items again.", settings)
                 return
-            cart, vendor = row
+            cart, vendor = cart_row
             if normalized_bot and normalized_bot not in {"".join(ch for ch in (vendor.bot_number or "") if ch.isdigit()), "".join(ch for ch in vendor.whatsapp_number if ch.isdigit())}:
                 await send_whatsapp_text(wa_number, "This checkout session is no longer active. Please start again.", settings)
                 return
@@ -250,10 +259,11 @@ async def handle_whatsapp_payment_action(action: str, *, tx_ref: str | None, wa_
             return
         if not tx_ref:
             return
-        order = await session.scalar(select(Order).where(Order.tx_ref == tx_ref, Order.wa_number == wa_number).with_for_update())
-        if order is None:
+        candidate_order = await session.scalar(select(Order).where(Order.tx_ref == tx_ref, Order.wa_number == wa_number).with_for_update())
+        if candidate_order is None:
             await send_whatsapp_text(wa_number, "I couldn't find that payment request. Please start checkout again.", settings)
             return
+        order = candidate_order
         if action == "help":
             await send_whatsapp_text(
                 wa_number,

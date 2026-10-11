@@ -258,7 +258,7 @@ async def send_whatsapp_image_buttons_bytes(
         return {"ok": False, "error": "whatsapp_image_buttons_send_failed"}
 
 
-async def send_whatsapp_template(to_phone: str, template_name: str, language: str, parameters: list[str], settings: Any) -> None:
+async def send_whatsapp_template_with_parameters(to_phone: str, template_name: str, language: str, parameters: list[str], settings: Any) -> None:
     await _send_meta_payload(to_phone, {"messaging_product": "whatsapp", "to": to_phone, "type": "template", "template": {"name": template_name, "language": {"code": language}, "components": [{"type": "body", "parameters": [{"type": "text", "text": value} for value in parameters]}]}}, settings)
 
 

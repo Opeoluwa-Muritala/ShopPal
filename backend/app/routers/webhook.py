@@ -25,17 +25,21 @@ from app.db.models import Conversation, Order, Product, Vendor
 from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
+from app.services.flutterwave import FlutterwaveError
+from app.services.flutterwave import (
+    verify_transaction as verify_flutterwave_transaction,
+)
 from app.services.llm import GemmaError, LLMService
-from app.services.flutterwave import FlutterwaveError, verify_transaction as verify_flutterwave_transaction
-from app.services.paystack import PaystackError, verify_transaction as verify_paystack_transaction
+from app.services.paystack import PaystackError
+from app.services.paystack import verify_transaction as verify_paystack_transaction
 from app.services.security import (
     check_phone_rate_limit,
     is_paystack_event_processed,
     mark_paystack_event_processed,
     mask_phone,
     validate_media_url,
-    verify_paystack_signature,
     verify_flutterwave_signature,
+    verify_paystack_signature,
     verify_twilio_signature,
 )
 from app.services.transcription import TranscriptionError, transcribe_audio
@@ -305,9 +309,9 @@ async def paystack_webhook(
             expected_amount = int((order.total * 100).to_integral_exact())
             try:
                 amount_requested_by_customer = int(
-                    requested_amount if requested_amount is not None else verified_amount
+                    str(requested_amount if requested_amount is not None else verified_amount)
                 )
-                amount_charged = int(verified_amount)
+                amount_charged = int(str(verified_amount))
             except (TypeError, ValueError):
                 amount_requested_by_customer = -1
                 amount_charged = -1
@@ -370,7 +374,8 @@ async def flutterwave_webhook(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed JSON body") from exc
 
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    data_value = payload.get("data")
+    data: dict[str, Any] = data_value if isinstance(data_value, dict) else {}
     reference = data.get("tx_ref")
     transaction_id = str(data.get("id") or "")
     event_id = str(payload.get("id") or transaction_id or reference or "")
@@ -393,7 +398,7 @@ async def flutterwave_webhook(
                 raise HTTPException(status_code=503, detail="Payment verification unavailable") from None
             expected_amount = int((order.total * 100).to_integral_exact())
             try:
-                verified_amount = int(verified.get("amount"))
+                verified_amount = int(str(verified.get("amount")))
                 charged_amount = int(verified.get("charged_amount", verified_amount))
             except (TypeError, ValueError):
                 verified_amount = charged_amount = -1

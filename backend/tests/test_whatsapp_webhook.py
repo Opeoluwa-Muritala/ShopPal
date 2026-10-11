@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db.models import WhatsAppMessage
 from app.main import app
-from app.routers.whatsapp_webhook import _message_body, _send_meta_message, _validate_payload
+from app.routers.whatsapp_webhook import (
+    _message_body,
+    _send_meta_message,
+    _validate_payload,
+)
 
 VERIFY_TOKEN = "meta-verify-token"
 APP_SECRET = "meta-app-secret"

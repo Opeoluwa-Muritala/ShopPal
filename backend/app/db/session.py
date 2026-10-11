@@ -1,10 +1,16 @@
 from collections.abc import Iterator
 from functools import lru_cache
+from typing import cast
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 
@@ -37,7 +43,7 @@ def get_db() -> Iterator[Session]:
     settings = get_settings()
     if settings.database_url is None:
         # Allow routes and dependency injection to resolve in testing / mock environments
-        yield None
+        yield cast(Session, None)
         return
     with Session(get_engine()) as session:
         yield session

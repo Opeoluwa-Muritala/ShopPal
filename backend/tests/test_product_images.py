@@ -220,10 +220,10 @@ def test_reply_worker_sends_stored_image(monkeypatch):
 
     now = datetime.now(UTC)
     product = SimpleNamespace(id=uuid4(), image_media_id=uuid4())
-    job = SimpleNamespace(id=uuid4(), vendor_id=uuid4(), phone_number_id="123", customer_phone="2348012345678", reply_text="Perfume", attempts=1, state="processing", created_at=now,
+    job = SimpleNamespace(id=uuid4(), message_id="wamid.inbound", vendor_id=uuid4(), phone_number_id="123", customer_phone="2348012345678", reply_text="Perfume", attempts=1, state="processing", failure_category=None, created_at=now,
                           transcript=[{"action": {"tool": "showProductImage"}, "result": {"image_product_id": str(product.id), "caption": "Perfume"}}])
     db = Mock(spec=Session)
-    db.scalar.side_effect = [now, product]
+    db.scalar.side_effect = [now, SimpleNamespace(body=""), product]
     monkeypatch.setattr(recovery, "checkpoint", lambda *args: None)
     sender = AsyncMock(return_value={"messages": [{"id": "wamid.image"}]})
     monkeypatch.setattr(recovery, "send_whatsapp_product_image_buttons", sender)
