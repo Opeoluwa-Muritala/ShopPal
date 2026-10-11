@@ -60,6 +60,16 @@ class Vendor(Identity, Timestamps, Base):
     bot_number: Mapped[str | None] = mapped_column(String(20))
     dashboard_url: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool | None] = mapped_column(Boolean, server_default=text("true"))
+    catalog_provider: Mapped[str] = mapped_column(String(20), server_default=text("'legacy'"), nullable=False)
+    slug: Mapped[str | None] = mapped_column(String(120), unique=True)
+    whatsapp_phone_number_id: Mapped[str | None] = mapped_column(String(80))
+    whatsapp_token_enc: Mapped[str | None] = mapped_column(Text)
+    owner_whatsapp_number: Mapped[str | None] = mapped_column(String(30))
+    payout_bank_name: Mapped[str | None] = mapped_column(String(120))
+    payout_account_name: Mapped[str | None] = mapped_column(String(120))
+    payout_account_number: Mapped[str | None] = mapped_column(String(10))
+    pickup_location_id: Mapped[str | None] = mapped_column(String(120))
+    delivery_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), nullable=False)
 
 
 class Product(Identity, Timestamps, Base):
@@ -298,4 +308,106 @@ class ReplyTemplate(Base):
 
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class BumpaConnection(Identity, Timestamps, Base):
+    __tablename__ = "bumpa_connections"
+    __table_args__ = (UniqueConstraint("merchant_id"),)
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    public_key_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_key_enc: Mapped[str | None] = mapped_column(Text)
+    location_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'active'"), nullable=False)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProductCache(Identity, Base):
+    __tablename__ = "products_cache"
+    __table_args__ = (
+        UniqueConstraint("merchant_id", "bumpa_product_id"),
+        Index("idx_products_cache_merchant_published", "merchant_id", "is_published"),
+    )
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    bumpa_product_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str | None] = mapped_column(String(8))
+    stock_qty: Mapped[int | None] = mapped_column(Integer)
+    image_urls: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    variations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    raw: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SyncState(Base):
+    __tablename__ = "sync_state"
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), primary_key=True)
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    running: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
+
+
+class CheckoutRef(Identity, Base):
+    __tablename__ = "checkout_refs"
+    __table_args__ = (Index("idx_checkout_refs_merchant_status", "merchant_id", "status"),)
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    bumpa_checkout_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    bumpa_order_id: Mapped[str | None] = mapped_column(String(120))
+    payment_reference: Mapped[str | None] = mapped_column(String(120))
+    customer_wa_id: Mapped[str | None] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'created'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PendingTransfer(Identity, Base):
+    __tablename__ = "pending_transfers"
+    __table_args__ = (
+        UniqueConstraint("merchant_id", "reference"),
+        Index("idx_pending_transfers_merchant_status", "merchant_id", "status"),
+    )
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    reference: Mapped[str] = mapped_column(String(20), nullable=False)
+    bumpa_product_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    customer_wa_id: Mapped[str | None] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), server_default=text("'awaiting_proof'"), nullable=False)
+    proof_media_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ConversationState(Base):
+    __tablename__ = "conversation_state"
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), primary_key=True)
+    customer_wa_id: Mapped[str] = mapped_column(String(30), primary_key=True)
+    step: Mapped[str] = mapped_column(String(60), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+
+
+class ProcessedMessage(Base):
+    __tablename__ = "processed_messages"
+
+    message_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+
+
+class WhatsAppOptOut(Base):
+    __tablename__ = "whatsapp_opt_outs"
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), primary_key=True)
+    customer_wa_id: Mapped[str] = mapped_column(String(30), primary_key=True)
+    opted_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
 
