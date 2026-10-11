@@ -1,4 +1,5 @@
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.config import Settings, get_settings
@@ -66,3 +67,15 @@ def test_settings_dependency_is_cached():
         assert get_settings() is get_settings()
     finally:
         get_settings.cache_clear()
+
+
+def test_fernet_key_is_required_and_validated(monkeypatch):
+    monkeypatch.setenv("KEY_ENCRYPTION_SECRET", "")
+    with pytest.raises(ValueError, match="required"):
+        Settings(_env_file=None).require_key_encryption_secret()
+    monkeypatch.setenv("KEY_ENCRYPTION_SECRET", "invalid")
+    with pytest.raises(ValueError, match="Fernet key"):
+        Settings(_env_file=None).require_key_encryption_secret()
+    key = Fernet.generate_key()
+    monkeypatch.setenv("KEY_ENCRYPTION_SECRET", key.decode("ascii"))
+    assert Settings(_env_file=None).require_key_encryption_secret() == key

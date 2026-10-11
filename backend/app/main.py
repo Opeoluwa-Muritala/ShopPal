@@ -7,11 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.config import get_settings
+from app.jobs.expiry import expiry_loop
+from app.jobs.reconcile import reconciliation_loop
 from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
     auth,
     dashboard,
+    flutterwave,
     health,
     logs,
     orders,
@@ -20,16 +23,14 @@ from app.routers import (
     vendors,
     webhook,
     whatsapp_webhook,
-    flutterwave,
 )
-from app.jobs.expiry import expiry_loop
-from app.jobs.reconcile import reconciliation_loop
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
 
 
 @asynccontextmanager
 async def lifespan(application):
+    get_settings().require_key_encryption_secret()
     stop = asyncio.Event()
     application.state.reply_wakeup = asyncio.Event()
     logger.info("Reply worker startup", extra={

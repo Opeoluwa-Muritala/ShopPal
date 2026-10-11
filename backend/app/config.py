@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from cryptography.fernet import Fernet
 from pydantic import AliasChoices, Field, PostgresDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +22,10 @@ class Settings(BaseSettings):
     database_url: PostgresDsn | None = Field(default=None, repr=False)
     redis_host: str = "localhost"
     redis_port: int = Field(default=6379, ge=1, le=65535)
+    bumpa_base_url: str = "https://api.bumpa.xyz"
+    bumpa_timeout_seconds: float = Field(default=10, gt=0, le=120)
+    bumpa_sync_interval_minutes: int = Field(default=10, ge=1)
+    key_encryption_secret: SecretStr = SecretStr("")
 
     # Twilio / WhatsApp
     twilio_account_sid: str = ""
@@ -38,6 +43,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WHATSAPP_TOKEN", "WHATSAPP_ACCESS_TOKEN"),
     )
     whatsapp_phone_number_id: str = ""
+    whatsapp_api_base: str = "https://graph.facebook.com/v25.0"
     # Public, dialable business number used only for customer-facing wa.me links.
     whatsapp_public_number: str = ""
     whatsapp_reengagement_template_name: str = ""
@@ -81,6 +87,18 @@ class Settings(BaseSettings):
     def whatsapp_token(self) -> str:
         """Support the new WHATSAPP_TOKEN name without breaking old deployments."""
         return self.whatsapp_access_token.get_secret_value()
+
+    def require_key_encryption_secret(self) -> bytes:
+        """Validate the credential encryption key at startup."""
+        value = self.key_encryption_secret.get_secret_value()
+        if not value:
+            raise ValueError("KEY_ENCRYPTION_SECRET is required")
+        try:
+            key = value.encode("ascii")
+            Fernet(key)
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise ValueError("KEY_ENCRYPTION_SECRET must be a Fernet key") from exc
+        return key
 
     # JWT Authentication
     jwt_secret: SecretStr = SecretStr("default_demo_jwt_secret_32_chars_long_!")
