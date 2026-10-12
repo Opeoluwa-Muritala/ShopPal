@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     gemma_model: str = "gemma-4-26b-a4b-it"
     gemma_api_url: str = ""
     gemma_timeout_seconds: int = Field(default=20, ge=10, le=120)
-    gemma_thinking_level: Literal["minimal", "high"] = "minimal"
+    gemma_thinking_level: Literal["minimal", "high"] = "high"
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_model: str = "google/gemma-3-27b-it"
     groq_api_key: SecretStr = SecretStr("")
