@@ -49,6 +49,7 @@ class ConversationHarness(BumpaConversation):
         self._http = None
         self._settings = None
         self._details = {}
+        self._remote_baskets = SimpleNamespace(sync=AsyncMock(return_value="remote-cart"), forget=Mock())
         self._transfers = SimpleNamespace(
             owner_action=AsyncMock(return_value=False),
             customer_proof=AsyncMock(return_value=False),

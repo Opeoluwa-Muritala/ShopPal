@@ -165,12 +165,14 @@ async def list_shipping_options(
     http_client: httpx.AsyncClient,
     settings: Settings,
     items: list[CheckoutItem] | None = None,
+    cart_id: str | None = None,
 ) -> list[dict[str, Any]]:
     if qty < 1 or fulfilment.type != "delivery":
         raise CheckoutRejected("A delivery product and quantity are required")
     client = await _client_for_merchant(merchant.id, session_factory, http_client, settings)
     try:
-        cart_id, _token = await _new_cart(client, product_id, variation_id, qty, items)
+        if cart_id is None:
+            cart_id, _token = await _new_cart(client, product_id, variation_id, qty, items)
         response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment))
         return mappers.extract_shipping_options(response)
     except BumpaAuthError as exc:
@@ -199,6 +201,7 @@ async def start_checkout(
     http_client: httpx.AsyncClient,
     settings: Settings,
     items: list[CheckoutItem] | None = None,
+    cart_id: str | None = None,
 ) -> CheckoutResult:
     if qty < 1 or qty > 100:
         raise CheckoutRejected("Quantity must be between 1 and 100")
@@ -214,7 +217,8 @@ async def start_checkout(
             raise CheckoutRejected("This product is out of stock")
     client = await _client_for_merchant(merchant.id, session_factory, http_client, settings)
     try:
-        cart_id, _token = await _new_cart(client, product_id, variation_id, qty, basket)
+        if cart_id is None:
+            cart_id, _token = await _new_cart(client, product_id, variation_id, qty, basket)
         if fulfilment.type == "pickup":
             pickup_id = fulfilment.pickup_location_id or merchant.pickup_location_id
             if not pickup_id:

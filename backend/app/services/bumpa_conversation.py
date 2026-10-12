@@ -28,6 +28,7 @@ from app.services.bumpa_assistant import (
     ConversationalWhatsAppClient,
     local_delivery_address,
 )
+from app.services.bumpa_baskets import BumpaBaskets
 from app.services.bumpa_checkout import (
     CheckoutError,
     CheckoutItem,
@@ -97,6 +98,7 @@ class BumpaConversation:
         self._settings = settings
         self._details: dict[tuple[UUID, str], tuple[datetime, dict[str, str]]] = {}
         self._baskets: dict[tuple[UUID, str], tuple[datetime, list[CheckoutItem]]] = {}
+        self._remote_baskets = BumpaBaskets(session_factory, http_client, settings)
         self._transfers = TransferService(session_factory, http_client, settings)
         self._transfers.on_confirm = self._basket_paid
         self._payments = payment_tracker or PaymentTracker(session_factory, http_client, settings)
@@ -139,7 +141,15 @@ class BumpaConversation:
         if str(ref.id) in (state.payload.get("checkout_ref_id"), state.payload.get("transfer_ref_id")):
             self._basket_for(ref.merchant_id, ref.customer_wa_id)
             self._baskets.pop((ref.merchant_id, ref.customer_wa_id), None)
+            self._remote_baskets.forget(ref.merchant_id, ref.customer_wa_id)
             await self._set_state(state, "start", {})
+
+    async def _sync_basket(self, merchant: Vendor, wa_id: str, client: WhatsAppClient) -> str | None:
+        try:
+            return await self._remote_baskets.sync(merchant.id, wa_id, self._basket_for(merchant.id, wa_id))
+        except CheckoutError:
+            await client.send_text(wa_id, "Bumpa couldn't update your cart just now. Your selection is kept here; I'll retry before checkout.")
+            return None
 
     async def _payment_choices(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         items = self._basket_for(merchant.id, wa_id)
@@ -173,6 +183,7 @@ class BumpaConversation:
         if len(self._baskets) >= 1000 and (merchant.id, wa_id) not in self._baskets:
             self._baskets.pop(min(self._baskets, key=lambda key: self._baskets[key][0]))
         self._baskets[merchant.id, wa_id] = datetime.now(UTC), items
+        await self._sync_basket(merchant, wa_id, client)
         await self._set_state(state, "more_items", {**payload, "qty": qty, "basket_count": len(items)})
         await client.send_buttons(wa_id, f"{product.name or 'Product'}: quantity {qty} in your basket, {_money(product.price, product.currency)} each. Would you like anything else?",
                                   [("more_yes", "Yes, browse more"), ("more_no", "No, let's pay"), ("cart", "Edit basket")])
@@ -201,6 +212,7 @@ class BumpaConversation:
         items = [item for item in self._basket_for(merchant.id, wa_id)
                  if (item.product_id, item.variation_id) != (state.payload.get("product_id"), state.payload.get("variation_id"))]
         self._baskets[merchant.id, wa_id] = datetime.now(UTC), items
+        await self._sync_basket(merchant, wa_id, client)
         await client.send_text(wa_id, "Removed from your basket.")
         if not items:
             await self._set_state(state, "start", {})
@@ -329,6 +341,7 @@ class BumpaConversation:
                 merchant, state.payload["product_id"], state.payload.get("variation_id"), int(state.payload["qty"]),
                 customer, fulfilment, session_factory=self._sessions, http_client=self._http, settings=self._settings,
                 items=self._checkout_items(state),
+                cart_id=await self._remote_baskets.sync(merchant.id, wa_id, self._checkout_items(state)),
             )
         except CheckoutPostcodeRequired:
             await self._set_state(state, "zip", state.payload)
@@ -447,6 +460,7 @@ class BumpaConversation:
                 customer, fulfilment, wa_id,
                 session_factory=self._sessions, http_client=self._http, settings=self._settings,
                 items=self._checkout_items(state),
+                cart_id=await self._remote_baskets.sync(merchant.id, wa_id, self._checkout_items(state)),
             )
         except CheckoutUnavailable:
             await self._payment_outage(merchant, wa_id, client)
@@ -455,6 +469,7 @@ class BumpaConversation:
             await client.send_text(wa_id, "Checkout could not be created. Please try again shortly.")
             return
         self._details.pop((merchant.id, wa_id), None)
+        self._remote_baskets.forget(merchant.id, wa_id)
         await self._set_state(state, "awaiting_payment", {"checkout_ref_id": str(result.local_ref_id)})
         await client.send_text(wa_id, f"Pay for your basket: {_money(result.amount, result.currency)}. Reference {result.reference}. {result.authorization_url}")
 
@@ -670,6 +685,7 @@ class BumpaConversation:
                 self._details.pop((merchant.id, wa_id), None)
                 self._basket_for(merchant.id, wa_id)
                 self._baskets.pop((merchant.id, wa_id), None)
+                await self._sync_basket(merchant, wa_id, client)
             await self._set_state(state, "start", {})
             await self._menu(merchant, wa_id, client)
             return

@@ -56,15 +56,16 @@ def test_delivery_without_postcode_does_not_invent_one():
 
 
 @pytest.mark.parametrize("multiple", [False, True])
-def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch, multiple):
+@pytest.mark.parametrize("existing_cart", [False, True])
+def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch, multiple, existing_cart):
     merchant, settings, connection = _merchant_and_settings()
     monkeypatch.setattr(bumpa_checkout, "get_connection", AsyncMock(return_value=connection))
     monkeypatch.setattr(bumpa_checkout, "refresh_product_live", AsyncMock(return_value=(SimpleNamespace(stock_qty=5), False)))
     save_ref = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
     monkeypatch.setattr(bumpa_checkout, "save_checkout_ref", save_ref)
     with respx.mock(assert_all_called=True) as mock:
-        mock.post(BASE + "/carts").respond(200, json=load_handwritten("cart_created.jsonc"))
-        add = mock.post(BASE + "/carts/items").respond(200, json=load_handwritten("cart_item_added.jsonc"))
+        create = mock.post(BASE + "/carts").respond(200, json=load_handwritten("cart_created.jsonc")) if not existing_cart else None
+        add = mock.post(BASE + "/carts/items").respond(200, json=load_handwritten("cart_item_added.jsonc")) if not existing_cart else None
         checkout = mock.post(BASE + "/checkouts").respond(200, json=load_handwritten("checkout_created.jsonc"))
         mock.post(BASE + "/checkouts/checkout-doc-1/calculate-totals").respond(200, json=load_handwritten("totals_calculated.jsonc"))
         mock.post(BASE + "/checkouts/checkout-doc-1/payment-intent").respond(200, json=load_handwritten("payment_intent.jsonc"))
@@ -77,6 +78,7 @@ def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch, m
                     session_factory=FakeSession, http_client=http, settings=settings,
                     items=[bumpa_checkout.CheckoutItem(product_id="product-doc-1", qty=2),
                            bumpa_checkout.CheckoutItem(product_id="product-doc-2", qty=1)] if multiple else None,
+                    cart_id="cart-doc-1" if existing_cart else None,
                 )
 
         result = asyncio.run(run())
@@ -84,8 +86,12 @@ def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch, m
     assert result.reference == "doc-reference"
     assert result.order_id == "order-doc-1"
     assert result.amount == Decimal("5000")
-    assert add.calls[0].request.headers["X-Cart-Token"] == "guest-doc-token"
-    if multiple:
+    if existing_cart:
+        assert all(call.request.url.path not in {"/api/commerce/v1/carts", "/api/commerce/v1/carts/items"} for call in mock.calls)
+    else:
+        assert create.call_count == 1
+        assert add.calls[0].request.headers["X-Cart-Token"] == "guest-doc-token"
+    if multiple and not existing_cart:
         assert [json.loads(call.request.content)["product_id"] for call in add.calls] == ["product-doc-1", "product-doc-2"]
         assert len({call.request.headers["X-Cart-Token"] for call in add.calls}) == 1
     assert checkout.calls[0].request.url.params["location_id"] == "loc-doc-1"

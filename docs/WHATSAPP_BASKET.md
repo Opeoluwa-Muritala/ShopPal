@@ -5,6 +5,22 @@ shows its photo once, and adds quantity 1 to the temporary basket. Answer
 YES to browse again or NO to choose payment. Selecting the same product
 again increases its quantity, subject to available stock.
 
+Selection also creates a Bumpa guest cart and adds the item through the
+commerce API. Quantity edits set absolute quantities in that cart; removal
+deletes the item and cancellation clears the cart. Shipping and checkout use
+the same cart, so all items become part of one Bumpa order at payment intent.
+Cart API failures preserve the selection and report that sync is pending;
+checkout retries synchronization before creating the order. No cart mutation
+is automatically retried after an ambiguous timeout.
+
+Guest cart IDs and tokens are kept in bounded process memory for the active
+basket, at most 24 hours, and discarded at checkout creation, cancellation or
+confirmed payment. They are never saved in Neon, logged or sent to customers.
+A restart loses the guest token; the next attempt builds a new Bumpa cart
+from the remaining temporary selection. TODO(BUMPA_CART_DASHBOARD): verify
+whether commerce guest carts appear in the owner's dashboard. Cart creation
+alone does not promise an order entry or visibility in Bumpa's POS cart view.
+
 Send CART to view or edit items. Choose an item and enter its new quantity;
 0 removes it. Quantity edits do not resend the photo. Online shipping and
 checkout include every basket item in one Bumpa cart. Bank transfers retain
