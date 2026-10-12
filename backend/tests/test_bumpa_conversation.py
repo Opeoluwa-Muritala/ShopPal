@@ -2,12 +2,13 @@
 
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
 
 from app.services import bumpa_conversation
+from app.services.bumpa_assistant import ShoppingIntent
 from app.services.bumpa_checkout import CheckoutResult
 from app.services.bumpa_conversation import BumpaConversation
 
@@ -75,6 +76,28 @@ class ConversationHarness(BumpaConversation):
 
 def _message(body):
     return {"from": "2348012345678", "type": "text", "text": {"body": body}}
+
+
+@pytest.mark.anyio
+async def test_gemma_selection_runs_live_product_validation_before_payment_options():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    session = FakeSession()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [product]))
+    flow._sessions = lambda: session
+    flow._assistant = SimpleNamespace(
+        enabled=True, interpret=AsyncMock(return_value=ShoppingIntent(action="select", product_id="p1", quantity=2)),
+        phrase=AsyncMock(side_effect=lambda _key, body, _business: body), record=Mock(),
+    )
+    flow._product = AsyncMock(return_value=(product, False))
+    await flow(merchant, _message("I'll take two of that bag"))
+    flow._product.assert_awaited_once_with(merchant, "p1")
+    assert flow.state.step == "payment_method" and flow.state.payload["qty"] == 2
+    assert whatsapp.sent[-1][0] == "buttons"
+    assert "5,000.00" in whatsapp.sent[-1][2]
+    assert all("account" not in str(row).lower() for row in whatsapp.sent)
 
 
 @pytest.mark.anyio

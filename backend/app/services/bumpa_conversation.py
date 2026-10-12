@@ -22,6 +22,7 @@ from app.integrations.bumpa import mappers
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
+from app.services.bumpa_assistant import BumpaAssistant, ConversationalWhatsAppClient
 from app.services.bumpa_checkout import (
     CheckoutError,
     CustomerDetails,
@@ -71,6 +72,7 @@ class BumpaConversation:
         self._details: dict[tuple[UUID, str], tuple[datetime, dict[str, str]]] = {}
         self._transfers = TransferService(session_factory, http_client, settings)
         self._payments = payment_tracker or PaymentTracker(session_factory, http_client, settings)
+        self._assistant = BumpaAssistant(settings, http_client)
 
     def _details_for(self, merchant_id: UUID, wa_id: str) -> dict[str, str]:
         key = merchant_id, wa_id
@@ -134,7 +136,7 @@ class BumpaConversation:
             http_client=self._http, settings=self._settings,
         )
 
-    async def _selected(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState, product_id: str) -> None:
+    async def _selected(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState, product_id: str, qty: int | None = None) -> None:
         product, cached_only = await self._product(merchant, product_id)
         if product is None or not product.is_published:
             await client.send_text(wa_id, "That product is no longer available. Choose another from the menu.")
@@ -159,6 +161,15 @@ class BumpaConversation:
                 await client.send_list(wa_id, f"{description} Choose a variation.", rows)
                 return
             await client.send_text(wa_id, "Variations are unavailable for this product right now.")
+            return
+        if qty is not None:
+            if product.stock_qty is not None and qty > product.stock_qty:
+                await client.send_text(wa_id, "That quantity is unavailable. How many would you like instead?")
+                await self._set_state(state, "quantity", payload)
+                return
+            await self._set_state(state, "payment_method", {**payload, "qty": qty})
+            await client.send_buttons(wa_id, f"{description} Quantity: {qty}. Would you prefer online payment or a bank transfer?",
+                                      [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
             return
         await self._set_state(state, "quantity", payload)
         await client.send_text(wa_id, f"{description} How many would you like? Reply with a number (default 1).")
@@ -263,6 +274,36 @@ class BumpaConversation:
                     await client.send_text(wa_id, "This payment link is no longer active. Reply RESEND for a fresh link.")
                     return
         state = await self._state(merchant.id, wa_id)
+        assistant = getattr(self, "_assistant", None)
+        if assistant is not None and assistant.enabled:
+            key = merchant.id, wa_id
+            business = merchant.business_name or merchant.name
+            client = ConversationalWhatsAppClient(client, assistant, key, business, [
+                getattr(merchant, "payout_bank_name", None) or "", getattr(merchant, "payout_account_name", None) or "",
+                getattr(merchant, "payout_account_number", None) or "",
+            ])
+            canonical = lower in {"cancel", "start over", "menu", "hi", "hello", "start", "pay_online", "pay_transfer"} or ":" in lower or lower.isdigit()
+            if message.get("type") == "text" and state.step in {"start", "quantity", "payment_method"} and not canonical:
+                async with self._sessions() as session:
+                    products = (await session.scalars(select(ProductCache).where(
+                        ProductCache.merchant_id == merchant.id, ProductCache.is_published.is_(True),
+                    ).order_by(ProductCache.name).limit(50))).all()
+                catalog = [{"id": p.bumpa_product_id, "name": p.name} for p in products]
+                intent = await assistant.interpret(key, text, state.step, business, catalog)
+                if intent is not None:
+                    if intent.action == "select" and intent.product_id:
+                        await self._selected(merchant, wa_id, client, state, intent.product_id, intent.quantity)
+                        return
+                    if intent.action == "help":
+                        reply = intent.reply or "What would you like to know about this shop?"
+                        await client.client.send_text(wa_id, reply)
+                        assistant.record(key, "assistant", reply)
+                        return
+                    text = {"browse": "menu", "quantity": str(intent.quantity or ""),
+                            "pay_online": "pay_online", "pay_transfer": "pay_transfer"}.get(intent.action, text)
+                    lower = text.casefold()
+            elif state.step in {"start", "quantity", "payment_method", "variation"}:
+                assistant.record(key, "user", text)
         if lower in {"cancel", "start over", "menu"}:
             self._details.pop((merchant.id, wa_id), None)
             await self._set_state(state, "start", {})

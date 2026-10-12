@@ -98,6 +98,15 @@ messages, and durable tool results for the active reply are supplied separately.
 allows follow-ups such as `that one`, a quantity-only answer, or a product name selected
 from the preceding image list without sending the whole conversation to the model.
 
+Bumpa conversations use Gemma to interpret natural product selections and payment
+choices and to phrase questions naturally. Both customer and assistant messages are
+held in a bounded 40-entry memory window with a one-hour idle expiry; collected
+personal details, bank instructions and payment links are excluded from that context.
+No Bumpa conversation history is added to Neon. The backend validates every product
+selection and payment transition; Bumpa remains authoritative for prices and stock.
+If Gemma is unavailable, the guided checkout still works. Read receipts and typing
+indicators are sent before preparing replies; their failure does not suppress replies.
+
 ### WhatsApp bank-transfer checkout
 
 New orders use Flutterwave dynamic virtual accounts and stay entirely in WhatsApp:
