@@ -229,3 +229,98 @@ async def test_postcode_is_asked_only_after_bumpa_requires_it(monkeypatch):
     await flow(merchant, _message("240241"))
     assert flow.state.step == "shipping"
     assert shipping.await_args.args[5].zip == "240241"
+
+
+@pytest.mark.anyio
+async def test_menu_shows_full_names_and_maps_numbers_without_mutating_inventory():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Old demo")
+    name = "Droid Demo Perfumes Long Distinct Product Name"
+    product = SimpleNamespace(bumpa_product_id="p1", name=name, price=Decimal("5000"),
+                              currency="NGN", stock_qty=4, is_published=True, variations=[],
+                              image_urls=["https://images.example/perfume.jpg"])
+    duplicate = SimpleNamespace(**{**vars(product), "bumpa_product_id": "p2"})
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    session = FakeSession()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [product, duplicate]))
+    flow._sessions = lambda: session
+    await BumpaConversation._menu(flow, merchant, flow.state.customer_wa_id, whatsapp)
+    assert name in whatsapp.sent[0][2] and "Droid" in whatsapp.sent[0][2]
+    assert "https://images.example/perfume.jpg" in whatsapp.sent[0][2]
+    assert flow.state.payload["menu_ids"] == ["p1"]
+    assert len(whatsapp.sent[-1][3]) == 1
+    assert "name" not in flow.state.payload
+    flow._product = AsyncMock(return_value=(product, False))
+    await flow(merchant, _message("1"))
+    flow._product.assert_awaited_once_with(merchant, "p1")
+    assert flow.state.step == "quantity"
+    assert duplicate.bumpa_product_id == "p2"
+
+
+@pytest.mark.anyio
+async def test_natural_checkout_continues_from_number_selection_to_payment_link(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
+    product = SimpleNamespace(name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    flow.state.payload = {"menu_ids": ["p1"]}
+    checkout = AsyncMock(return_value=CheckoutResult("internal-id", "order-1", "https://pay.example/only", "PAYREF", Decimal("5000"), "NGN", uuid4()))
+    monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
+    monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
+    for body, expected in [("1", "quantity"), ("checkout", "payment_method"),
+                           ("pay online", "full_name"), ("Ada", "full_name"),
+                           ("Ada Nwosu", "email"), ("ada@example.com", "confirm"), ("confirm", "start")]:
+        await flow(merchant, _message(body))
+        assert flow.state.step == expected
+    assert checkout.await_args.args[3] == 1
+    assert "https://pay.example/only" in whatsapp.sent[-1][2]
+    assert not flow._details
+
+
+@pytest.mark.anyio
+async def test_checkout_recovers_after_process_loses_personal_details():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, None, whatsapp)
+    flow.state.step = "confirm"
+    flow.state.payload = {"product_id": "p1", "qty": 2, "fulfilment": "delivery", "shipping_id": "old"}
+    await flow(merchant, _message("confirm"))
+    assert flow.state.step == "full_name"
+    assert flow.state.payload == {"product_id": "p1", "qty": 2}
+    assert "expired" in whatsapp.sent[-1][2]
+
+
+@pytest.mark.anyio
+async def test_number_outside_current_menu_does_not_select_a_product():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    flow = ConversationHarness(merchant, None, FakeWhatsApp())
+    flow.state.payload = {"menu_ids": ["p1"]}
+    flow._product = AsyncMock()
+    await flow(merchant, _message("2"))
+    flow._product.assert_not_awaited()
+    assert flow.state.step == "start"
+
+
+@pytest.mark.anyio
+async def test_exact_product_name_selects_one_without_gemma():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    product = SimpleNamespace(bumpa_product_id="p1", name="Rose Perfume", price=Decimal("5000"),
+                              currency="NGN", stock_qty=4, is_published=True, variations=[], image_urls=[])
+    flow = ConversationHarness(merchant, product, FakeWhatsApp())
+    session = FakeSession()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [product]))
+    flow._sessions = lambda: session
+    flow._product = AsyncMock(return_value=(product, False))
+    await flow(merchant, _message("rose perfume"))
+    flow._product.assert_awaited_once_with(merchant, "p1")
+    assert flow.state.step == "payment_method"
+    assert flow.state.payload == {"product_id": "p1", "qty": 1}
+
+
+@pytest.mark.anyio
+async def test_greeting_uses_shop_name_without_forcing_a_menu():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Old demo")
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, None, whatsapp)
+    await flow(merchant, _message("hi"))
+    assert whatsapp.sent == [("text", flow.state.customer_wa_id, "Hi! Welcome to Droid. What are you looking for today?")]

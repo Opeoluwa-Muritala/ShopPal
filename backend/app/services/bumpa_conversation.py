@@ -6,14 +6,16 @@ TODO(BUMPA_MULTI_WORKER_DETAILS): use an encrypted, expiring shared store if
 the application is deployed with multiple workers.
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -42,7 +44,22 @@ from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.delivery_postcodes import registered_postcode, supplied_postcode
 
 DETAILS_TTL = timedelta(hours=1)
-PAGE_SIZE = 9
+PAGE_SIZE = 10
+
+
+def _unique_offers(rows: list[ProductCache]) -> list[ProductCache]:
+    """Hide identical imported copies in chat without changing Bumpa inventory."""
+    seen: set[str] = set()
+    products = []
+    for item in rows:
+        identity = json.dumps([
+            item.name, str(item.price), item.currency, item.stock_qty,
+            getattr(item, "image_urls", []), item.variations,
+        ], sort_keys=True, default=str)
+        if identity not in seen:
+            seen.add(identity)
+            products.append(item)
+    return products
 
 
 def _incoming(message: dict[str, Any]) -> str:
@@ -126,15 +143,41 @@ class BumpaConversation:
             query = select(ProductCache).where(ProductCache.merchant_id == merchant.id, ProductCache.is_published.is_(True))
             if search:
                 query = query.where(ProductCache.name.ilike(f"%{search[:80]}%"))
-            rows = (await session.scalars(query.order_by(ProductCache.name).offset(page * PAGE_SIZE).limit(PAGE_SIZE + 1))).all()
+            rows = _unique_offers(list((await session.scalars(query.order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()))
+        rows = rows[page * PAGE_SIZE: (page + 1) * PAGE_SIZE + 1]
         products = rows[:PAGE_SIZE]
         if not products:
             await client.send_text(wa_id, "No matching products right now. Send a product name to search, or MENU to browse.")
             return
-        menu_rows = [(f"product:{item.bumpa_product_id}", f"{item.name or 'Product'} — {_money(item.price, item.currency)}") for item in products]
+        state = await self._state(merchant.id, wa_id)
+        await self._set_state(state, "start", {
+            "menu_ids": [item.bumpa_product_id for item in products],
+            "menu_page": page, "menu_search": search, "menu_more": len(rows) > PAGE_SIZE,
+        })
+        business = merchant.business_name or merchant.name
+        body = f"{business}\nHere's what's available:\n"
+        for number, item in enumerate(products, 1):
+            entry = f"\n{number}. {item.name or 'Product'} — {_money(item.price, item.currency)}\n"
+            if item.image_urls:
+                image = str(item.image_urls[0])
+                try:
+                    url = urlsplit(image)
+                    if url.scheme == "https" and url.hostname and not url.username and not url.password and len(image) < 500:
+                        entry += image + "\n"
+                except ValueError:
+                    pass
+            if body and len(body) + len(entry) > 3500:
+                await client.send_text(wa_id, body)
+                body = ""
+            body += entry
+        body += "\nReply with a number or product name."
         if len(rows) > PAGE_SIZE:
-            menu_rows.append((f"page:{page + 1}", "More products"))
-        await client.send_list(wa_id, f"{merchant.business_name or merchant.name}: choose a product, or send a name to search.", menu_rows)
+            body += " Send NEXT for more."
+        await client.send_text(wa_id, body)
+        # Full names above remain readable even though Meta crops row titles.
+        menu_rows = [(f"product:{item.bumpa_product_id}", f"{number}. {item.name or 'Product'}")
+                     for number, item in enumerate(products, 1)]
+        await client.send_list(wa_id, f"Choose an item from {business}.", menu_rows)
 
     async def _product(self, merchant: Vendor, product_id: str) -> tuple[ProductCache | None, bool]:
         return await refresh_product_live(
@@ -310,6 +353,66 @@ class BumpaConversation:
                     await client.send_text(wa_id, "This payment link is no longer active. Reply RESEND for a fresh link.")
                     return
         state = await self._state(merchant.id, wa_id)
+        # Resolve deterministic choices before invoking the language model.
+        if state.step == "start" and lower.isdigit():
+            ids = (state.payload or {}).get("menu_ids", [])
+            number = int(lower)
+            if 1 <= number <= len(ids):
+                await self._selected(merchant, wa_id, client, state, ids[number - 1])
+            else:
+                await client.send_text(wa_id, "Choose one of the numbers shown, or send MENU for the products.")
+            return
+        if state.step == "start" and lower in {"next", "more", "more products"}:
+            payload = state.payload or {}
+            if payload.get("menu_more"):
+                await self._menu(merchant, wa_id, client, page=int(payload.get("menu_page", 0)) + 1,
+                                 search=payload.get("menu_search"))
+            else:
+                await client.send_text(wa_id, "That's the last page. Send MENU to browse again or a name to search.")
+            return
+        if state.step in {"start", "quantity", "payment_method"} and lower not in {
+            "hi", "hello", "start", "", "cancel", "start over", "menu", "checkout", "check out",
+            "buy", "buy now", "proceed", "continue", "online", "pay online", "card", "pay by card",
+            "payment link", "pay_online", "transfer", "bank transfer", "pay by transfer", "pay_transfer",
+        } and ":" not in lower and not lower.isdigit():
+            async with self._sessions() as session:
+                matches = list((await session.scalars(select(ProductCache).where(
+                    ProductCache.merchant_id == merchant.id, ProductCache.is_published.is_(True),
+                    func.lower(ProductCache.name) == lower,
+                ).order_by(ProductCache.bumpa_product_id))).all())
+            matches = _unique_offers([item for item in matches if (item.name or "").casefold() == lower])
+            if len(matches) == 1:
+                await self._selected(merchant, wa_id, client, state, matches[0].bumpa_product_id, 1)
+                return
+            if len(matches) > 1:
+                await client.send_text(wa_id, "There are different offers with that name. Which one would you like?")
+                await self._menu(merchant, wa_id, client, search=text)
+                return
+        online = lower in {"online", "pay online", "card", "pay by card", "payment link", "pay_online"}
+        transfer = lower in {"transfer", "bank transfer", "pay by transfer", "pay_transfer"}
+        checkout = lower in {"checkout", "check out", "buy", "buy now", "proceed", "continue"}
+        if state.step == "quantity" and (online or transfer or checkout):
+            await self._set_state(state, "payment_method", {**state.payload, "qty": 1})
+            if checkout:
+                await client.send_buttons(wa_id, "Would you like a payment link or a bank transfer?",
+                                          [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
+                return
+        if state.step == "payment_method":
+            if online or transfer:
+                text = "pay_online" if online else "pay_transfer"
+                lower = text
+            elif checkout:
+                await client.send_buttons(wa_id, "Would you like a payment link or a bank transfer?",
+                                          [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
+                return
+        if state.step in {"email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"} and lower not in {"cancel", "start over", "menu"}:
+            details = self._details_for(merchant.id, wa_id)
+            needed = ("first_name", "last_name") if state.step == "email" else ("first_name", "last_name", "email")
+            if not all(details.get(field) for field in needed):
+                payload = {key: value for key, value in state.payload.items() if key in {"product_id", "variation_id", "qty"}}
+                await self._set_state(state, "full_name", payload)
+                await client.send_text(wa_id, "Your checkout details have expired. I still have your selection—what's your full name?")
+                return
         assistant = getattr(self, "_assistant", None)
         if assistant is not None and assistant.enabled:
             key = merchant.id, wa_id
@@ -324,7 +427,10 @@ class BumpaConversation:
                 async with self._sessions() as session:
                     products = (await session.scalars(select(ProductCache).where(
                         ProductCache.merchant_id == merchant.id, ProductCache.is_published.is_(True),
-                    ).order_by(ProductCache.name).limit(50))).all()
+                    ).order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()
+                products = _unique_offers(list(products))
+                shown = (state.payload or {}).get("menu_ids", [])
+                products.sort(key=lambda p: shown.index(p.bumpa_product_id) if p.bumpa_product_id in shown else len(shown))
                 catalog = [{"id": p.bumpa_product_id, "name": p.name} for p in products]
                 intent = await assistant.interpret(key, text, state.step, business, catalog)
                 if intent is not None:
@@ -357,6 +463,9 @@ class BumpaConversation:
             await self._selected(merchant, wa_id, client, state, text.split(":", 1)[1])
             return
         if state.step == "start":
+            if lower in {"hi", "hello", "start", ""}:
+                await client.send_text(wa_id, f"Hi! Welcome to {merchant.business_name or merchant.name}. What are you looking for today?")
+                return
             await self._menu(merchant, wa_id, client, search=None if lower in {"hi", "hello", "start", ""} else text)
             return
         payload = dict(state.payload or {})
@@ -387,8 +496,12 @@ class BumpaConversation:
             if row is not None:
                 await self._set_state(state, "start", {})
             return
-        elif state.step == "full_name" and 2 <= len(text) <= 240 and " " in text:
-            first, last = text.split(" ", 1)
+        elif state.step == "full_name":
+            names = text.split(maxsplit=1)
+            if not 2 <= len(text) <= 240 or len(names) != 2:
+                await client.send_text(wa_id, "Please send your first and last name so Bumpa can attach them to your order.")
+                return
+            first, last = names
             self._put_detail(merchant.id, wa_id, "first_name", first)
             self._put_detail(merchant.id, wa_id, "last_name", last)
             await self._set_state(state, "email", payload)
