@@ -45,6 +45,11 @@ class ConversationHarness(BumpaConversation):
         self._http = None
         self._settings = None
         self._details = {}
+        self._transfers = SimpleNamespace(
+            owner_action=AsyncMock(return_value=False),
+            customer_proof=AsyncMock(return_value=False),
+            create=AsyncMock(return_value=None),
+        )
         self.state = SimpleNamespace(merchant_id=merchant.id, customer_wa_id="2348012345678", step="start", payload={})
         self.product = product
         self.client = client

@@ -29,6 +29,7 @@ from app.services.bumpa_checkout import (
     start_checkout,
 )
 from app.services.bumpa_sync import refresh_product_live
+from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
 
 DETAILS_TTL = timedelta(hours=1)
@@ -65,6 +66,7 @@ class BumpaConversation:
         self._http = http_client
         self._settings = settings
         self._details: dict[tuple[UUID, str], tuple[datetime, dict[str, str]]] = {}
+        self._transfers = TransferService(session_factory, http_client, settings)
 
     def _details_for(self, merchant_id: UUID, wa_id: str) -> dict[str, str]:
         key = merchant_id, wa_id
@@ -222,6 +224,10 @@ class BumpaConversation:
         client = await self._client(merchant)
         if client is None:
             return
+        if await self._transfers.owner_action(merchant, message, client):
+            return
+        if await self._transfers.customer_proof(merchant, message, client):
+            return
         text = _incoming(message)
         lower = text.casefold()
         state = await self._state(merchant.id, wa_id)
@@ -265,6 +271,11 @@ class BumpaConversation:
         elif state.step == "payment_method" and lower == "pay_online":
             await self._set_state(state, "full_name", payload)
             await client.send_text(wa_id, "What is your full name?")
+            return
+        elif state.step == "payment_method" and lower == "pay_transfer":
+            row = await self._transfers.create(merchant, wa_id, payload["product_id"], int(payload["qty"]), client)
+            if row is not None:
+                await self._set_state(state, "start", {})
             return
         elif state.step == "full_name" and 2 <= len(text) <= 240 and " " in text:
             first, last = text.split(" ", 1)

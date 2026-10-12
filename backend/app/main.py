@@ -31,6 +31,7 @@ from app.routers import (
 )
 from app.services.bumpa_conversation import BumpaConversation
 from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
+from app.services.bumpa_transfers import TransferService
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
 
@@ -49,6 +50,8 @@ async def lifespan(application):
         application.state.bumpa_conversation_handler = BumpaConversation(
             factory, application.state.bumpa_http_client, settings
         )
+        transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
+        scheduler.add_job(transfer_service.expire, "interval", minutes=1, max_instances=1, coalesce=True)
         scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
         scheduler.start()
     stop = asyncio.Event()

@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     whatsapp_reengagement_template_language: str = "en_US"
     whatsapp_template_payment_instructions: str = ""
     whatsapp_template_payment_received: str = ""
+    whatsapp_template_owner_transfer_alert: str = ""
+    whatsapp_template_transfer_expiry: str = ""
+    whatsapp_template_owner_transfer_expiry: str = ""
     meta_reply_worker_enabled: bool = False
     meta_reply_worker_concurrency: int = Field(default=4, ge=1, le=16)
     meta_reply_worker_poll_seconds: float = Field(default=1.0, ge=0.5, le=30.0)
