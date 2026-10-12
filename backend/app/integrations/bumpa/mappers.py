@@ -158,6 +158,14 @@ def extract_invoice_url(raw: Any) -> str | None:
     return value
 
 
+def extract_customer_first_name(raw: Any) -> str | None:
+    return _string(
+        raw, "customer_first_name", "customer.first_name", "customer_context.first_name",
+        "data.customer.first_name", "data.customer_context.first_name",
+        "first_name", "data.first_name",
+    )
+
+
 def extract_authorization_url(raw: Any) -> str | None:
     value = _string(raw, "authorization_url", "authorization_url", "data.authorization_url")
     if value is None:

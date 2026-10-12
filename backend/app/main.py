@@ -30,6 +30,7 @@ from app.routers import (
     whatsapp_webhook,
 )
 from app.services.bumpa_conversation import BumpaConversation
+from app.services.bumpa_invoice import InvoiceNotifier
 from app.services.bumpa_payments import PaymentTracker, retention_job
 from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
 from app.services.bumpa_transfers import TransferService
@@ -48,7 +49,10 @@ async def lifespan(application):
         job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
         application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
         application.state.bumpa_webhook_enabled = True
-        payment_tracker = PaymentTracker(factory, application.state.bumpa_http_client, settings)
+        payment_tracker = PaymentTracker(
+            factory, application.state.bumpa_http_client, settings,
+            notify_paid=InvoiceNotifier(factory, application.state.bumpa_http_client, settings),
+        )
         application.state.bumpa_conversation_handler = BumpaConversation(
             factory, application.state.bumpa_http_client, settings, payment_tracker
         )
