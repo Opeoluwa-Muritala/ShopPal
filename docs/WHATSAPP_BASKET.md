@@ -17,6 +17,13 @@ payment or an owner's verified transfer confirmation clears the matching
 basket. An older payment cannot clear a newer basket. CANCEL or START OVER
 explicitly discards a basket. Unpaid temporary baskets expire after 24 hours.
 
+During an unfinished checkout, MENU and adding items preserve the customer's
+name and email in the existing one-hour memory window. Online checkout asks
+only for missing details; retries reuse the supplied email. CANCEL, START
+OVER, successful checkout creation and expiry remove these details. Bumpa
+requires a real email for payment intent; Shoppal does not invent one or
+store it in a customer profile.
+
 Send MY ORDERS for live status of up to five recent Bumpa checkouts tied to
 the same merchant and WhatsApp number. These are thin checkout references,
 not a local order-management ledger. Transfer sales are recorded by the

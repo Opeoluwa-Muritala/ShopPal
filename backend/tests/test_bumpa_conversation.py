@@ -140,6 +140,44 @@ async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypat
 
 
 @pytest.mark.anyio
+async def test_browsing_and_checkout_retry_reuse_email_without_persisting_it(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
+    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    checkout = AsyncMock(side_effect=[bumpa_conversation.CheckoutError("Temporary failure"),
+        CheckoutResult("checkout-1", "order-1", "https://pay.example/only", "PAYREF", Decimal("10000"), "NGN", uuid4())])
+    monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
+    monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
+    for body in ["product:p1", "no", "pay_online", "Ada Nwosu", "ada@example.com", "menu", "product:p1", "no", "pay_online"]:
+        await flow(merchant, _message(body))
+    assert flow.state.step == "confirm"
+    await flow(merchant, _message("confirm"))
+    assert flow.state.step == "confirm"
+    await flow(merchant, _message("confirm"))
+    assert flow.state.step == "awaiting_payment"
+    assert checkout.await_count == 2
+    assert all(call.args[4].email == "ada@example.com" for call in checkout.await_args_list)
+    assert sum("What email" in row[2] for row in whatsapp.sent) == 1
+    assert sum("What is your full name" in row[2] for row in whatsapp.sent) == 1
+    assert all("ada@example.com" not in str(payload) for payload in flow.saved_payloads)
+    assert not flow._details
+
+
+@pytest.mark.anyio
+async def test_existing_email_is_reused_after_missing_name_is_collected():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
+    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    flow._put_detail(merchant.id, flow.state.customer_wa_id, "email", "ada@example.com")
+    for body in ["product:p1", "no", "pay_online", "Ada Nwosu"]:
+        await flow(merchant, _message(body))
+    assert flow.state.step == "confirm"
+    assert not any("What email" in row[2] for row in whatsapp.sent)
+
+
+@pytest.mark.anyio
 async def test_out_of_stock_and_cancel_clear_selection():
     merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
     product = SimpleNamespace(name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=0, is_published=True, variations=[])

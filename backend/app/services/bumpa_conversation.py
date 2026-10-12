@@ -361,6 +361,20 @@ class BumpaConversation:
             await self._set_state(state, "fulfilment", state.payload)
             await client.send_buttons(wa_id, "Would you like pickup or delivery?", choices)
 
+    async def _checkout_details(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
+        """Ask only for details missing from this short-lived checkout session."""
+        details = self._details_for(merchant.id, wa_id)
+        if not all(details.get(field) for field in ("first_name", "last_name")):
+            await self._set_state(state, "full_name", state.payload)
+            await client.send_text(wa_id, "What is your full name?")
+        elif not details.get("email"):
+            await self._set_state(state, "email", state.payload)
+            await client.send_text(wa_id, "What email should Bumpa attach to your order?")
+        else:
+            if not details.get("phone"):
+                self._put_detail(merchant.id, wa_id, "phone", "+" + wa_id.lstrip("+"))
+            await self._fulfilment_choice(merchant, wa_id, client, state)
+
     async def _begin_delivery(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         self._put_detail(merchant.id, wa_id, "country", "Nigeria")
         await self._set_state(state, "address", {**state.payload, "fulfilment": "delivery"})
@@ -627,8 +641,8 @@ class BumpaConversation:
             elif state.step in {"start", "quantity", "payment_method", "variation"}:
                 assistant.record(key, "user", text)
         if lower in {"cancel", "start over", "menu"}:
-            self._details.pop((merchant.id, wa_id), None)
             if lower != "menu":
+                self._details.pop((merchant.id, wa_id), None)
                 self._basket_for(merchant.id, wa_id)
                 self._baskets.pop((merchant.id, wa_id), None)
             await self._set_state(state, "start", {})
@@ -671,8 +685,7 @@ class BumpaConversation:
             await client.send_text(wa_id, "Reply with a quantity from 1 to 100.")
             return
         elif state.step == "payment_method" and lower == "pay_online":
-            await self._set_state(state, "full_name", payload)
-            await client.send_text(wa_id, "What is your full name?")
+            await self._checkout_details(merchant, wa_id, client, state)
             return
         elif state.step == "payment_method" and lower == "pay_transfer":
             if len(self._basket_for(merchant.id, wa_id)) > 1:
@@ -690,8 +703,7 @@ class BumpaConversation:
             first, last = names
             self._put_detail(merchant.id, wa_id, "first_name", first)
             self._put_detail(merchant.id, wa_id, "last_name", last)
-            await self._set_state(state, "email", payload)
-            await client.send_text(wa_id, "What email should Bumpa attach to your order?")
+            await self._checkout_details(merchant, wa_id, client, state)
             return
         elif state.step == "email":
             try:
