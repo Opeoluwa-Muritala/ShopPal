@@ -40,14 +40,23 @@ class MetaWhatsAppClient:
 
     async def mark_read_and_typing(self, message_id: str) -> None:
         """Acknowledge a real inbound message while preparing its reply."""
-        response = await self._http.post(
-            f"{self._base}/{self._phone_id}/messages",
-            headers={"Authorization": f"Bearer {self._token}"},
-            json={"messaging_product": "whatsapp", "status": "read", "message_id": message_id,
-                  "typing_indicator": {"type": "text"}},
-            timeout=10,
-        )
-        response.raise_for_status()
+        payload = {"messaging_product": "whatsapp", "status": "read", "message_id": message_id}
+        try:
+            response = await self._http.post(
+                f"{self._base}/{self._phone_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json={**payload, "typing_indicator": {"type": "text"}},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            # Preserve the established read receipt even if typing is rejected.
+            response = await self._http.post(
+                f"{self._base}/{self._phone_id}/messages",
+                headers={"Authorization": f"Bearer {self._token}"},
+                json=payload, timeout=10,
+            )
+            response.raise_for_status()
 
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> None:
         if not 1 <= len(buttons) <= 3:
