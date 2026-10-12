@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Account, Product, WhatsAppMedia
 from app.db.session import get_db
 from app.services.auth import get_current_account
+from app.services.catalog_provider import provider_for, require_legacy_catalog_write
 from app.services.product_images import (
     MAX_PRODUCT_IMAGE_UPLOAD_BYTES,
     ProductImageError,
@@ -60,24 +61,11 @@ def list_vendor_products(
             "products": [],
         }
 
-    stmt = select(Product).where(Product.vendor_id == effective_vendor_id)
-    products = session.scalars(stmt).all()
+    products = provider_for(session, effective_vendor_id).list_products()
     return {
         "vendor_id": str(effective_vendor_id),
         "count": len(products),
-        "products": [
-            {
-                "id": str(p.id),
-                "name": p.name,
-                "price": str(p.price),
-                "stock": p.stock,
-                "image_url": p.image_url,
-                "has_uploaded_image": p.image_media_id is not None,
-                "description": p.description,
-                "status": p.status,
-            }
-            for p in products
-        ],
+        "products": products,
     }
 
 
@@ -102,6 +90,8 @@ def create_product(
             "stock": body.stock,
             "status": "active",
         }
+
+    require_legacy_catalog_write(session, effective_vendor_id)
 
     product = Product(
         vendor_id=effective_vendor_id,
@@ -137,6 +127,7 @@ async def create_product_with_image(
     """Create a vendor-scoped product with a validated, compressed database image."""
     if session is None:
         raise HTTPException(status_code=503, detail="Product storage unavailable")
+    require_legacy_catalog_write(session, current_account.vendor_id)
     if not name.strip():
         raise HTTPException(status_code=422, detail="Product name is required")
     extension = Path(image.filename or "").suffix.casefold()
@@ -217,6 +208,7 @@ async def upload_catalog_csv(
             "products_created": len(cleaned_rows),
             "status": "success",
         }
+    require_legacy_catalog_write(session, effective_vendor_id)
 
     created_count = 0
     for row in cleaned_rows:
@@ -260,6 +252,7 @@ def get_product_image(
     """Return a product image only to its authenticated vendor."""
     if session is None:
         raise HTTPException(status_code=404, detail="Product image not found")
+    require_legacy_catalog_write(session, current_account.vendor_id)
     row = session.execute(
         select(WhatsAppMedia.content, WhatsAppMedia.mime_type)
         .join(Product, Product.image_media_id == WhatsAppMedia.id)
