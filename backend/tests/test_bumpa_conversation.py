@@ -151,3 +151,19 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
     assert checkout.await_args.args[5].street == "12 Main Street"
     assert not flow._details
     assert all("12 Main Street" not in str(payload) for payload in flow.saved_payloads)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("step", ["variation", "quantity", "payment_method", "full_name", "email", "phone", "fulfilment", "street", "city", "state", "country", "zip", "shipping", "confirm"])
+async def test_cancel_works_at_every_checkout_step(step):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, None, whatsapp)
+    flow.state.step = step
+    flow.state.payload = {"product_id": "p1", "qty": 1}
+    flow._put_detail(merchant.id, "2348012345678", "email", "ada@example.com")
+    await flow(merchant, _message("cancel"))
+    assert flow.state.step == "start"
+    assert flow.state.payload == {}
+    assert not flow._details
+    assert whatsapp.sent[-1][0] == "list"
