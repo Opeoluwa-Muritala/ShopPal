@@ -47,6 +47,7 @@ def test_thinking_policy_reaches_google_request_and_preserves_override(configure
     with patch("app.services.llm.httpx.post", return_value=response) as post:
         service.next_action(message, [], [])
     assert post.call_args.kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == expected
+    assert post.call_args.kwargs["json"]["generationConfig"]["maxOutputTokens"] == (2048 if expected == "HIGH" else 256)
 
 
 def test_thinking_policy_ignores_environment_override(monkeypatch):

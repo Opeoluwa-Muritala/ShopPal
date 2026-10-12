@@ -34,6 +34,11 @@ class BenchmarkService(LLMService):
     finish_reason: str | None = None
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # Compare thinking levels with identical ceilings. The application's
+        # minimal path still uses its smaller default allowance.
+        payload = {**payload, "generationConfig": {
+            **payload.get("generationConfig", {}), "maxOutputTokens": 2048,
+        }}
         raw = super()._post(payload)
         candidates = raw.get("candidates") or [{}]
         self.finish_reason = candidates[0].get("finishReason")
@@ -55,7 +60,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, choices=range(1, 6), default=2)
     args = parser.parse_args()
-    logging.disable(logging.CRITICAL)
     # Equal timeout for both levels; never change the application's timeout.
     settings = Settings().model_copy(update={"gemma_timeout_seconds": 60})
     if not settings.gemma_api_key.get_secret_value():
@@ -103,4 +107,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    logging.disable(logging.CRITICAL)
     main()

@@ -192,18 +192,18 @@ class LLMService:
         if not self.api_key:
             raise GemmaError("Customer assistant is unavailable")
         try:
-            payload = {**payload, "generationConfig": {
-                "maxOutputTokens": 256,
-                "temperature": 0.2,
-                **payload.get("generationConfig", {}),
-            }}
+            generation_config = dict(payload.get("generationConfig", {}))
+            output_budget = 256
             if self.thinking_level:
-                selected = payload["generationConfig"].get("thinkingConfig", {}).get("thinkingLevel")
+                selected = generation_config.get("thinkingConfig", {}).get("thinkingLevel")
                 level = selected or ("high" if self.thinking_level == "auto" else self.thinking_level)
-                payload = {**payload, "generationConfig": {
-                    **payload.get("generationConfig", {}),
-                    "thinkingConfig": {"thinkingLevel": level.upper()},
-                }}
+                # Thinking consumes the same output budget. Reserve enough
+                # for a complete action instead of truncating its JSON.
+                output_budget = 2048 if level.upper() == "HIGH" else 256
+                generation_config["thinkingConfig"] = {"thinkingLevel": level.upper()}
+            generation_config.setdefault("maxOutputTokens", output_budget)
+            generation_config.setdefault("temperature", 0.2)
+            payload = {**payload, "generationConfig": generation_config}
             started = time.monotonic()
             response = httpx.post(
                 self.url, headers={"x-goog-api-key": self.api_key}, json=payload,

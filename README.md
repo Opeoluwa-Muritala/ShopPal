@@ -209,6 +209,9 @@ run `..\.venv\Scripts\python.exe scripts\benchmark_gemma_thinking.py --repeats 2
 from `backend`. This opt-in command calls Google using `GEMMA_API_KEY`; it never
 calls Bumpa or WhatsApp. Results report latency and expected action matches,
 which are limited checks rather than a general model accuracy score.
+Both benchmark levels have the same 2,048-token ceiling and 60-second timeout.
+In the application, `minimal` keeps a 256-token allowance while `high` has
+2,048 tokens for reasoning and the final response. Customer replies stay short.
 
 - API documentation: `https://shoppal.onrender.com/docs`
 - Privacy policy: `https://shoppal.onrender.com/privacy`

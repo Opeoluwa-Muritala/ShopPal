@@ -1,3 +1,6 @@
+from unittest.mock import Mock
+
+import httpx
 import pytest
 
 from app.config import Settings
@@ -49,3 +52,12 @@ def test_benchmark_stops_on_repeated_connection_failures(monkeypatch):
     with pytest.raises(SystemExit, match="Connection failed three times"):
         benchmark.main()
     assert len(calls) == 3
+
+
+@pytest.mark.parametrize("level", ["minimal", "high"])
+def test_benchmark_keeps_equal_token_budgets_for_both_levels(monkeypatch, level):
+    service = benchmark.BenchmarkService(Settings(_env_file=None, gemma_api_key="test"), thinking_level=level)
+    post = Mock(return_value=httpx.Response(200, json={"candidates": [{"finishReason": "STOP"}]}, request=httpx.Request("POST", service.url)))
+    monkeypatch.setattr("app.services.llm.httpx.post", post)
+    service._post({"contents": []})
+    assert post.call_args.kwargs["json"]["generationConfig"]["maxOutputTokens"] == 2048
