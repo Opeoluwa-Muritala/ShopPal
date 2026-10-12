@@ -57,6 +57,13 @@ def test_saved_template_is_used_for_greeting():
     assert quick_reply(session, SimpleNamespace(id=uuid4()), ["hello"]) == "Welcome to ShopPal!"
 
 
+def test_greeting_preserves_an_ongoing_conversation():
+    session = Mock()
+    history = [{"role": "assistant", "content": "How many bottles would you like?"}]
+    assert quick_reply(session, SimpleNamespace(id=uuid4()), ["hello"], history=history) is None
+    session.execute.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("message", "expected_quantity", "expected_name"),
     [

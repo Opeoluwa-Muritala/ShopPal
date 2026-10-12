@@ -53,6 +53,9 @@ def quick_reply(session, vendor, messages, customer_phone=None, history=None):
             return shopping_reply
     if not intents or any(intent is None for intent in intents):
         return None
+    if history and "catalog" not in intents:
+        # A greeting during an ongoing conversation needs its prior context.
+        return None
     templates = load_templates(session)
     if "catalog" not in intents:
         return templates["greeting"]

@@ -91,8 +91,9 @@ by sending `Hi` from the customer phone.
 
 Yes—the model receives context from the conversation, including both earlier customer
 messages and ShopPal's responses. The database retains the latest 40 conversation
-entries, while each model call receives the most recent three customer messages and
-three assistant responses in chronological order. The current message, queued customer
+entries, while each model call receives up to 20 customer messages and
+20 assistant responses in chronological order. Greetings during an ongoing conversation
+use the AI with this context rather than a fresh-conversation template. The current message, queued customer
 messages, and durable tool results for the active reply are supplied separately. This
 allows follow-ups such as `that one`, a quantity-only answer, or a product name selected
 from the preceding image list without sending the whole conversation to the model.

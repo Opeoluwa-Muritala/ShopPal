@@ -42,8 +42,8 @@ QUICK_ACTIONS = {
 }
 
 
-def recent_conversation_context(history: list[dict], per_role: int = 3) -> list[dict]:
-    """Keep the latest three customer and assistant messages in chronological order."""
+def recent_conversation_context(history: list[dict], per_role: int = 20) -> list[dict]:
+    """Keep up to 40 saved conversation entries in chronological order."""
     if per_role < 1:
         return []
     selected_indexes: set[int] = set()
