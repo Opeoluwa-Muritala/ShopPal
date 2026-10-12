@@ -22,6 +22,7 @@ from app.integrations.bumpa import mappers
 from app.integrations.bumpa.client import (
     BumpaAuthError,
     BumpaClient,
+    BumpaNotFound,
     BumpaRateLimited,
     BumpaUnavailable,
 )
@@ -148,6 +149,14 @@ async def refresh_product_live(
         client = _client(connection, http_client, settings)
     try:
         raw = await client.get_product(product_id, variations=True)
+    except BumpaNotFound:
+        async with session_factory() as session:
+            await session.execute(update(ProductCache).where(
+                ProductCache.merchant_id == merchant_id,
+                ProductCache.bumpa_product_id == product_id,
+            ).values(is_published=False))
+            await session.commit()
+            return await get_cached_product(session, merchant_id, product_id), False
     except (BumpaUnavailable, BumpaRateLimited):
         return cached, True
     except BumpaAuthError:

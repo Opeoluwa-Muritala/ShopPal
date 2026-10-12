@@ -128,3 +128,26 @@ def test_concurrent_claim_is_rejected_before_fetch(monkeypatch):
 
     assert asyncio.run(run()) == bumpa_sync.SyncResult("already_running")
     connection_lookup.assert_not_awaited()
+
+
+def test_live_product_404_hides_stale_cache_entry(monkeypatch):
+    settings, connection = _settings_and_connection()
+    merchant_id = uuid4()
+    cached = SimpleNamespace(is_published=False)
+    FakeSession.statements = []
+    monkeypatch.setattr(bumpa_sync, "get_connection", AsyncMock(return_value=connection))
+    monkeypatch.setattr(bumpa_sync, "get_cached_product", AsyncMock(return_value=cached))
+
+    async def run():
+        async with httpx.AsyncClient() as http:
+            return await bumpa_sync.refresh_product_live(
+                merchant_id, "removed-product", session_factory=FakeSession,
+                http_client=http, settings=settings,
+            )
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://api.bumpa.xyz/api/commerce/v1/products/removed-product").mock(return_value=httpx.Response(404))
+        product, cached_only = asyncio.run(run())
+    assert product is cached
+    assert cached_only is False
+    assert any("UPDATE products_cache" in statement for statement in FakeSession.statements)
