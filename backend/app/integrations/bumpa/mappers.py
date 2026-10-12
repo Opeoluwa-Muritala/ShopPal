@@ -185,6 +185,10 @@ def extract_shipping_options(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def extract_shipping_id(raw: Any) -> str | None:
+    return _string(raw, "shipping_id", "shipping_id", "shipping_method_id", "id")
+
+
 def extract_product_rows(raw: Any) -> list[dict[str, Any]] | None:
     value = raw if isinstance(raw, list) else _lookup(raw, "data.products", "products", "data", "items")
     if isinstance(value, list):

@@ -57,6 +57,10 @@ class BumpaClient:
         self._location_id = location_id
         self._http = http_client
 
+    @property
+    def has_secret_key(self) -> bool:
+        return bool(self._secret_key)
+
     async def _request(
         self,
         method: str,
