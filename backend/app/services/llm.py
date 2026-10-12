@@ -76,7 +76,8 @@ or raw tool JSON. Return only the customer reply inside <answer>...</answer>.
 
 
 class GemmaError(RuntimeError):
-    pass
+    status_code: int | None = None
+    provider: str | None = None
 
 
 _AI_COOLDOWN_UNTIL = 0.0
@@ -149,10 +150,29 @@ def start_ai_cooldown() -> None:
     _AI_COOLDOWN_UNTIL = time.monotonic() + AI_COOLDOWN_SECONDS
 
 
+def select_thinking_level(message: str, history: list, transcript: list) -> str:
+    """Use fast reasoning only for unambiguous, bounded shopping requests."""
+    text = " ".join(message.lower().strip().split()).rstrip("?!.")
+    if text in {"my cart", "show cart", "show my cart", "view cart", "checkout"}:
+        return "minimal"
+    if history or transcript:
+        return "high"
+    simple = {
+        "hi", "hello", "hey", "thanks", "thank you", "menu",
+        "show me products", "show me all products", "show me perfumes",
+        "show me what products are available", "what do you have",
+        "what is available", "what products are available", "browse products",
+        "abeg wetin dey available for perfume",
+    }
+    return "minimal" if text in simple else "high"
+
+
 class LLMService:
     SYSTEM_PROMPT = MASTER_PROMPT
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, thinking_level: str = "auto"):
+        if thinking_level not in {"auto", "minimal", "high"}:
+            raise ValueError("Gemma 4 thinking must be auto, minimal, or high")
         self.api_key = settings.gemma_api_key.get_secret_value()
         self.openrouter_api_key = settings.openrouter_api_key.get_secret_value()
         self.provider = "google" if self.api_key else "openrouter"
@@ -160,7 +180,7 @@ class LLMService:
             "openrouter" if self.provider == "google" and self.openrouter_api_key else None
         )
         self.timeout = settings.gemma_timeout_seconds
-        self.thinking_level = settings.gemma_thinking_level if settings.gemma_model.startswith("gemma-4-") else None
+        self.thinking_level = thinking_level if settings.gemma_model.startswith("gemma-4-") else None
         self.url = settings.gemma_api_url or (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{settings.gemma_model}:generateContent"
@@ -178,9 +198,11 @@ class LLMService:
                 **payload.get("generationConfig", {}),
             }}
             if self.thinking_level:
+                selected = payload["generationConfig"].get("thinkingConfig", {}).get("thinkingLevel")
+                level = selected or ("high" if self.thinking_level == "auto" else self.thinking_level)
                 payload = {**payload, "generationConfig": {
                     **payload.get("generationConfig", {}),
-                    "thinkingConfig": {"thinkingLevel": self.thinking_level.upper()},
+                    "thinkingConfig": {"thinkingLevel": level.upper()},
                 }}
             started = time.monotonic()
             response = httpx.post(
@@ -248,7 +270,12 @@ class LLMService:
             "transcript": transcript,
         })
         try:
-            parts = self._parts(self._post({"contents": [{"role": "user", "parts": [
+            generation_config = {}
+            if self.thinking_level == "auto":
+                generation_config = {"thinkingConfig": {
+                    "thinkingLevel": select_thinking_level(message, history, transcript).upper(),
+                }}
+            parts = self._parts(self._post({"generationConfig": generation_config, "contents": [{"role": "user", "parts": [
                 {"text": instruction}, {"text": "Conversation data:\n" + context}
             ]}]}))
         except GemmaError as exc:
@@ -405,7 +432,7 @@ class LLMService:
         dispatcher: ToolDispatcher,
         history: list[dict[str, str]] | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
-        contents = [
+        contents: list[dict[str, Any]] = [
             {
                 "role": "model" if item["role"] == "assistant" else "user",
                 "parts": [{"text": item["content"]}],
@@ -418,6 +445,9 @@ class LLMService:
             parts = self._parts(
                 self._post(
                     {
+                        "generationConfig": {"thinkingConfig": {
+                            "thinkingLevel": select_thinking_level(message, history or [], calls_made).upper(),
+                        }} if self.thinking_level == "auto" else {},
                         "systemInstruction": {"parts": [{"text": MASTER_PROMPT}]},
                         "contents": contents,
                         "tools": [{"functionDeclarations": TOOL_DECLARATIONS}],

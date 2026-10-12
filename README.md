@@ -195,6 +195,21 @@ commits the event and durable reply job. Apply migration `0004` and set
 Meta's Graph API. Failed work resumes from saved tool results and replies.
 See [reply recovery and rollout](docs/REPLY_RECOVERY.md) for operational details.
 
+Gemma selects thinking automatically in code. It selects `minimal` for
+simple greetings, catalog browsing, and bare cart requests, and `high` for
+ambiguous selections, unknown phrasing, and decisions involving prior context.
+Environment variables cannot override this policy. The benchmark explicitly
+selects fixed levels for comparison. Gemma 4 has no native `medium` level.
+Thinking selection never changes stock, price, payment,
+or tool authorization checks. The Bumpa conversation remains a separate state
+machine; this policy applies to the Gemma customer assistant.
+
+To compare response times with synthetic shopping context and no tool execution,
+run `..\.venv\Scripts\python.exe scripts\benchmark_gemma_thinking.py --repeats 2`
+from `backend`. This opt-in command calls Google using `GEMMA_API_KEY`; it never
+calls Bumpa or WhatsApp. Results report latency and expected action matches,
+which are limited checks rather than a general model accuracy score.
+
 - API documentation: `https://shoppal.onrender.com/docs`
 - Privacy policy: `https://shoppal.onrender.com/privacy`
 - Setup guide: [`docs/META_WHATSAPP_SETUP.md`](docs/META_WHATSAPP_SETUP.md)

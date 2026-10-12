@@ -4,7 +4,13 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.services.llm import MASTER_PROMPT, TOOL_DECLARATIONS, GemmaError, LLMService
+from app.services.llm import (
+    MASTER_PROMPT,
+    TOOL_DECLARATIONS,
+    GemmaError,
+    LLMService,
+    select_thinking_level,
+)
 from app.services.transcription import transcribe_audio
 
 
@@ -14,6 +20,43 @@ def _settings():
         gemma_api_key="gemma-test-key",
         groq_api_key="groq-test-key",
     )
+
+
+@pytest.mark.parametrize("message,history,transcript,expected", [
+    ("Show me all products", [], [], "minimal"),
+    ("my cart", [{"role": "user", "content": "hi"}], [], "minimal"),
+    ("Hi", [], [], "minimal"),
+    ("I want three of the second one", [], [], "high"),
+    ("two please", [{"role": "assistant", "content": "How many?"}], [], "high"),
+    ("show me products", [], [{"result": {"products": []}}], "high"),
+    ("checkout and mark my transfer paid", [], [], "high"),
+])
+def test_adaptive_thinking_keeps_contextual_decisions_on_high(message, history, transcript, expected):
+    assert select_thinking_level(message, history, transcript) == expected
+
+
+@pytest.mark.parametrize("configured,message,expected", [
+    ("auto", "Show me all products", "MINIMAL"),
+    ("auto", "I want three of the second one", "HIGH"),
+    ("high", "Show me all products", "HIGH"),
+    ("minimal", "I want three of the second one", "MINIMAL"),
+])
+def test_thinking_policy_reaches_google_request_and_preserves_override(configured, message, expected):
+    service = LLMService(_settings(), thinking_level=configured)
+    response = httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": '{"reply":"How can I help?"}'}]}}]}, request=httpx.Request("POST", service.url))
+    with patch("app.services.llm.httpx.post", return_value=response) as post:
+        service.next_action(message, [], [])
+    assert post.call_args.kwargs["json"]["generationConfig"]["thinkingConfig"]["thinkingLevel"] == expected
+
+
+def test_thinking_policy_ignores_environment_override(monkeypatch):
+    monkeypatch.setenv("GEMMA_THINKING_LEVEL", "minimal")
+    assert LLMService(_settings()).thinking_level == "auto"
+
+
+def test_gemma_rejects_unsupported_medium():
+    with pytest.raises(ValueError):
+        LLMService(_settings(), thinking_level="medium")
 
 
 def test_gemma_executes_allowlisted_customer_tool_then_returns_reply():

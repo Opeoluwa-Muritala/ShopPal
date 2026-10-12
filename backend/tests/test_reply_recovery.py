@@ -593,7 +593,7 @@ def test_google_thought_parts_are_never_customer_output():
     assert LLMService._parts(response) == [{"text": '{"reply":"Hello!"}'}]
 
 
-def test_gemma4_uses_minimal_thinking_by_default(monkeypatch):
+def test_gemma4_uses_high_thinking_when_request_context_is_unknown(monkeypatch):
     service = LLMService(
         Settings(_env_file=None, GEMMA_API_KEY="test", GEMMA_MODEL="gemma-4-31b-it")
     )
@@ -605,7 +605,7 @@ def test_gemma4_uses_minimal_thinking_by_default(monkeypatch):
     monkeypatch.setattr("app.services.llm.httpx.post", post)
     service._post({"contents": []})
     assert post.call_args.kwargs["json"]["generationConfig"]["thinkingConfig"] == {
-        "thinkingLevel": "MINIMAL"
+        "thinkingLevel": "HIGH"
     }
     assert post.call_args.kwargs["timeout"].read == 20
 
