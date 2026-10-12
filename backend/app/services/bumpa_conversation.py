@@ -28,6 +28,7 @@ from app.services.bumpa_checkout import (
     list_shipping_options,
     start_checkout,
 )
+from app.services.bumpa_payments import PaymentTracker
 from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
@@ -61,12 +62,14 @@ class BumpaConversation:
         session_factory: async_sessionmaker[AsyncSession],
         http_client: httpx.AsyncClient,
         settings: Settings,
+        payment_tracker: PaymentTracker | None = None,
     ) -> None:
         self._sessions = session_factory
         self._http = http_client
         self._settings = settings
         self._details: dict[tuple[UUID, str], tuple[datetime, dict[str, str]]] = {}
         self._transfers = TransferService(session_factory, http_client, settings)
+        self._payments = payment_tracker or PaymentTracker(session_factory, http_client, settings)
 
     def _details_for(self, merchant_id: UUID, wa_id: str) -> dict[str, str]:
         key = merchant_id, wa_id
@@ -230,6 +233,26 @@ class BumpaConversation:
             return
         text = _incoming(message)
         lower = text.casefold()
+        if lower in {"i've paid", "ive paid", "paid", "order status", "resend"}:
+            ref = await self._payments.latest_for_customer(merchant.id, wa_id)
+            if ref is not None:
+                if lower == "resend":
+                    if await self._payments.resend(merchant, ref, client):
+                        return
+                elif lower == "order status":
+                    await client.send_text(wa_id, await self._payments.order_status(merchant, ref))
+                    return
+                elif ref.status == "awaiting_payment":
+                    status = await self._payments.poll_one(ref_id=ref.id)
+                    if status == "pending":
+                        await client.send_text(wa_id, "Bumpa has not confirmed your payment yet. I will keep checking.")
+                    return
+                elif ref.status == "paid":
+                    await client.send_text(wa_id, "Bumpa has confirmed your payment. Send ORDER STATUS for the latest order update.")
+                    return
+                else:
+                    await client.send_text(wa_id, "This payment link is no longer active. Reply RESEND for a fresh link.")
+                    return
         state = await self._state(merchant.id, wa_id)
         if lower in {"cancel", "start over", "menu"}:
             self._details.pop((merchant.id, wa_id), None)

@@ -30,6 +30,7 @@ from app.routers import (
     whatsapp_webhook,
 )
 from app.services.bumpa_conversation import BumpaConversation
+from app.services.bumpa_payments import PaymentTracker, retention_job
 from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
 from app.services.bumpa_transfers import TransferService
 from app.services.frontend_auth import require_frontend_api_key
@@ -47,9 +48,12 @@ async def lifespan(application):
         job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
         application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
         application.state.bumpa_webhook_enabled = True
+        payment_tracker = PaymentTracker(factory, application.state.bumpa_http_client, settings)
         application.state.bumpa_conversation_handler = BumpaConversation(
-            factory, application.state.bumpa_http_client, settings
+            factory, application.state.bumpa_http_client, settings, payment_tracker
         )
+        scheduler.add_job(payment_tracker.poll_due, "interval", seconds=15, max_instances=1, coalesce=True)
+        scheduler.add_job(retention_job, "interval", hours=1, args=[factory], max_instances=1, coalesce=True)
         transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
         scheduler.add_job(transfer_service.expire, "interval", minutes=1, max_instances=1, coalesce=True)
         scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
