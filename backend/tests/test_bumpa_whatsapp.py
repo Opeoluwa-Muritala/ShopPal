@@ -166,3 +166,21 @@ async def test_meta_client_sends_only_expected_payload_and_token_header():
     payload = json.loads(requests[0].content)
     assert payload["interactive"]["action"]["buttons"][0]["reply"]["id"] == "pay"
     assert "secret-token" not in requests[0].content.decode()
+
+
+@pytest.mark.anyio
+async def test_meta_read_and_typing_uses_inbound_id_without_customer_text():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"success": True})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = MetaWhatsAppClient("https://graph.facebook.com/v25.0", "123456789", "secret-token", http)
+        await client.mark_read_and_typing("wamid.inbound")
+    assert json.loads(requests[0].content) == {
+        "messaging_product": "whatsapp", "status": "read", "message_id": "wamid.inbound",
+        "typing_indicator": {"type": "text"},
+    }
+    assert "secret-token" not in requests[0].content.decode()

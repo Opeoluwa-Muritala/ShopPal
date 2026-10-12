@@ -38,6 +38,17 @@ class MetaWhatsAppClient:
     async def send_text(self, to: str, body: str) -> None:
         await self._send(to, {"type": "text", "text": {"preview_url": False, "body": body[:4096]}})
 
+    async def mark_read_and_typing(self, message_id: str) -> None:
+        """Acknowledge a real inbound message while preparing its reply."""
+        response = await self._http.post(
+            f"{self._base}/{self._phone_id}/messages",
+            headers={"Authorization": f"Bearer {self._token}"},
+            json={"messaging_product": "whatsapp", "status": "read", "message_id": message_id,
+                  "typing_indicator": {"type": "text"}},
+            timeout=10,
+        )
+        response.raise_for_status()
+
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> None:
         if not 1 <= len(buttons) <= 3:
             raise ValueError("WhatsApp supports one to three buttons")

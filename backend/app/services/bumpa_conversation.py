@@ -21,6 +21,7 @@ from app.db.models import ConversationState, ProductCache, Vendor
 from app.integrations.bumpa import mappers
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
+from app.logging_conf import logger
 from app.services.bumpa_checkout import (
     CheckoutError,
     CustomerDetails,
@@ -227,6 +228,14 @@ class BumpaConversation:
         client = await self._client(merchant)
         if client is None:
             return
+        acknowledge = getattr(client, "mark_read_and_typing", None)
+        if acknowledge and message.get("id"):
+            try:
+                await acknowledge(str(message["id"]))
+            except httpx.HTTPError as exc:
+                logger.warning("Bumpa WhatsApp acknowledgement failed", extra={
+                    "message_id": message["id"], "step": "bumpa_acknowledge", "error_type": type(exc).__name__,
+                })
         if await self._transfers.owner_action(merchant, message, client):
             return
         if await self._transfers.customer_proof(merchant, message, client):
