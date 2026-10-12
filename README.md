@@ -1,5 +1,35 @@
 # Naija Marketplace (EcomBot)
 
+## Bumpa-backed ShopPal merchants
+
+Existing merchants keep the legacy catalog and checkout flow. A merchant connected to Bumpa has `catalog_provider='bumpa'`: Bumpa owns products, stock, orders, payments, invoices, and fulfillment. ShopPal caches published products in Neon for fast WhatsApp browsing, checks a selected product live before quoting it, and sends customers through Bumpa's pay-only authorization URL. Bumpa API response shapes remain unverified until the [staging first run](docs/FIRST_RUN.md).
+
+Set `DATABASE_URL` to a Neon **pooled** PostgreSQL URL with `sslmode=require`. Set `KEY_ENCRYPTION_SECRET` to a Fernet key; the API fails startup if it is absent or invalid. `BUMPA_BASE_URL` defaults to `https://api.bumpa.xyz` for development and should be set explicitly to `https://api.getbumpa.com` only after staging verification. `BUMPA_TIMEOUT_SECONDS` defaults to 10 and `BUMPA_SYNC_INTERVAL_MINUTES` to 10. `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, and `WHATSAPP_API_BASE` configure Meta Cloud API intake. `BUMPA_PUBLIC_KEY`, `BUMPA_SECRET_KEY`, and `BUMPA_LOCATION_ID` in `.env` are used **only by the optional probe script**; the merchant's keys are submitted through the owner-authenticated connect endpoint and encrypted in Neon. Never put these keys or the merchant's WhatsApp token in the frontend.
+
+The owner connects with `POST /merchants/{id}/bumpa/connect` (public key, optional secret key, location ID), configures the WhatsApp number and owner alert number with `PUT /merchants/{id}/whatsapp`, payout details with `PUT /merchants/{id}/payout-details`, and pickup/delivery with `PUT /merchants/{id}/fulfilment`. A complete catalog sweep runs every ten minutes by default, with `POST /merchants/{id}/bumpa/sync` for an owner-triggered refresh. Failed sweeps cannot hide unseen products; live product reads refresh the cache before checkout. Bumpa keys, raw payloads, and location IDs are never sent to customers. Bumpa merchants cannot write the legacy product catalog or manage orders through legacy order routes.
+
+In WhatsApp, the customer browses or searches cached products, selects a variation and quantity, then chooses **Pay online** or **Pay by transfer**. Online checkout asks for contact and pickup/delivery details one question at a time, creates the cart and exact checkout through Bumpa, and sends only the authorization URL with a short summary. A scheduler polls Bumpa for payment and finalizes it. If an invoice/receipt URL is present in Bumpa's responses, the customer receives it; otherwise the message is labelled **Shoppal payment confirmation**. Transfer instructions appear only after that option is selected. A customer message or screenshot marks proof for owner review but never confirms payment. Only the registered owner number can `CONFIRM <ref>` or `REJECT <ref>`, and the owner records the sale in the Bumpa app. ShopPal does not mark Bumpa orders shipped.
+
+ShopPal stores only encrypted merchant credentials, the raw **product** response for remapping, cached product fields, thin checkout IDs/payment references, and short-lived pending transfers. It does not keep Bumpa order histories, customer profiles, addresses, or line items. Personal details collected during the online questions stay in process memory for up to one hour and go directly to Bumpa; a multi-worker deployment needs the documented encrypted shared-state TODO. Conversation state expires after 24 hours of inactivity, webhook IDs after 48 hours, and customer WhatsApp/media IDs on completed or expired references after seven days. Pending transfers expire after 24 hours. Real probe captures are locally ignored by Git.
+
+### Known unknowns to verify on staging
+
+1. Where merchants obtain their Bumpa public and secret API keys.
+2. Which Paystack account receives checkout payments; it must be the merchant's, not ShopPal's.
+3. Whether an order created at payment intent appears as pending or abandoned in the owner's Bumpa app before payment, and whether it clutters the order list.
+4. Whether Bumpa orders can be labelled with a source or channel such as “Shoppal”.
+5. Whether empty-body finalize works without ShopPal verifying Paystack independently.
+6. Whether Bumpa sends its own customer receipt/invoice and whether any response contains an invoice URL.
+7. Bumpa's rate limits.
+8. The `shipping_id` versus `shipping_method_id` naming mismatch in the docs.
+9. Actual response fields for product ID, price, stock, images, variations, checkout ID, order ID, and invoice; use the probe's mapper report.
+10. Which WhatsApp templates are required and approved for owner alerts, customer confirmation, and transfer reminders/expiry.
+11. Whether Bumpa has an API to mark a transfer order paid; this integration assumes none.
+
+---
+
+The sections below describe the existing **legacy** merchant demo and deployment flow.
+
 > **AI-powered conversational WhatsApp e-commerce bot enabling Nigerian merchants to sell effortlessly and shoppers to buy seamlessly via WhatsApp chat.**
 
 ---
