@@ -113,3 +113,13 @@ async def test_address_extraction_rejects_invented_components_and_keeps_no_histo
     assert (address["city"], address["state"]) == ("Ilorin", "Kwara")
     assert "zip" not in address
     assert assistant.contexts == {}
+
+
+@pytest.mark.anyio
+async def test_customer_reply_never_contains_a_generated_sample_conversation():
+    assistant = BumpaAssistant(settings(), None)
+    assistant._generate = AsyncMock(return_value={"reply": "Customer: Hi\n\nDroid: Hi! Welcome to Droid."})
+    original = "Hi! Welcome to Droid. What would you like to look at?"
+    assert await assistant.phrase((uuid4(), "customer"), original, "Droid") == original
+    prompt = assistant._generate.await_args.args[0]
+    assert "Default to English" in prompt
