@@ -1,6 +1,7 @@
 """Human-verified transfer fallback; Bumpa remains the order ledger."""
 
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -45,6 +46,7 @@ class TransferService:
         self.sessions = sessions
         self.http = http_client
         self.settings = settings
+        self.on_confirm: Callable[[PendingTransfer], Awaitable[None]] | None = None
 
     def client_for(self, merchant: Vendor) -> WhatsAppClient | None:
         if not merchant.whatsapp_phone_number_id or not merchant.whatsapp_token_enc:
@@ -175,6 +177,8 @@ class TransferService:
             else:
                 await client.send_text(customer_wa_id, f"The owner could not verify transfer {reference}. Please contact the shop to resolve it.")
         if action == "CONFIRM":
+            if self.on_confirm:
+                await self.on_confirm(row)
             await client.send_text(sender, f"Confirmed {reference}. Please record the sale in your Bumpa app; Bumpa stock only reduces once you do.")
         else:
             await client.send_text(sender, f"Rejected {reference}.")

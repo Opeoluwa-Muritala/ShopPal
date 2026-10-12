@@ -1,6 +1,7 @@
 """Bumpa checkout never persists customer details or guest cart tokens."""
 
 import asyncio
+import json
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -54,7 +55,8 @@ def test_delivery_without_postcode_does_not_invent_one():
     assert context["zip"] == ""
 
 
-def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch):
+@pytest.mark.parametrize("multiple", [False, True])
+def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch, multiple):
     merchant, settings, connection = _merchant_and_settings()
     monkeypatch.setattr(bumpa_checkout, "get_connection", AsyncMock(return_value=connection))
     monkeypatch.setattr(bumpa_checkout, "refresh_product_live", AsyncMock(return_value=(SimpleNamespace(stock_qty=5), False)))
@@ -73,6 +75,8 @@ def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch):
                     merchant, "product-doc-1", None, 2, _customer(),
                     bumpa_checkout.FulfilmentDetails(type="pickup"), "+2348012345678",
                     session_factory=FakeSession, http_client=http, settings=settings,
+                    items=[bumpa_checkout.CheckoutItem(product_id="product-doc-1", qty=2),
+                           bumpa_checkout.CheckoutItem(product_id="product-doc-2", qty=1)] if multiple else None,
                 )
 
         result = asyncio.run(run())
@@ -81,6 +85,9 @@ def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch):
     assert result.order_id == "order-doc-1"
     assert result.amount == Decimal("5000")
     assert add.calls[0].request.headers["X-Cart-Token"] == "guest-doc-token"
+    if multiple:
+        assert [json.loads(call.request.content)["product_id"] for call in add.calls] == ["product-doc-1", "product-doc-2"]
+        assert len({call.request.headers["X-Cart-Token"] for call in add.calls}) == 1
     assert checkout.calls[0].request.url.params["location_id"] == "loc-doc-1"
     assert b'"pickup_location_id":"pickup-doc-1"' in checkout.calls[0].request.content
     stored = str(save_ref.await_args)

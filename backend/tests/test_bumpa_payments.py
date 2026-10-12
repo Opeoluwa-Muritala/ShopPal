@@ -30,6 +30,7 @@ def _tracker(monkeypatch, *, age_seconds=0):
     tracker.http = None
     tracker.settings = None
     tracker.notify_paid = AsyncMock()
+    tracker.on_paid = AsyncMock()
     client = FakeWhatsApp()
     tracker.transfers = SimpleNamespace(client_for=lambda _merchant: client)
     tracker._claim = AsyncMock(return_value=(ref, merchant))
@@ -52,7 +53,9 @@ async def test_pending_then_paid_finalizes_once_and_notifies(monkeypatch):
     monkeypatch.setattr(bumpa_payments, "check_payment", status)
     monkeypatch.setattr(bumpa_payments, "finalize", finalized)
     assert await tracker.poll_one(now=now) == "pending"
+    tracker.on_paid.assert_not_awaited()
     assert await tracker.poll_one(now=now) == "paid"
+    tracker.on_paid.assert_awaited_once_with(ref)
     finalized.assert_awaited_once()
     tracker.notify_paid.assert_awaited_once_with(merchant, ref, {"order_id": "order-1"}, client)
     assert tracker._mark.await_args.kwargs["status"] == "paid"

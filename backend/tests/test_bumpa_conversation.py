@@ -74,6 +74,8 @@ class ConversationHarness(BumpaConversation):
         return self.product, False
 
     async def _menu(self, _merchant, wa_id, client, **_kwargs):
+        items = self._basket_for(_merchant.id, wa_id)
+        await self._set_state(self.state, "start", {"basket_count": len(items)} if items else {})
         await client.send_list(wa_id, "Choose a product", [("product:p1", "Sneakers")])
 
 
@@ -97,7 +99,7 @@ async def test_gemma_selection_runs_live_product_validation_before_payment_optio
     flow._product = AsyncMock(return_value=(product, False))
     await flow(merchant, _message("I'll take two of that bag"))
     flow._product.assert_awaited_once_with(merchant, "p1")
-    assert flow.state.step == "payment_method" and flow.state.payload["qty"] == 2
+    assert flow.state.step == "more_items" and flow.state.payload["qty"] == 2
     assert whatsapp.sent[-1][0] == "buttons"
     assert "5,000.00" in whatsapp.sent[-1][2]
     assert all("account" not in str(row).lower() for row in whatsapp.sent)
@@ -114,10 +116,10 @@ async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypat
     monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
 
     for body, expected_step in [
-        ("hi", "start"), ("product:p1", "payment_method"), ("1", "payment_method"),
+        ("hi", "start"), ("product:p1", "more_items"), ("1", "more_items"), ("no", "payment_method"),
         ("pay_online", "full_name"), ("Ada Nwosu", "email"),
         ("ada@example.com", "fulfilment"),
-        ("pickup", "confirm"), ("confirm", "start"),
+        ("pickup", "confirm"), ("confirm", "awaiting_payment"),
     ]:
         await flow(merchant, _message(body))
         assert flow.state.step == expected_step
@@ -164,7 +166,7 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
     monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
     monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
     for body in [
-        "product:p1", "1", "pay_online", "Ada Nwosu", "ada@example.com",
+        "product:p1", "1", "no", "pay_online", "Ada Nwosu", "ada@example.com",
         "12 Main Street, Lagos, Lagos",
     ]:
         await flow(merchant, _message(body))
@@ -184,7 +186,7 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("step", ["variation", "quantity", "payment_method", "full_name", "email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"])
+@pytest.mark.parametrize("step", ["variation", "quantity", "more_items", "payment_method", "full_name", "email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"])
 async def test_cancel_works_at_every_checkout_step(step):
     merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
     whatsapp = FakeWhatsApp()
@@ -258,7 +260,7 @@ async def test_menu_shows_full_names_and_maps_numbers_without_mutating_inventory
     flow._product = AsyncMock(return_value=(product, False))
     await flow(merchant, _message("1"))
     flow._product.assert_awaited_once_with(merchant, "p1")
-    assert flow.state.step == "payment_method"
+    assert flow.state.step == "more_items"
     assert whatsapp.sent[-2] == ("image", flow.state.customer_wa_id, "https://images.example/perfume.jpg", name)
     assert whatsapp.sent[-1][0] == "buttons"
     assert duplicate.bumpa_product_id == "p2"
@@ -274,9 +276,9 @@ async def test_natural_checkout_continues_from_number_selection_to_payment_link(
     checkout = AsyncMock(return_value=CheckoutResult("internal-id", "order-1", "https://pay.example/only", "PAYREF", Decimal("5000"), "NGN", uuid4()))
     monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
     monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
-    for body, expected in [("1", "payment_method"), ("checkout", "payment_method"),
+    for body, expected in [("1", "more_items"), ("checkout", "payment_method"),
                            ("pay online", "full_name"), ("Ada", "full_name"),
-                           ("Ada Nwosu", "email"), ("ada@example.com", "confirm"), ("confirm", "start")]:
+                           ("Ada Nwosu", "email"), ("ada@example.com", "confirm"), ("confirm", "awaiting_payment")]:
         await flow(merchant, _message(body))
         assert flow.state.step == expected
     assert checkout.await_args.args[3] == 1
@@ -320,8 +322,8 @@ async def test_exact_product_name_selects_one_without_gemma():
     flow._product = AsyncMock(return_value=(product, False))
     await flow(merchant, _message("rose perfume"))
     flow._product.assert_awaited_once_with(merchant, "p1")
-    assert flow.state.step == "payment_method"
-    assert flow.state.payload == {"product_id": "p1", "qty": 1}
+    assert flow.state.step == "more_items"
+    assert flow.state.payload == {"product_id": "p1", "qty": 1, "basket_count": 1}
 
 
 @pytest.mark.anyio
@@ -342,8 +344,8 @@ async def test_real_picker_reply_selects_quantity_one_and_sends_native_photo():
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, {"from": flow.state.customer_wa_id, "type": "interactive",
                           "interactive": {"type": "list_reply", "list_reply": {"id": "product:p1", "title": "Rose Perfume"}}})
-    assert flow.state.step == "payment_method"
-    assert flow.state.payload == {"product_id": "p1", "qty": 1}
+    assert flow.state.step == "more_items"
+    assert flow.state.payload == {"product_id": "p1", "qty": 1, "basket_count": 1}
     assert [message[0] for message in whatsapp.sent] == ["image", "buttons"]
     assert "https://" not in whatsapp.sent[-1][2]
     await flow(merchant, _message("3"))
@@ -362,5 +364,60 @@ async def test_photo_failure_does_not_stop_picker_checkout():
     whatsapp.send_image = AsyncMock(side_effect=httpx.ConnectError("unavailable"))
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, _message("product:p1"))
-    assert flow.state.step == "payment_method"
+    assert flow.state.step == "more_items"
     assert whatsapp.sent[-1][0] == "buttons"
+
+
+@pytest.mark.anyio
+async def test_multiple_products_stay_in_basket_until_confirmed_payment(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
+    products = {identifier: SimpleNamespace(name=name, price=Decimal("5000"), currency="NGN", stock_qty=10,
+                                          is_published=True, variations=[], image_urls=[]) for identifier, name in [("p1", "Bag"), ("p2", "Perfume")]}
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, None, whatsapp)
+    flow._product = AsyncMock(side_effect=lambda _merchant, identifier: (products[identifier], False))
+    result = CheckoutResult("checkout-1", "order-1", "https://pay.example/only", "PAYREF", Decimal("10000"), "NGN", uuid4())
+    checkout = AsyncMock(return_value=result)
+    monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
+    monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
+    for body in ["product:p1", "more_yes", "product:p2", "more_no", "pay_online", "Ada Nwosu", "ada@example.com", "confirm"]:
+        await flow(merchant, _message(body))
+    assert [(item.product_id, item.qty) for item in checkout.await_args.kwargs["items"]] == [("p1", 1), ("p2", 1)]
+    assert len(flow._basket_for(merchant.id, flow.state.customer_wa_id)) == 2
+    assert flow.state.step == "awaiting_payment" and not flow._details
+    await flow(merchant, _message("cart"))
+    assert "Bag" in whatsapp.sent[-1][2] and "Perfume" in whatsapp.sent[-1][2]
+    assert flow.state.step == "awaiting_payment"
+    await flow._basket_paid(SimpleNamespace(id=uuid4(), merchant_id=merchant.id, customer_wa_id=flow.state.customer_wa_id))
+    assert len(flow._basket_for(merchant.id, flow.state.customer_wa_id)) == 2
+    await flow._basket_paid(SimpleNamespace(id=result.local_ref_id, merchant_id=merchant.id, customer_wa_id=flow.state.customer_wa_id))
+    assert flow.state.step == "start" and not flow._basket_for(merchant.id, flow.state.customer_wa_id)
+    assert all("items" not in payload and "Bag" not in str(payload) and "ada@example.com" not in str(payload) for payload in flow.saved_payloads)
+
+
+@pytest.mark.anyio
+async def test_cart_quantity_reduction_and_zero_remove_without_resending_photo():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    product = SimpleNamespace(name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=10,
+                              is_published=True, variations=[], image_urls=["https://images.example/bag.jpg"])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    await flow(merchant, _message("product:p1"))
+    await flow(merchant, _message("5"))
+    await flow(merchant, _message("cart"))
+    await flow(merchant, _message("cart:0"))
+    assert flow.state.step == "edit_quantity"
+    await flow(merchant, _message("2"))
+    assert flow._basket_for(merchant.id, flow.state.customer_wa_id)[0].qty == 2
+    assert sum(row[0] == "image" for row in whatsapp.sent) == 1
+    await flow(merchant, _message("0"))
+    assert flow.state.step == "start" and not flow._basket_for(merchant.id, flow.state.customer_wa_id)
+
+
+@pytest.mark.anyio
+async def test_order_command_routes_to_customer_scoped_bumpa_lookup():
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    flow = ConversationHarness(merchant, None, FakeWhatsApp())
+    flow._payments = SimpleNamespace(customer_orders=AsyncMock(return_value="Your Bumpa order is paid."))
+    await flow(merchant, _message("my orders"))
+    flow._payments.customer_orders.assert_awaited_once_with(merchant, flow.state.customer_wa_id)

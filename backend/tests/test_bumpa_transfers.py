@@ -56,6 +56,7 @@ def service(session):
     result = TransferService.__new__(TransferService)
     result.sessions = lambda: session
     result.http = None
+    result.on_confirm = None
     result.settings = SimpleNamespace(
         whatsapp_template_owner_transfer_alert="",
         whatsapp_template_transfer_expiry="",

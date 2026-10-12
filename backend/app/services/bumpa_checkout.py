@@ -54,6 +54,12 @@ class CustomerDetails(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
 
 
+class CheckoutItem(BaseModel):
+    product_id: str = Field(min_length=1, max_length=120)
+    variation_id: str | None = Field(default=None, max_length=120)
+    qty: int = Field(ge=1, le=100)
+
+
 class FulfilmentDetails(BaseModel):
     type: Literal["delivery", "pickup"]
     street: str | None = None
@@ -133,7 +139,7 @@ def _delivery_context(customer: CustomerDetails, fulfilment: FulfilmentDetails) 
     }
 
 
-async def _new_cart(client: BumpaClient, product_id: str, variation_id: str | None, qty: int) -> tuple[str, str]:
+async def _new_cart(client: BumpaClient, product_id: str, variation_id: str | None, qty: int, items: list[CheckoutItem] | None = None) -> tuple[str, str]:
     created = await client.create_cart()
     cart_id = mappers.extract_cart_id(created)
     cart_token = mappers.extract_cart_token(created)
@@ -141,8 +147,9 @@ async def _new_cart(client: BumpaClient, product_id: str, variation_id: str | No
         raise CheckoutRejected("Bumpa did not return a cart ID")
     if cart_token is None:
         raise CheckoutRejected("Bumpa did not return a guest cart token")
-    added = await client.add_cart_item(cart_token, product_id, qty, variation_id)
-    cart_token = mappers.extract_cart_token(added) or cart_token
+    for item in items or [CheckoutItem(product_id=product_id, variation_id=variation_id, qty=qty)]:
+        added = await client.add_cart_item(cart_token, item.product_id, item.qty, item.variation_id)
+        cart_token = mappers.extract_cart_token(added) or cart_token
     return cart_id, cart_token
 
 
@@ -157,12 +164,13 @@ async def list_shipping_options(
     session_factory: async_sessionmaker[AsyncSession],
     http_client: httpx.AsyncClient,
     settings: Settings,
+    items: list[CheckoutItem] | None = None,
 ) -> list[dict[str, Any]]:
     if qty < 1 or fulfilment.type != "delivery":
         raise CheckoutRejected("A delivery product and quantity are required")
     client = await _client_for_merchant(merchant.id, session_factory, http_client, settings)
     try:
-        cart_id, _token = await _new_cart(client, product_id, variation_id, qty)
+        cart_id, _token = await _new_cart(client, product_id, variation_id, qty, items)
         response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment))
         return mappers.extract_shipping_options(response)
     except BumpaAuthError as exc:
@@ -190,18 +198,23 @@ async def start_checkout(
     session_factory: async_sessionmaker[AsyncSession],
     http_client: httpx.AsyncClient,
     settings: Settings,
+    items: list[CheckoutItem] | None = None,
 ) -> CheckoutResult:
     if qty < 1 or qty > 100:
         raise CheckoutRejected("Quantity must be between 1 and 100")
-    cached, _cached_only = await refresh_product_live(
-        merchant.id, product_id,
-        session_factory=session_factory, http_client=http_client, settings=settings,
-    )
-    if cached and cached.stock_qty is not None and cached.stock_qty < qty:
-        raise CheckoutRejected("This product is out of stock")
+    basket = items or [CheckoutItem(product_id=product_id, variation_id=variation_id, qty=qty)]
+    if len(basket) > 20:
+        raise CheckoutRejected("A checkout supports up to 20 products")
+    for item in basket:
+        cached, _cached_only = await refresh_product_live(
+            merchant.id, item.product_id,
+            session_factory=session_factory, http_client=http_client, settings=settings,
+        )
+        if cached and cached.stock_qty is not None and cached.stock_qty < item.qty:
+            raise CheckoutRejected("This product is out of stock")
     client = await _client_for_merchant(merchant.id, session_factory, http_client, settings)
     try:
-        cart_id, _token = await _new_cart(client, product_id, variation_id, qty)
+        cart_id, _token = await _new_cart(client, product_id, variation_id, qty, basket)
         if fulfilment.type == "pickup":
             pickup_id = fulfilment.pickup_location_id or merchant.pickup_location_id
             if not pickup_id:

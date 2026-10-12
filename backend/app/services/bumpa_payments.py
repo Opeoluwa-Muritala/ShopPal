@@ -45,6 +45,7 @@ class PaymentTracker:
         self.http = http_client
         self.settings = settings
         self.notify_paid = notify_paid or self._plain_confirmation
+        self.on_paid: Callable[[CheckoutRef], Awaitable[None]] | None = None
         self.transfers = TransferService(sessions, http_client, settings)
 
     async def _plain_confirmation(self, merchant: Vendor, ref: CheckoutRef, finalized: dict[str, Any], client: WhatsAppClient) -> None:
@@ -94,6 +95,8 @@ class PaymentTracker:
                     if client:
                         await self.notify_paid(merchant, ref, finalized, client)
                     await self._mark(ref.id, status="paid", paid_at=now, next_poll_at=None)
+                    if self.on_paid:
+                        await self.on_paid(ref)
                     return "paid"
                 await self._mark(ref.id, next_poll_at=now + timedelta(minutes=1))
                 return "pending"
@@ -131,6 +134,18 @@ class PaymentTracker:
                     CheckoutRef.customer_wa_id == wa_id,
                 ).order_by(CheckoutRef.created_at.desc())
             )
+
+    async def customer_orders(self, merchant: Vendor, wa_id: str) -> str:
+        async with self.sessions() as session:
+            refs = list((await session.scalars(select(CheckoutRef).where(
+                CheckoutRef.merchant_id == merchant.id, CheckoutRef.customer_wa_id == wa_id,
+            ).order_by(CheckoutRef.created_at.desc()).limit(5))).all())
+        if not refs:
+            return "I couldn't find a recent online order for this WhatsApp number. For a bank transfer purchase, the shop owner records the order in Bumpa."
+        lines = ["Your recent Bumpa orders:"]
+        for ref in refs:
+            lines.append(f"{ref.bumpa_order_id or ref.payment_reference or 'Order awaiting a number'}: {await self.order_status(merchant, ref)}")
+        return "\n".join(lines)
 
     async def order_status(self, merchant: Vendor, ref: CheckoutRef) -> str:
         try:
