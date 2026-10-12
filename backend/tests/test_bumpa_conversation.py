@@ -226,18 +226,17 @@ async def test_shipping_outage_sends_owner_account_but_validation_does_not(monke
 
 
 @pytest.mark.anyio
-async def test_out_of_stock_and_cancel_clear_selection():
+async def test_out_of_stock_selection_is_rejected():
     merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
     product = SimpleNamespace(name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=0, is_published=True, variations=[])
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, _message("product:p1"))
     assert "out of stock" in whatsapp.sent[0][2]
-    flow.state.step = "quantity"
-    flow.state.payload = {"product_id": "p1"}
-    await flow(merchant, _message("cancel"))
     assert flow.state.step == "start"
     assert flow.state.payload == {}
+    assert not flow._basket_for(merchant.id, flow.state.customer_wa_id)
+    flow._remote_baskets.sync.assert_not_awaited()
 
 
 @pytest.mark.anyio

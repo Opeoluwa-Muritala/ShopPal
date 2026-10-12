@@ -41,3 +41,4 @@ def test_health_does_not_require_frontend_api_key():
         app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
