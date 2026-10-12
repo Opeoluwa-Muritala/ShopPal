@@ -29,6 +29,7 @@ from app.routers import (
     webhook,
     whatsapp_webhook,
 )
+from app.services.bumpa_conversation import BumpaConversation
 from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
@@ -45,6 +46,9 @@ async def lifespan(application):
         job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
         application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
         application.state.bumpa_webhook_enabled = True
+        application.state.bumpa_conversation_handler = BumpaConversation(
+            factory, application.state.bumpa_http_client, settings
+        )
         scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
         scheduler.start()
     stop = asyncio.Event()
