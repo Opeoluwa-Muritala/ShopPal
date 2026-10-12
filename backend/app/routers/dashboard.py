@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Account, Order, Product
+from app.db.models import Account, Order, Product, Vendor
 from app.db.session import get_db
 from app.routers.orders import pending_cart_rows
 from app.services.auth import get_current_account
+from app.services.catalog_provider import provider_for
 
 router = APIRouter(prefix="/api/dashboard", tags=["Frontend Dashboard"])
 
@@ -35,6 +36,23 @@ def dashboard_summary(
             },
             "orders": [],
             "products": [],
+        }
+
+    merchant = session.get(Vendor, current_account.vendor_id)
+    if merchant is not None and merchant.catalog_provider == "bumpa":
+        cached_products = provider_for(session, current_account.vendor_id).list_products()
+        return {
+            "stats": {
+                "totalOrders": 0, "totalRevenue": 0, "commission": 0,
+                "repeatCustomers": 0, "ordersTrend": "Managed in Bumpa",
+                "revenueTrend": "Managed in Bumpa", "customersTrend": "Managed in Bumpa",
+            },
+            "orders": [],
+            "products": [{
+                "id": row["id"], "name": row["name"], "category": "Product",
+                "ordersCount": 0, "revenue": 0, "stock": row["stock"],
+            } for row in cached_products[:10]],
+            "orders_managed_in": "bumpa",
         }
 
     orders = session.scalars(
@@ -81,7 +99,7 @@ def dashboard_summary(
             "revenue": float(stats.get("revenue", 0)),
             "stock": product.stock,
         })
-    product_rows.sort(key=lambda item: item["revenue"], reverse=True)
+    product_rows.sort(key=lambda item: float(str(item["revenue"])), reverse=True)
 
     order_rows = []
     for order in orders:
@@ -111,7 +129,7 @@ def dashboard_summary(
         "paystackRef": None,
         "isCart": True,
     } for row in pending_carts)
-    order_rows.sort(key=lambda row: row.get("timestamp") or "", reverse=True)
+    order_rows.sort(key=lambda row: str(row.get("timestamp") or ""), reverse=True)
 
     return {
         "stats": {

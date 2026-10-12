@@ -1,8 +1,15 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from functools import lru_cache
+from typing import cast
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -12,6 +19,11 @@ def database_url(raw_url: str) -> URL:
     url = make_url(raw_url)
     if url.drivername not in {"postgres", "postgresql", "postgresql+psycopg"}:
         raise ValueError("DATABASE_URL must use PostgreSQL")
+    if url.host and url.host.endswith(".neon.tech"):
+        if "pooler" not in url.host:
+            raise ValueError("DATABASE_URL must use a Neon pooled host")
+        if url.query.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
+            raise ValueError("DATABASE_URL must require SSL for Neon")
     return url.set(drivername="postgresql+psycopg")
 
 
@@ -36,7 +48,34 @@ def get_db() -> Iterator[Session]:
     settings = get_settings()
     if settings.database_url is None:
         # Allow routes and dependency injection to resolve in testing / mock environments
-        yield None
+        yield cast(Session, None)
         return
     with Session(get_engine()) as session:
+        yield session
+
+
+@lru_cache
+def get_async_engine() -> AsyncEngine:
+    settings = get_settings()
+    if settings.database_url is None:
+        raise RuntimeError("DATABASE_URL is not configured")
+    url = database_url(str(settings.database_url)).set(drivername="postgresql+psycopg")
+    return create_async_engine(
+        url,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 10},
+    )
+
+
+@lru_cache
+def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(get_async_engine(), expire_on_commit=False)
+
+
+async def get_async_db() -> AsyncIterator[AsyncSession]:
+    async with get_async_session_factory()() as session:
         yield session

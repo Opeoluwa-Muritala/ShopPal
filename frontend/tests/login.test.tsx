@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginForm from '../components/auth/LoginForm';
 import LoginCard from '../components/auth/LoginCard';
 import LoginPage from '../app/login/page';
+import { authApi } from '../lib/api';
 
 // Mock next/navigation useRouter
 const mockPush = vi.fn();
@@ -42,13 +43,11 @@ describe('Vendor Login Flow Components', () => {
       render(<LoginForm />);
       const idInput = screen.getByLabelText(/Email or Phone Number/i);
       const passInput = screen.getByLabelText(/^Password/i);
-      const rememberCheckbox = screen.getByLabelText(/Remember me/i);
       const toggleBtn = screen.getByLabelText(/Show password/i);
       const submitBtn = screen.getByRole('button', { name: 'Login' });
 
       expect(idInput).toBeDefined();
       expect(passInput).toBeDefined();
-      expect(rememberCheckbox).toBeDefined();
       expect(submitBtn).toBeDefined();
       expect(passInput.getAttribute('type')).toBe('password');
 
@@ -126,26 +125,19 @@ describe('Vendor Login Flow Components', () => {
 
   describe('Login Submission & Storage', () => {
     it('handles successful API authentication and stores credentials', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          vendor_id: 'v_4421',
-          token: 'jwt_mock_token_abc',
-          dashboard_url: '/dashboard',
-        }),
+      vi.spyOn(authApi, 'login').mockResolvedValue({
+        data: { vendor_id: 'v_4421', access_token: 'jwt_mock_token_abc', refresh_token: 'jwt_mock_token_abc', token_type: 'bearer' },
+        status: 200,
       });
-      global.fetch = mockFetch;
 
       const onSuccess = vi.fn();
       render(<LoginForm onSuccess={onSuccess} />);
 
       const idInput = screen.getByLabelText(/Email or Phone Number/i);
       const passInput = screen.getByLabelText(/^Password/i);
-      const rememberCheckbox = screen.getByLabelText(/Remember me/i);
 
       fireEvent.change(idInput, { target: { value: 'ade@stores.ng' } });
       fireEvent.change(passInput, { target: { value: 'mypassword123' } });
-      fireEvent.click(rememberCheckbox);
 
       const submitBtn = screen.getByRole('button', { name: 'Login' });
       fireEvent.click(submitBtn);
@@ -156,19 +148,13 @@ describe('Vendor Login Flow Components', () => {
 
       expect(localStorage.getItem('shoppal_vendor_id')).toBe('v_4421');
       expect(localStorage.getItem('shoppal_auth_token')).toBe('jwt_mock_token_abc');
-      expect(localStorage.getItem('shoppal_remembered_identifier')).toBe('ade@stores.ng');
       expect(onSuccess).toHaveBeenCalledWith(
         expect.objectContaining({ vendor_id: 'v_4421' })
       );
     });
 
     it('handles 401 incorrect credentials error with retry option', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: async () => ({ error: 'Unauthorized' }),
-      });
-      global.fetch = mockFetch;
+      vi.spyOn(authApi, 'login').mockResolvedValue({ status: 401, error: 'Unauthorized' });
 
       render(<LoginForm />);
 
@@ -191,10 +177,8 @@ describe('Vendor Login Flow Components', () => {
       expect(retryBtn).toBeDefined();
     });
 
-    it('falls back to demo mode when backend endpoint fails', async () => {
-      // Simulate network / server error (e.g. backend endpoint not created yet)
-      const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'));
-      global.fetch = mockFetch;
+    it('rejects login when the backend endpoint fails', async () => {
+      vi.spyOn(authApi, 'login').mockRejectedValue(new Error('Network error'));
 
       render(<LoginForm />);
 
@@ -208,11 +192,11 @@ describe('Vendor Login Flow Components', () => {
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
-        expect(screen.getByText(/Demo mode: Logged in with stored vendor ID/i)).toBeDefined();
+        expect(screen.getByText(/Login failed. Please check your credentials/i)).toBeDefined();
       });
 
-      expect(localStorage.getItem('shoppal_vendor_id')).toMatch(/^v_\d+/);
-      expect(localStorage.getItem('shoppal_auth_token')).toBeDefined();
+      expect(localStorage.getItem('shoppal_vendor_id')).toBeNull();
+      expect(localStorage.getItem('shoppal_auth_token')).toBeNull();
     });
   });
 });

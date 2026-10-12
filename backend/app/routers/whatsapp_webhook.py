@@ -26,8 +26,10 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db.models import ReplyJob, WhatsAppMessage
-from app.db.session import get_engine
+from app.db.session import get_async_session_factory, get_engine
 from app.logging_conf import logger
+from app.services.bumpa_whatsapp import classify_events, process_bumpa_message
+from app.services.payments import handle_whatsapp_payment_action
 from app.services.security import check_phone_rate_limit, mask_phone
 from app.services.whatsapp import mark_whatsapp_message_read
 from app.services.whatsapp_media import process_whatsapp_media
@@ -142,7 +144,26 @@ async def receive_whatsapp_webhook(
         raise HTTPException(status_code=400, detail="Malformed webhook payload")
     try:
         _validate_payload(payload)
-        read_receipts, media_jobs = await to_thread(process_whatsapp_payload, payload, settings)
+        legacy_payload = payload
+        if getattr(request.app.state, "bumpa_webhook_enabled", False):
+            factory = get_async_session_factory()
+            legacy_payload, bumpa_messages = await classify_events(
+                payload, session_factory=factory,
+                legacy_phone_number_id=settings.whatsapp_phone_number_id,
+            )
+            for merchant_id, message in bumpa_messages:
+                background_tasks.add_task(
+                    process_bumpa_message,
+                    merchant_id, message,
+                    session_factory=factory,
+                    handler=getattr(request.app.state, "bumpa_conversation_handler", None),
+                )
+        if legacy_payload.get("entry"):
+            read_receipts, media_jobs = await to_thread(process_whatsapp_payload, legacy_payload, settings)
+        else:
+            read_receipts, media_jobs = [], []
+        for action, tx_ref, wa_number, bot_number in _extract_payment_actions(legacy_payload):
+            background_tasks.add_task(handle_whatsapp_payment_action, action, tx_ref=tx_ref, wa_number=wa_number, bot_number=bot_number, settings=settings)
         for media_id, message_type, mime_type in media_jobs:
             background_tasks.add_task(
                 process_whatsapp_media, media_id, message_type, settings, mime_type
@@ -160,6 +181,37 @@ async def receive_whatsapp_webhook(
         logger.error("Meta event persistence unavailable", extra={"step": "whatsapp_webhook_persistence"})
         raise HTTPException(status_code=503, detail="Please try again shortly") from None
     return {"status": "accepted"}
+
+
+def _extract_payment_actions(payload: dict[str, Any]) -> list[tuple[str, str | None, str, str | None]]:
+    """Extract only our signed-inbound WhatsApp payment buttons."""
+    actions: list[tuple[str, str | None, str, str | None]] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            value = change.get("value", {})
+            metadata = value.get("metadata", {})
+            bot_number = metadata.get("display_phone_number")
+            for message in value.get("messages", []):
+                interactive = message.get("interactive") or {}
+                reply = interactive.get("button_reply") or interactive.get("list_reply") or {}
+                identifier = reply.get("id")
+                if not isinstance(identifier, str):
+                    continue
+                if identifier == "pay":
+                    actions.append(("pay", None, str(message.get("from", "")), bot_number))
+                elif identifier.startswith("payment_paid:"):
+                    actions.append(("paid", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("payment_cancel:"):
+                    actions.append(("cancel", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("receipt_reorder:"):
+                    actions.append(("reorder", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("receipt_help:"):
+                    actions.append(("help", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier.startswith("product_add:"):
+                    actions.append(("product_add", identifier.split(":", 1)[1], str(message.get("from", "")), bot_number))
+                elif identifier == "product_more":
+                    actions.append(("product_more", None, str(message.get("from", "")), bot_number))
+    return actions
 
 
 def _validate_payload(payload):
@@ -206,6 +258,19 @@ def _validate_payload(payload):
                         raise ValueError("Malformed media")
                     if event.get("type") == "audio" and "voice" in content and not isinstance(content.get("voice"), bool):
                         raise ValueError("Malformed audio voice flag")
+                if event.get("type") == "interactive":
+                    content = event.get("interactive")
+                    if not event.get("id") or not event.get("from") or not isinstance(content, dict):
+                        raise ValueError("Malformed interactive reply")
+                    reply = content.get("button_reply") or content.get("list_reply")
+                    if not isinstance(reply, dict):
+                        raise ValueError("Malformed interactive reply")
+                    identifier, title = reply.get("id"), reply.get("title", "")
+                    if (
+                        not isinstance(identifier, str) or not identifier
+                        or len(identifier) > 256 or not isinstance(title, str) or len(title) > 20
+                    ):
+                        raise ValueError("Malformed interactive reply")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
@@ -220,6 +285,16 @@ def _message_body(message: dict[str, Any]) -> str | None:
     typed = message.get(message_type)
     if message_type == "text" and isinstance(typed, dict):
         return str(typed.get("body", ""))
+    if message_type == "interactive" and isinstance(typed, dict):
+        reply = typed.get("button_reply") or typed.get("list_reply") or {}
+        action_text = {
+            "quick_browse": "What do you sell?",
+            "quick_cart": "Show my cart",
+            "quick_help": "How do I shop?",
+            "quick_images": "Can I get images?",
+        }.get(str(reply.get("id") or "") if isinstance(reply, dict) else "")
+        if action_text:
+            return action_text
     if typed is None:
         return None
     return json.dumps(typed, separators=(",", ":"), default=str)
@@ -291,7 +366,13 @@ def _persist_messages(
         inserted_id = session.execute(statement).scalar_one_or_none()
         if inserted_id is not None:
             inserted.append((value, message))
-            if message.get("type") in {"text", "audio", "image"}:
+            is_quick_action = (
+                message.get("type") == "interactive"
+                and _message_body(message) in {
+                    "What do you sell?", "Show my cart", "How do I shop?", "Can I get images?"
+                }
+            )
+            if message.get("type") in {"text", "audio", "image"} or is_quick_action:
                 metadata = value.get("metadata", {})
                 phone = str(message.get("from", ""))
                 allowed = check_phone_rate_limit(phone)

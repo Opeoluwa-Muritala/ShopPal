@@ -50,7 +50,7 @@ describe('Settings Page & Subcomponents', () => {
 
       // Switch to Payment Settings
       fireEvent.click(screen.getByRole('button', { name: /Payment Settings/i }));
-      expect(screen.getByText('Connected Paystack Account')).toBeDefined();
+      expect(screen.getByText('Flutterwave Payments')).toBeDefined();
       expect(screen.getByText('Bank Account (for withdrawals)')).toBeDefined();
 
       // Switch to Bot Customization
@@ -144,10 +144,7 @@ describe('Settings Page & Subcomponents', () => {
       expect(maskKey('pk_test_1234567890abcdef')).toContain('••••••••');
     });
 
-    it('handles test connection action', async () => {
-      const mockTestPaystack = vi.fn().mockResolvedValue({ success: true, message: 'Valid' });
-      const mockToast = vi.fn();
-
+    it('does not render payment credential controls', () => {
       render(
         <PaymentSettings
           paystack={DEMO_VENDOR_SETTINGS.paystack}
@@ -155,19 +152,14 @@ describe('Settings Page & Subcomponents', () => {
           withdrawal={DEMO_VENDOR_SETTINGS.withdrawal}
           onUpdatePaystack={vi.fn()}
           onUpdateBankAccount={vi.fn()}
-          onTestPaystackConnection={mockTestPaystack}
+          onTestPaystackConnection={vi.fn()}
           onVerifyBankAccount={vi.fn()}
-          onShowToast={mockToast}
+          onShowToast={vi.fn()}
         />
       );
-
-      const testBtn = screen.getByText('Test Connection');
-      fireEvent.click(testBtn);
-
-      await waitFor(() => {
-        expect(mockTestPaystack).toHaveBeenCalledWith(DEMO_VENDOR_SETTINGS.paystack.key);
-        expect(screen.getByText(/Connection successful/i)).toBeDefined();
-      });
+      expect(screen.queryByText('Test Connection')).toBeNull();
+      expect(screen.queryByText('Public Key')).toBeNull();
+      expect(screen.getByText(/never entered, displayed, or stored/i)).toBeDefined();
     });
   });
 

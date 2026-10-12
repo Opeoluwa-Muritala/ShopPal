@@ -25,12 +25,21 @@ from app.db.session import get_engine
 from app.logging_conf import logger
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.llm import GemmaError, LLMService, ai_cooldown_active
-from app.services.quick_replies import ai_failure_reply, quick_reply
+from app.services.quick_replies import ai_failure_reply, quick_intent, quick_reply
 from app.services.transcription import TranscriptionError
-from app.services.whatsapp import send_whatsapp_product_image
+from app.services.whatsapp import (
+    send_whatsapp_product_image_buttons,
+)
 
 DELAYS = (10, 30, 120, 300, 900)
 ACTIVE = ("pending", "retry", "processing", "sending")
+
+QUICK_ACTIONS = {
+    "browse": ("quick_browse", "Browse products"),
+    "cart": ("quick_cart", "View cart"),
+    "help": ("quick_help", "How it works"),
+    "images": ("quick_images", "View images"),
+}
 
 
 def recent_conversation_context(history: list[dict], per_role: int = 3) -> list[dict]:
@@ -112,7 +121,7 @@ def validate_action(action):
 
 
 def ensure_payment_link(reply_text, transcript):
-    """Keep the Paystack checkout URL visible after checkout."""
+    """Keep legacy hosted-payment links out of new WhatsApp replies."""
     for item in reversed(transcript or []):
         action = item.get("action", {}) if isinstance(item, dict) else {}
         result = item.get("result", {}) if isinstance(item, dict) else {}
@@ -122,6 +131,24 @@ def ensure_payment_link(reply_text, transcript):
                 return f"{reply_text}\n\nPay securely here: {payment_url}"
             break
     return reply_text
+
+
+def suggested_buttons(job, inbound_body):
+    """Choose bounded follow-ups from trusted intent/tool state, never AI-supplied IDs."""
+    if quick_intent(inbound_body or "") == "greeting":
+        return [QUICK_ACTIONS["browse"], QUICK_ACTIONS["cart"], QUICK_ACTIONS["help"]]
+    tools = [
+        entry.get("action", {}).get("tool")
+        for entry in (job.transcript or [])
+        if isinstance(entry, dict) and isinstance(entry.get("action"), dict)
+    ]
+    if "searchProducts" in tools:
+        return [QUICK_ACTIONS["images"], QUICK_ACTIONS["cart"]]
+    if any(tool in tools for tool in ("addToCart", "updateCartItem", "removeCartItem")):
+        return [QUICK_ACTIONS["cart"], QUICK_ACTIONS["browse"]]
+    if job.failure_category == "clarification_required":
+        return [QUICK_ACTIONS["browse"], QUICK_ACTIONS["cart"], QUICK_ACTIONS["help"]]
+    return []
 
 
 def checkpoint(session, job, owner):
@@ -426,6 +453,8 @@ def send_reply(session, job, owner, settings):
         "recipient_type": "individual",
         "to": recipient,
     }
+    payment_result = next((entry.get("result", {}) for entry in reversed(job.transcript or []) if entry.get("action", {}).get("tool") == "checkoutCart" and isinstance(entry.get("result"), dict) and entry.get("result", {}).get("account_number")), None)
+    cart_result = next((entry.get("result", {}) for entry in reversed(job.transcript or []) if entry.get("action", {}).get("tool") == "viewCart" and isinstance(entry.get("result"), dict) and entry.get("result", {}).get("items")), None)
     if use_template:
         payload.update({
             "type": "template",
@@ -435,11 +464,54 @@ def send_reply(session, job, owner, settings):
             },
         })
     else:
-        payload.update({
-            "type": "text",
-            "text": {"preview_url": True, "body": job.reply_text},
-            "biz_opaque_callback_data": identifier,
-        })
+        if payment_result:
+            tx_ref = str(payment_result.get("payment_reference") or payment_result.get("order_code"))
+            payload.update({
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": job.reply_text},
+                    "action": {"buttons": [
+                        {"type": "reply", "reply": {"id": f"payment_paid:{tx_ref}", "title": "I've paid"}},
+                        {"type": "reply", "reply": {"id": f"payment_cancel:{tx_ref}", "title": "Cancel"}},
+                    ]},
+                },
+                "biz_opaque_callback_data": identifier,
+            })
+        elif cart_result:
+            payload.update({
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": job.reply_text},
+                    "action": {"buttons": [{"type": "reply", "reply": {"id": "pay", "title": "Pay"}}]},
+                },
+                "biz_opaque_callback_data": identifier,
+            })
+        else:
+            inbound = session.scalar(select(WhatsAppMessage).where(
+                WhatsAppMessage.message_id == job.message_id
+            ))
+            buttons = suggested_buttons(job, inbound.body if inbound else "")
+            if buttons:
+                payload.update({
+                    "type": "interactive",
+                    "interactive": {
+                        "type": "button",
+                        "body": {"text": job.reply_text},
+                        "action": {"buttons": [
+                            {"type": "reply", "reply": {"id": button_id, "title": title}}
+                            for button_id, title in buttons
+                        ]},
+                    },
+                    "biz_opaque_callback_data": identifier,
+                })
+            else:
+                payload.update({
+                    "type": "text",
+                    "text": {"preview_url": False, "body": job.reply_text},
+                    "biz_opaque_callback_data": identifier,
+                })
     checkpoint(session, job, owner)
     try:
         image_request = next((entry.get("result", {}) for entry in reversed(job.transcript or [])
@@ -456,8 +528,12 @@ def send_reply(session, job, owner, settings):
                 fail(session, job, "product_image_unavailable", permanent=True)
                 return
             # This worker runs in a dedicated thread, outside the server event loop.
-            result = asyncio.run(send_whatsapp_product_image(
-                session, str(product.id), recipient, image_request["caption"],
+            result = asyncio.run(send_whatsapp_product_image_buttons(
+                session,
+                str(product.id),
+                recipient,
+                image_request["caption"],
+                [(f"product_add:{product.id}", "Add to cart"), ("product_more", "More images")],
             ))
             response = httpx.Response(
                 result.get("status_code", 503) if result.get("ok") is False else 200,

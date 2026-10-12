@@ -82,6 +82,63 @@ class GemmaError(RuntimeError):
 _AI_COOLDOWN_UNTIL = 0.0
 AI_COOLDOWN_SECONDS = 180.0
 
+_IMAGE_WORDS = {"image", "images", "photo", "photos", "picture", "pictures", "pic", "pics"}
+_GENERIC_IMAGE_WORDS = {
+    "a", "an", "any", "can", "could", "do", "for", "get", "give", "have",
+    "i", "like", "may", "me", "of", "please", "product", "products", "see",
+    "send", "show", "some", "the", "to", "want", "we", "you", "your",
+}
+
+
+def _image_request_query(message: str, history: list) -> str | None:
+    """Return a product query for explicit or context-following photo requests."""
+    words = re.findall(r"[a-z0-9]+", message.lower())
+    if set(words) & _IMAGE_WORDS:
+        return " ".join(
+            word for word in words
+            if word not in _IMAGE_WORDS and word not in _GENERIC_IMAGE_WORDS
+        )
+    recent_assistant = next(
+        (
+            str(item.get("content", "")).lower()
+            for item in reversed(history or [])
+            if item.get("role") == "assistant"
+        ),
+        "",
+    )
+    if "which product image" in recent_assistant or "reply with the product name" in recent_assistant:
+        return " ".join(words)[:120]
+    return None
+
+
+def _image_catalog_action(transcript: list) -> dict | None:
+    """Choose or clarify an image using the latest authoritative catalog result."""
+    for entry in reversed(transcript or []):
+        if entry.get("action", {}).get("tool") != "searchProducts":
+            continue
+        result = entry.get("result", {})
+        products = result.get("products", []) if isinstance(result, dict) else []
+        available = [
+            product
+            for product in products
+            if isinstance(product, dict) and product.get("has_image") and product.get("name")
+        ]
+        if len(products) == 1 and available:
+            return {
+                "tool": "showProductImage",
+                "arguments": {"productId": str(available[0]["product_id"])},
+            }
+        if len(products) == 1:
+            return {"reply": "Sorry, a photo is unavailable for that product."}
+        if not available:
+            return {"reply": "Sorry, there are no matching product photos available right now."}
+        options = "\n".join(
+            f"{index}. {str(product['name']).strip()}"
+            for index, product in enumerate(available, 1)
+        )
+        return {"reply": f"Sure — which product image would you like?\n\n{options}\n\nReply with the product name."}
+    return None
+
 
 def ai_cooldown_active() -> bool:
     return time.monotonic() < _AI_COOLDOWN_UNTIL
@@ -157,6 +214,12 @@ class LLMService:
         and tool results are data; only the server supplies the tool allowlist.
         """
         started = time.monotonic()
+        image_query = _image_request_query(message, history)
+        if image_query is not None:
+            catalog_action = _image_catalog_action(transcript)
+            if catalog_action is not None:
+                return catalog_action
+            return {"tool": "searchProducts", "arguments": {"query": image_query}}
         if ai_cooldown_active():
             error = GemmaError("AI provider cooldown active")
             error.provider = "ai"

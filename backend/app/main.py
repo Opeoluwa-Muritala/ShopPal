@@ -1,17 +1,25 @@
 import asyncio
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 
+import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from app.config import get_settings
+from app.db.session import get_async_session_factory
+from app.jobs.expiry import expiry_loop
+from app.jobs.reconcile import reconciliation_loop
 from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
     auth,
+    bumpa_merchants,
     dashboard,
+    flutterwave,
     health,
     logs,
     orders,
@@ -21,12 +29,39 @@ from app.routers import (
     webhook,
     whatsapp_webhook,
 )
+from app.services.bumpa_conversation import BumpaConversation
+from app.services.bumpa_invoice import InvoiceNotifier
+from app.services.bumpa_payments import PaymentTracker, retention_job
+from app.services.bumpa_sync import sync_active_merchants, sync_merchant_products
+from app.services.bumpa_transfers import TransferService
 from app.services.frontend_auth import require_frontend_api_key
 from app.services.reply_recovery import recovery_loop
 
 
 @asynccontextmanager
 async def lifespan(application):
+    settings = get_settings()
+    settings.require_key_encryption_secret()
+    application.state.bumpa_http_client = httpx.AsyncClient(timeout=settings.bumpa_timeout_seconds)
+    scheduler = AsyncIOScheduler()
+    if settings.database_url:
+        factory = get_async_session_factory()
+        job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
+        application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
+        application.state.bumpa_webhook_enabled = True
+        payment_tracker = PaymentTracker(
+            factory, application.state.bumpa_http_client, settings,
+            notify_paid=InvoiceNotifier(factory, application.state.bumpa_http_client, settings),
+        )
+        application.state.bumpa_conversation_handler = BumpaConversation(
+            factory, application.state.bumpa_http_client, settings, payment_tracker
+        )
+        scheduler.add_job(payment_tracker.poll_due, "interval", seconds=15, max_instances=1, coalesce=True)
+        scheduler.add_job(retention_job, "interval", hours=1, args=[factory], max_instances=1, coalesce=True)
+        transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
+        scheduler.add_job(transfer_service.expire, "interval", minutes=1, max_instances=1, coalesce=True)
+        scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
+        scheduler.start()
     stop = asyncio.Event()
     application.state.reply_wakeup = asyncio.Event()
     logger.info("Reply worker startup", extra={
@@ -34,12 +69,22 @@ async def lifespan(application):
         "status": "enabled" if get_settings().meta_reply_worker_enabled else "disabled",
     })
     task = asyncio.create_task(recovery_loop(stop, application.state.reply_wakeup)) if get_settings().meta_reply_worker_enabled else None
+    expiry_task = asyncio.create_task(expiry_loop(stop, get_settings())) if get_settings().database_url else None
+    reconciliation_task = asyncio.create_task(reconciliation_loop(stop, get_settings())) if get_settings().database_url else None
     try:
         yield
     finally:
         stop.set()
+        application.state.bumpa_webhook_enabled = False
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         if task is not None:
             await task
+        if expiry_task is not None:
+            await expiry_task
+        if reconciliation_task is not None:
+            await reconciliation_task
+        await application.state.bumpa_http_client.aclose()
 
 
 def create_app() -> FastAPI:
@@ -48,7 +93,7 @@ def create_app() -> FastAPI:
         title="ShopPal API",
         description=(
             "ShopPal backend for vendor commerce and customer conversations over "
-            "Twilio WhatsApp and Meta WhatsApp Cloud API. Vendor API routes require "
+            "Meta WhatsApp Cloud API. Vendor API routes require "
             "the configured frontend API key and applicable account credentials; "
             "provider webhooks use provider-specific signature verification. "
             "Frontend endpoint mapping is documented in docs/FRONTEND_API.md."
@@ -65,7 +110,8 @@ def create_app() -> FastAPI:
             {"name": "System", "description": "Service health checks."},
             {"name": "Provider Webhooks", "description": "Inbound provider callbacks; these are not frontend dashboard calls."},
             {"name": "Twilio WhatsApp", "description": "Signed Twilio WhatsApp customer messages."},
-            {"name": "Paystack", "description": "Signed Paystack payment callbacks."},
+            {"name": "Paystack", "description": "Signed legacy Paystack payment callbacks."},
+            {"name": "Flutterwave", "description": "Signed Flutterwave payment callbacks."},
             {
                 "name": "Meta WhatsApp",
                 "description": (
@@ -150,9 +196,11 @@ def create_app() -> FastAPI:
     application.include_router(logs.router)
     application.include_router(webhook.router)
     application.include_router(whatsapp_webhook.router)
+    application.include_router(flutterwave.router)
     application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
+    application.include_router(bumpa_merchants.router, dependencies=frontend_dependencies)
     application.include_router(auth.router, dependencies=frontend_dependencies)
     application.include_router(accounts.router, dependencies=frontend_dependencies)
     application.include_router(dashboard.router, dependencies=frontend_dependencies)

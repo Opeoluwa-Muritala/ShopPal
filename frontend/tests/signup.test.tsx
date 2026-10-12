@@ -105,9 +105,10 @@ describe('Signup Flow Components', () => {
   });
 
   describe('Step 2: Payment Setup', () => {
-    it('renders payment fields and allows skipping', () => {
+    it('renders payment fields, derives the bank code, and allows skipping', () => {
       let nextCalled = false;
       let backCalled = false;
+      let paymentChange: Record<string, string> = {};
 
       render(
         <Step2Payment
@@ -117,7 +118,9 @@ describe('Signup Flow Components', () => {
             bank_name: '',
             account_name: '',
           }}
-          onChange={() => {}}
+          onChange={(change) => {
+            paymentChange = change as Record<string, string>;
+          }}
           onNext={() => {
             nextCalled = true;
           }}
@@ -129,6 +132,15 @@ describe('Signup Flow Components', () => {
 
       expect(screen.getByText('Payment & Payout Setup')).toBeDefined();
       expect(screen.getByText(/Skip for now/i)).toBeDefined();
+
+      fireEvent.change(screen.getByLabelText('Bank Name'), {
+        target: { value: 'Guaranty Trust Bank (GTBank)' },
+      });
+      expect(paymentChange).toEqual({
+        bank_name: 'Guaranty Trust Bank (GTBank)',
+        flutterwave_bank_code: '058',
+      });
+      expect(screen.queryByLabelText(/Flutterwave Bank Code/i)).toBeNull();
 
       const backBtn = screen.getByRole('button', { name: /Back/i });
       fireEvent.click(backBtn);
@@ -263,16 +275,11 @@ describe('Signup Flow Components', () => {
 
       expect(screen.getByText(/You're Live!/i)).toBeDefined();
       expect(screen.getAllByText('+1 415 523 8886').length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/join quick-lion/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Flutterwave bank transfer inside WhatsApp/i).length).toBeGreaterThan(0);
       expect(screen.getByRole('link', { name: /Go to Dashboard/i })).toBeDefined();
     });
 
-    it('allows copying the sandbox code', () => {
-      Object.assign(navigator, {
-        clipboard: {
-          writeText: vi.fn(),
-        },
-      });
+    it('opens WhatsApp with a normal greeting, without a provider sandbox join code', () => {
       render(
         <Step4Success
           vendorName="Tunde"
@@ -286,8 +293,8 @@ describe('Signup Flow Components', () => {
         />
       );
 
-      const copyBtn = screen.getByTitle(/Copy sandbox code/i);
-      fireEvent.click(copyBtn);
+      expect(screen.queryByTitle(/Copy sandbox code/i)).toBeNull();
+      expect(screen.getAllByRole('link', { name: /Open in WhatsApp|Test on WhatsApp/i })[0].getAttribute('href')).toContain('text=Hello');
     });
   });
 
@@ -300,6 +307,7 @@ describe('Signup Flow Components', () => {
       // Advance from Step 1 to Step 2
       fireEvent.change(screen.getByLabelText(/Full Name/i), { target: { value: 'Tunde Alabi' } });
       fireEvent.change(screen.getByLabelText(/Phone Number/i), { target: { value: '0803 123 4567' } });
+      fireEvent.change(screen.getByLabelText(/^Password/i), { target: { value: 'Passw0rd123!' } });
       fireEvent.click(screen.getByRole('button', { name: /Continue to Payment Setup/i }));
 
       // Now at Step 2

@@ -3,9 +3,10 @@
 import React from 'react';
 
 export interface Step2Data {
-  paystack_key: string;
+  paystack_key?: string;
   bank_account: string;
   bank_name: string;
+  flutterwave_bank_code?: string;
   account_name: string;
 }
 
@@ -18,19 +19,19 @@ interface Step2Props {
 
 export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Props) {
   const nigerianBanks = [
-    'Access Bank',
-    'Guaranty Trust Bank (GTBank)',
-    'Zenith Bank',
-    'First Bank of Nigeria',
-    'United Bank for Africa (UBA)',
-    'Kuda Microfinance Bank',
-    'OPay Digital Services',
-    'Palmpay',
-    'Moniepoint MFB',
-    'Stanbic IBTC Bank',
-    'Fidelity Bank',
-    'Wema Bank / ALAT',
-    'Union Bank of Nigeria',
+    { name: 'Access Bank', code: '044' },
+    { name: 'Guaranty Trust Bank (GTBank)', code: '058' },
+    { name: 'Zenith Bank', code: '057' },
+    { name: 'First Bank of Nigeria', code: '011' },
+    { name: 'United Bank for Africa (UBA)', code: '033' },
+    { name: 'Kuda Microfinance Bank', code: '090267' },
+    { name: 'OPay Digital Services', code: '999992' },
+    { name: 'Palmpay', code: '999991' },
+    { name: 'Moniepoint MFB', code: '090405' },
+    { name: 'Stanbic IBTC Bank', code: '221' },
+    { name: 'Fidelity Bank', code: '070' },
+    { name: 'Wema Bank / ALAT', code: '035' },
+    { name: 'Union Bank of Nigeria', code: '032' },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -48,39 +49,20 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-1">
-          Connect your Paystack account to receive direct customer payments into your Nigerian bank account.
+          Choose the bank account where Flutterwave should transfer your proceeds after receiving and verifying customer payments.
         </p>
       </div>
 
       {/* Skip Notice Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
         <span className="font-semibold block text-slate-900">Optional for setup — Skip for now.</span>
-        You can test the WhatsApp bot immediately with test checkout links and configure your live Paystack keys whenever you are ready.
-      </div>
-
-
-      {/* Paystack Public Key */}
-      <div>
-        <label htmlFor="paystackKey" className="block text-xs font-semibold text-slate-900 mb-1">
-          Paystack Public Key <span className="text-slate-500 font-normal">(optional)</span>
-        </label>
-        <input
-          id="paystackKey"
-          type="text"
-          placeholder="pk_test_xxxxxxxx or pk_live_xxxxxxxx"
-          value={data.paystack_key}
-          onChange={(e) => onChange({ paystack_key: e.target.value })}
-          className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono"
-        />
-        <p className="mt-1 text-[11px] text-slate-500">
-          Find this in your Paystack Dashboard under Settings &gt; API Keys &amp; Webhooks.
-        </p>
+        Flutterwave receives each customer payment first. This account receives the vendor payout afterward.
       </div>
 
       {/* Bank Details */}
       <div className="pt-2 border-t border-slate-200 space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-          Bank Settlement Account
+          Vendor Payout Account
         </h3>
 
         {/* Bank Name Dropdown */}
@@ -91,16 +73,27 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           <select
             id="bankName"
             value={data.bank_name}
-            onChange={(e) => onChange({ bank_name: e.target.value })}
+            onChange={(e) => {
+              const bank = nigerianBanks.find((item) => item.name === e.target.value);
+              onChange({
+                bank_name: bank?.name || '',
+                flutterwave_bank_code: bank?.code || '',
+              });
+            }}
             className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
             <option value="">Select your Nigerian Bank...</option>
             {nigerianBanks.map((bank) => (
-              <option key={bank} value={bank}>
-                {bank}
+              <option key={bank.code} value={bank.name}>
+                {bank.name}
               </option>
             ))}
           </select>
+          {data.flutterwave_bank_code && (
+            <p className="mt-1 text-[11px] text-blue-700" aria-live="polite">
+              Flutterwave bank code selected automatically: {data.flutterwave_bank_code}
+            </p>
+          )}
         </div>
 
         {/* NUBAN Account Number */}
@@ -146,7 +139,7 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
         </button>
         <button
           type="submit"
-          className="flex-1 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded transition"
+          className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded transition"
         >
           Continue to Product Upload
         </button>

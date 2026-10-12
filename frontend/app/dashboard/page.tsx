@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardHome from '../../components/dashboard/DashboardHome';
 
 import Link from 'next/link';
@@ -9,13 +10,18 @@ import { ordersApi, productsApi } from '../../lib/api';
 import { getCurrentSession, UserSession } from '../../lib/auth';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [session, setSession] = useState<UserSession | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setSession(getCurrentSession());
+    const current = getCurrentSession();
+    setSession(current);
+    if (!current.isAuthenticated) {
+      router.replace('/login');
+    }
 
     const handleAuthChange = () => {
       setSession(getCurrentSession());
@@ -23,9 +29,11 @@ export default function DashboardPage() {
 
     window.addEventListener('shoppal-auth-changed', handleAuthChange);
     return () => window.removeEventListener('shoppal-auth-changed', handleAuthChange);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
+    if (!session?.isAuthenticated) return;
+
     async function loadDashboardData() {
       setIsLoading(true);
       try {
@@ -46,7 +54,7 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
-  }, []);
+  }, [session?.isAuthenticated]);
 
   const totalSales = orders.reduce((sum, o) => {
     const isPaid = (o.payment_status || '').toLowerCase() === 'paid';
@@ -65,6 +73,14 @@ export default function DashboardPage() {
 
   const vendorDisplayName = session?.name || session?.businessName || 'Vendor';
   const businessDisplayName = session?.businessName || 'ShopPal Store';
+
+  if (!session?.isAuthenticated) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4" role="status">
+        <p className="text-sm text-slate-600">Taking you to sign in…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -85,7 +101,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <Link
             href="/products"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded shadow-sm transition"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded shadow-sm transition"
           >
             Add Product
           </Link>
@@ -105,7 +121,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 uppercase tracking-wider">
             <span>Total Sales</span>
             <span className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 text-[11px] font-bold">
-              Paystack
+              Flutterwave
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 my-2">

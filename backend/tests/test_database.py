@@ -80,6 +80,16 @@ def test_database_url_rejects_other_database_types():
         database_url("sqlite:///test.db")
 
 
+def test_neon_database_url_requires_pooler_and_ssl():
+    host = "ep-test-pooler.us-east-2.aws.neon.tech"
+    url = database_url(f"postgresql://shop:password@{host}/shop?sslmode=require")
+    assert url.host == host
+    with pytest.raises(ValueError, match="SSL"):
+        database_url(f"postgresql://shop:password@{host}/shop")
+    with pytest.raises(ValueError, match="pooled"):
+        database_url("postgresql://shop:password@ep-test.us-east-2.aws.neon.tech/shop?sslmode=require")
+
+
 def test_engine_requires_database_url(monkeypatch):
     from app.config import Settings
 

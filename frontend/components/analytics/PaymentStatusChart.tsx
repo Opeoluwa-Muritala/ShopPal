@@ -171,9 +171,9 @@ export default function PaymentStatusChart({
         </div>
       </div>
 
-      {/* Paystack settlement note */}
+      {/* Flutterwave settlement note */}
       <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
-        <span>Settled directly via Paystack</span>
+        <span>Settled directly via Flutterwave</span>
         <span className="font-bold text-emerald-600">98% payout rate</span>
       </div>
     </div>

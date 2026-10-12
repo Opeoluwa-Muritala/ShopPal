@@ -326,6 +326,7 @@ describe('DashboardHome & DashboardPage Full Integration', () => {
   });
 
   it('renders DashboardPage export without errors', () => {
+    localStorage.setItem('shoppal_access_token', 'test-access-token');
     render(<DashboardPage />);
     expect(screen.getByText('Vendor Dashboard')).toBeDefined();
     expect(screen.getByText('Total Sales')).toBeDefined();

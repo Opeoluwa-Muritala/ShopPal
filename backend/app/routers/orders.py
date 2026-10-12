@@ -15,6 +15,7 @@ from app.db.models import Account, Cart, Order
 from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.auth import get_current_account
+from app.services.catalog_provider import require_legacy_order_management
 from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/api/orders", tags=["Frontend Orders"])
@@ -27,7 +28,7 @@ def _cart_item_rows(items: list[dict[str, Any]] | None) -> tuple[list[dict[str, 
         if not isinstance(item, dict) or not item.get("name"):
             continue
         try:
-            quantity = int(item.get("qty", item.get("quantity", 0)))
+            quantity = int(str(item.get("qty", item.get("quantity", 0))))
             unit_price = Decimal(str(item.get("price", item.get("unit_price", 0))))
         except (InvalidOperation, TypeError, ValueError):
             continue
@@ -90,6 +91,8 @@ def list_vendor_orders(
             "orders": [],
         }
 
+    require_legacy_order_management(session, current_account.vendor_id)
+
     stmt = select(Order).where(Order.vendor_id == current_account.vendor_id)
     orders = session.scalars(stmt).all()
     pending_carts = pending_cart_rows(session, current_account.vendor_id)
@@ -133,6 +136,8 @@ async def update_order_status(
             "status": body.status,
             "updated": True,
         }
+
+    require_legacy_order_management(session, current_account.vendor_id)
 
     order = session.get(Order, order_id)
     if not order:
@@ -192,6 +197,7 @@ def payment_reviews(
     """Return payment-review notifications for this vendor only."""
     if session is None:
         return {"count": 0, "payments": []}
+    require_legacy_order_management(session, current_account.vendor_id)
     orders = session.scalars(
         select(Order).where(
             Order.vendor_id == current_account.vendor_id,
@@ -218,6 +224,7 @@ async def confirm_payment(
     """Vendor-confirm a payment after reviewing proof; scope and audit it."""
     if session is None:
         raise HTTPException(status_code=503, detail="Payment confirmation unavailable")
+    require_legacy_order_management(session, current_account.vendor_id)
     order = session.scalar(select(Order).where(Order.id == order_id).with_for_update())
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")

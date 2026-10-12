@@ -23,7 +23,7 @@ This document details the architectural layout, data flow, and core component re
     │
     ├── 5. Query / Update products, vendors, and orders ──────────────► [ PostgreSQL Database ]
     │
-    └── 6. Generate checkout link & verify payment status ────────────► [ Paystack API / Webhooks ]
+    └── 6. Generate virtual account & verify payment status ───────────► [ Flutterwave API / Webhooks ]
           ▲
           │ 7. REST API (JWT Auth, product CRUD, CSV upload, order stats)
           │
@@ -46,7 +46,7 @@ This document details the architectural layout, data flow, and core component re
 | **Conversational AI** | Intent recognition, catalog discovery, natural Nigerian dialogues | Google Gemma API (Gemma 3 27B) | HTTPS REST API |
 | **Data Persistence** | Relational store for merchants, products, orders, and transaction records | PostgreSQL 15, SQLAlchemy / SQLModel | TCP / Connection Pool |
 | **Session & State Cache** | Multi-turn chat context, cart state, rate limits | Redis 7 | In-memory key-value |
-| **Payment Gateway** | Generation of checkout links, payment verification, webhook callbacks | Paystack Payments API | HTTPS REST & Signed Webhooks |
+| **Payment Gateway** | Checkout links, split settlement, account verification, transaction verification, webhook callbacks | Flutterwave Payments API; Paystack legacy verification | HTTPS REST & Signed Webhooks |
 | **Vendor Dashboard** | Merchant signup, CSV inventory upload, orders management, analytics | Next.js 14, React 18, Tailwind CSS | HTTPS REST API |
 
 ---
@@ -68,9 +68,9 @@ processed in a background task. Replies are sent through Meta's Graph API.
 
 ### B. Checkout & Payment Flow
 1. **Checkout Trigger**: Customer confirms purchase intent (*"I wan buy"*).
-2. **Order & Link Creation**: Backend registers order in PostgreSQL (`status: pending`) and requests a payment authorization URL from Paystack.
-3. **Payment Execution**: Customer clicks the Paystack link in WhatsApp and completes payment.
-4. **Webhook Confirmation**: Paystack triggers `POST /api/webhook/paystack`. Backend marks order as `paid`.
+2. **Order & Link Creation**: Backend registers order in PostgreSQL (`status: pending`), verifies the vendor settlement account when needed, and requests a Flutterwave authorization URL with the vendor subaccount and platform fee.
+3. **Payment Execution**: Customer clicks the Flutterwave link in WhatsApp and completes payment.
+4. **Webhook Confirmation**: Flutterwave triggers `POST /api/webhook/flutterwave`; the backend verifies the transaction server-side and marks the order as `paid`. Existing Paystack orders continue through `POST /api/webhook/paystack`.
 5. **Customer & Merchant Notification**: Backend sends WhatsApp receipt to customer and updates the vendor dashboard order status in real time.
 
 ---

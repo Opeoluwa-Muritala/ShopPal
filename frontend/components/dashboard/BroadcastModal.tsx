@@ -141,7 +141,7 @@ export default function BroadcastModal({
               type="button"
               onClick={handleSend}
               disabled={status === 'sending' || status === 'sent'}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
               <span>

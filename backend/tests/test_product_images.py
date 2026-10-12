@@ -111,6 +111,68 @@ def test_malformed_upload_response_is_handled(sender):
     assert result["ok"] is False
 
 
+def test_native_cta_url_payload_and_url_allowlist(monkeypatch):
+    settings = Settings(_env_file=None, whatsapp_access_token="test-token", whatsapp_phone_number_id="123")
+    original = httpx.AsyncClient
+
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload["interactive"] == {
+            "type": "cta_url",
+            "body": {"text": "See our products"},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "Browse products",
+                    "url": "https://wa.me/2349110501393?text=What%20do%20you%20sell%3F",
+                },
+            },
+        }
+        return httpx.Response(200, json={"messages": [{"id": "wamid.cta"}]})
+
+    monkeypatch.setattr(whatsapp.httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    result = asyncio.run(whatsapp.send_whatsapp_cta_url(
+        "2347064408491", "See our products", "Browse products",
+        "https://wa.me/2349110501393?text=What%20do%20you%20sell%3F", settings,
+    ))
+    assert result["messages"][0]["id"] == "wamid.cta"
+
+    with pytest.raises(ValueError, match="wa.me"):
+        asyncio.run(whatsapp.send_whatsapp_cta_url(
+            "2347064408491", "Unsafe", "Open", "https://evil.example/phish", settings,
+        ))
+
+
+def test_receipt_image_and_reply_buttons_are_sent_as_one_interactive_message(monkeypatch):
+    settings = Settings(_env_file=None, whatsapp_access_token="test-token", whatsapp_phone_number_id="123")
+    original = httpx.AsyncClient
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if request.url.path.endswith("/media"):
+            return httpx.Response(200, json={"id": "receipt-media-id"})
+        payload = json.loads(request.content)
+        assert payload["type"] == "interactive"
+        assert payload["interactive"]["header"] == {
+            "type": "image",
+            "image": {"id": "receipt-media-id"},
+        }
+        assert payload["interactive"]["action"]["buttons"] == [
+            {"type": "reply", "reply": {"id": "receipt_reorder:ord-1", "title": "Order again"}},
+            {"type": "reply", "reply": {"id": "receipt_help:ord-1", "title": "Get help"}},
+        ]
+        return httpx.Response(200, json={"messages": [{"id": "wamid.receipt-cta"}]})
+
+    monkeypatch.setattr(whatsapp.httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    result = asyncio.run(whatsapp.send_whatsapp_image_buttons_bytes(
+        "2347064408491", sample_image(), "image/png", "Payment received",
+        [("receipt_reorder:ord-1", "Order again"), ("receipt_help:ord-1", "Get help")], settings,
+    ))
+    assert result["messages"][0]["id"] == "wamid.receipt-cta"
+    assert len(calls) == 2
+
+
 def test_upload_api_stores_compressed_image_for_authenticated_vendor():
     from fastapi.testclient import TestClient
 
@@ -158,18 +220,24 @@ def test_reply_worker_sends_stored_image(monkeypatch):
 
     now = datetime.now(UTC)
     product = SimpleNamespace(id=uuid4(), image_media_id=uuid4())
-    job = SimpleNamespace(id=uuid4(), vendor_id=uuid4(), phone_number_id="123", customer_phone="2348012345678", reply_text="Perfume", attempts=1, state="processing", created_at=now,
+    job = SimpleNamespace(id=uuid4(), message_id="wamid.inbound", vendor_id=uuid4(), phone_number_id="123", customer_phone="2348012345678", reply_text="Perfume", attempts=1, state="processing", failure_category=None, created_at=now,
                           transcript=[{"action": {"tool": "showProductImage"}, "result": {"image_product_id": str(product.id), "caption": "Perfume"}}])
     db = Mock(spec=Session)
-    db.scalar.side_effect = [now, product]
+    db.scalar.side_effect = [now, SimpleNamespace(body=""), product]
     monkeypatch.setattr(recovery, "checkpoint", lambda *args: None)
     sender = AsyncMock(return_value={"messages": [{"id": "wamid.image"}]})
-    monkeypatch.setattr(recovery, "send_whatsapp_product_image", sender)
+    monkeypatch.setattr(recovery, "send_whatsapp_product_image_buttons", sender)
     settings = Settings(_env_file=None, whatsapp_access_token="test", whatsapp_phone_number_id="123")
     recovery.send_reply(db, job, "owner", settings)
     assert job.state == "accepted"
     assert job.outbound_message_id == "wamid.image"
-    sender.assert_awaited_once_with(db, str(product.id), job.customer_phone, "Perfume")
+    sender.assert_awaited_once_with(
+        db,
+        str(product.id),
+        job.customer_phone,
+        "Perfume",
+        [(f"product_add:{product.id}", "Add to cart"), ("product_more", "More images")],
+    )
 
 
 @pytest.mark.parametrize("stock,expected", [(3, "in stock (3 available)"), (0, "out of stock"), (None, "couldn't confirm its stock")])

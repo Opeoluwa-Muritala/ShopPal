@@ -45,8 +45,10 @@ export default function PrivacyPolicyPage() {
         {remotePolicy ? (
           <div
             className="prose prose-slate max-w-none text-xs sm:text-sm"
-            dangerouslySetInnerHTML={{ __html: remotePolicy }}
-          />
+            style={{ whiteSpace: 'pre-wrap' }}
+          >
+            {remotePolicy}
+          </div>
         ) : (
           <>
             <section className="space-y-2">
@@ -54,7 +56,7 @@ export default function PrivacyPolicyPage() {
                 1. Overview &amp; Scope
               </h2>
               <p>
-                ShopPal provides an automated conversational commerce platform enabling Nigerian retail merchants to showcase products, engage prospective shoppers, and accept secure payments via WhatsApp and Paystack. We take privacy seriously and adhere strictly to the Nigeria Data Protection Act (NDPA) and NDPR standards.
+                ShopPal provides an automated conversational commerce platform enabling Nigerian retail merchants to showcase products, engage prospective shoppers, and accept secure payments via WhatsApp and Flutterwave. We take privacy seriously and adhere strictly to the Nigeria Data Protection Act (NDPA) and NDPR standards.
               </p>
             </section>
 
@@ -64,7 +66,7 @@ export default function PrivacyPolicyPage() {
               </h2>
               <ul className="list-disc pl-5 space-y-1 text-slate-600 text-xs sm:text-sm">
                 <li><strong>Merchant Credentials:</strong> Business name, email, phone number, and bank account for automated settlements.</li>
-                <li><strong>Customer Order Telemetry:</strong> WhatsApp customer phone numbers, cart items, delivery notes, and Paystack reference tokens.</li>
+                <li><strong>Customer Order Telemetry:</strong> WhatsApp customer phone numbers, cart items, delivery notes, and Flutterwave reference tokens.</li>
                 <li><strong>Chat Transcripts:</strong> WhatsApp dialog between customers and the AI agent for order fulfillment only. We do not sell or monetize personal customer transcripts.</li>
               </ul>
             </section>
@@ -74,7 +76,7 @@ export default function PrivacyPolicyPage() {
                 3. Payment Gateway Security
               </h2>
               <p>
-                All financial transactions and card data are handled through Paystack Payments Limited, a PCI-DSS certified processor. ShopPal never stores or logs merchant or customer debit card CVVs or PINs.
+                All financial transactions and card data are handled through Flutterwave, a PCI-DSS compliant processor. ShopPal never stores or logs merchant or customer debit card CVVs or PINs.
               </p>
             </section>
 
