@@ -178,6 +178,53 @@ async def test_existing_email_is_reused_after_missing_name_is_collected():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("configured", [True, False])
+async def test_online_outage_hands_off_to_owner_without_losing_basket(monkeypatch, configured):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False,
+        payout_bank_name="Test Bank" if configured else None, payout_account_name="Test Owner" if configured else None,
+        payout_account_number="1234567890" if configured else None, owner_whatsapp_number="+2348011111111")
+    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    monkeypatch.setattr(bumpa_conversation, "start_checkout", AsyncMock(side_effect=bumpa_conversation.CheckoutUnavailable("Unavailable")))
+    monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
+    for body in ["product:p1", "product:p2", "no", "pay_online", "Ada Nwosu", "ada@example.com"]:
+        await flow(merchant, _message(body))
+    assert all("1234567890" not in str(row) for row in whatsapp.sent)
+    await flow(merchant, _message("confirm"))
+    assert flow.state.step == "confirm"
+    assert len(flow._basket_for(merchant.id, flow.state.customer_wa_id)) == 2
+    assert flow._details_for(merchant.id, flow.state.customer_wa_id)["email"] == "ada@example.com"
+    flow._transfers.create.assert_not_awaited()
+    reply = whatsapp.sent[-1][2]
+    if configured:
+        assert "1234567890" in reply and "confirm the full amount" in reply
+        assert "record your sale in Bumpa" in reply
+    else:
+        assert "hasn't set up bank transfer" in reply
+    assert "awaiting_payment" not in flow.state.step
+    assert all("1234567890" not in str(payload) for payload in flow.saved_payloads)
+
+
+@pytest.mark.anyio
+async def test_shipping_outage_sends_owner_account_but_validation_does_not(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id=None, delivery_enabled=True,
+        payout_bank_name="Test Bank", payout_account_name="Test Owner", payout_account_number="1234567890", owner_whatsapp_number=None)
+    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
+    for field, value in {"first_name": "Ada", "last_name": "Nwosu", "email": "ada@example.com", "street": "12 Main Street", "city": "Ilorin", "state": "Kwara", "country": "Nigeria", "zip": "240101"}.items():
+        flow._put_detail(merchant.id, flow.state.customer_wa_id, field, value)
+    monkeypatch.setattr(bumpa_conversation, "list_shipping_options", AsyncMock(side_effect=bumpa_conversation.CheckoutError("Invalid address")))
+    await flow._shipping(merchant, flow.state.customer_wa_id, whatsapp, flow.state)
+    assert "1234567890" not in whatsapp.sent[-1][2]
+    monkeypatch.setattr(bumpa_conversation, "list_shipping_options", AsyncMock(side_effect=bumpa_conversation.CheckoutUnavailable("Unavailable")))
+    await flow._shipping(merchant, flow.state.customer_wa_id, whatsapp, flow.state)
+    assert "1234567890" in whatsapp.sent[-1][2]
+
+
+@pytest.mark.anyio
 async def test_out_of_stock_and_cancel_clear_selection():
     merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
     product = SimpleNamespace(name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=0, is_published=True, variations=[])

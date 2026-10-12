@@ -11,6 +11,21 @@ checkout include every basket item in one Bumpa cart. Bank transfers retain
 the existing single-product reference schema; a multi-product basket must
 use online checkout.
 
+If online checkout or shipping is temporarily unavailable, Shoppal sends
+the owner's configured bank details as a manual fallback, including for a
+multi-product basket. The customer must ask the owner to confirm the full
+amount and delivery before transferring. No automatic payment confirmation
+or Bumpa order is fabricated. The owner verifies the payment, records the
+sale in Bumpa and supplies the invoice. The basket remains available for an
+online retry. Validation failures do not trigger this fallback. Owners must
+configure payout details first; missing details produce a clear retry message.
+
+Bumpa's documented commerce flow creates the order at payment intent, after
+customer and fulfilment details are supplied. Selecting a product adds it
+to a temporary basket; it cannot create an order using the documented API
+alone. TODO(BUMPA_EARLY_ORDER): verify whether Bumpa offers a supported
+draft-order API before attempting order creation at selection.
+
 Sending a payment link clears collected personal details but retains the
 basket. It becomes read-only while payment is pending. Confirmed online
 payment or an owner's verified transfer confirmation clears the matching

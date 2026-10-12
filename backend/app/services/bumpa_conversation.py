@@ -32,6 +32,7 @@ from app.services.bumpa_checkout import (
     CheckoutError,
     CheckoutItem,
     CheckoutPostcodeRequired,
+    CheckoutUnavailable,
     CustomerDetails,
     FulfilmentDetails,
     list_shipping_options,
@@ -333,6 +334,9 @@ class BumpaConversation:
             await self._set_state(state, "zip", state.payload)
             await client.send_text(wa_id, "Bumpa needs a postcode for this address. What is your delivery postcode?")
             return
+        except CheckoutUnavailable:
+            await self._payment_outage(merchant, wa_id, client)
+            return
         except (CheckoutError, ValidationError, KeyError, ValueError):
             await client.send_text(wa_id, "Shipping is unavailable. Please try again shortly or send CANCEL.")
             return
@@ -343,6 +347,24 @@ class BumpaConversation:
             return
         await self._set_state(state, "shipping", {**state.payload, "shipping_ids": [row[0][9:] for row in rows]})
         await client.send_list(wa_id, "Choose a delivery option.", rows[:10])
+
+    async def _payment_outage(self, merchant: Vendor, wa_id: str, client: WhatsAppClient) -> None:
+        """Hand off to the owner without pretending an unquoted sale is paid."""
+        bank = getattr(merchant, "payout_bank_name", None)
+        name = getattr(merchant, "payout_account_name", None)
+        number = getattr(merchant, "payout_account_number", None)
+        if not all((bank, name, number)):
+            await client.send_text(wa_id, "Online checkout is temporarily unavailable, and this shop hasn't set up bank transfer yet. Your cart is still here; please try again shortly.")
+            return
+        owner = getattr(merchant, "owner_whatsapp_number", None)
+        contact = f" Contact the owner on {owner}." if owner else " Contact the shop owner."
+        await client.send_text(
+            wa_id,
+            f"Online checkout is temporarily unavailable. You can arrange a transfer to {bank}, {name}, account {number}."
+            f"{contact} Ask them to confirm the full amount, including delivery, before transferring. "
+            "If you already tried paying online, ask them to check that payment first. "
+            "The owner will verify the transfer and record your sale in Bumpa. Your cart is still here.",
+        )
 
     async def _fulfilment_choice(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         choices = []
@@ -426,6 +448,9 @@ class BumpaConversation:
                 session_factory=self._sessions, http_client=self._http, settings=self._settings,
                 items=self._checkout_items(state),
             )
+        except CheckoutUnavailable:
+            await self._payment_outage(merchant, wa_id, client)
+            return
         except (CheckoutError, ValidationError, KeyError, ValueError):
             await client.send_text(wa_id, "Checkout could not be created. Please try again shortly.")
             return
