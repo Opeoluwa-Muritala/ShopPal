@@ -22,7 +22,7 @@ def _notifier():
     notifier = InvoiceNotifier.__new__(InvoiceNotifier)
     notifier.sessions = None
     notifier.http = None
-    notifier.settings = None
+    notifier.settings = SimpleNamespace(whatsapp_template_owner_paid="")
     return notifier
 
 
@@ -67,3 +67,20 @@ async def test_absent_invoice_is_plainly_labelled_shoppal_confirmation(monkeypat
     assert whatsapp.sent[0][2].startswith("Shoppal payment confirmation:")
     assert "Bumpa invoice" not in whatsapp.sent[0][2]
     assert "NGN 5,000.00" in whatsapp.sent[0][2]
+
+
+@pytest.mark.anyio
+async def test_owner_paid_alert_uses_approved_template_when_configured(monkeypatch):
+    merchant, ref, whatsapp = _context()
+    bumpa = SimpleNamespace(
+        has_secret_key=False,
+        get_checkout=AsyncMock(return_value={"order_id": "order-1", "customer": {"first_name": "Ada"}}),
+    )
+    monkeypatch.setattr(bumpa_invoice, "_client_for_merchant", AsyncMock(return_value=bumpa))
+    notifier = _notifier()
+    notifier.settings.whatsapp_template_owner_paid = "owner_paid"
+    whatsapp.send_template = AsyncMock()
+    await notifier(merchant, ref, {"order_id": "order-1"}, whatsapp)
+    whatsapp.send_template.assert_awaited_once_with(
+        merchant.owner_whatsapp_number, "owner_paid", "en_US", ["order-1", "Ada"],
+    )

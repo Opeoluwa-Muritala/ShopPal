@@ -51,4 +51,10 @@ class InvoiceNotifier:
         if merchant.owner_whatsapp_number:
             first_name = next((value for response in responses if (value := mappers.extract_customer_first_name(response))), None)
             person = f" for {first_name}" if first_name else ""
-            await client.send_text(merchant.owner_whatsapp_number, f"Bumpa order {order_number} paid{person}. Manage it in your Bumpa app.")
+            template = self.settings.whatsapp_template_owner_paid
+            if template:
+                await client.send_template(merchant.owner_whatsapp_number, template, "en_US", [order_number, first_name or "Customer"])
+            else:
+                # TODO(WHATSAPP_OWNER_PAID_TEMPLATE): configure this template
+                # before relying on alerts outside the owner's 24-hour window.
+                await client.send_text(merchant.owner_whatsapp_number, f"Bumpa order {order_number} paid{person}. Manage it in your Bumpa app.")
