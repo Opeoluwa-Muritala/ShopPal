@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -120,12 +121,20 @@ async def test_unknown_phone_number_is_ignored():
     assert bumpa == []
 
 
-def test_signed_bumpa_webhook_routes_without_legacy_persistence(monkeypatch):
+@pytest.mark.parametrize("picker_title", [None, "Droid Demo Perfume Sample"[:24], "x" * 24])
+def test_signed_bumpa_webhook_routes_without_legacy_persistence(monkeypatch, picker_title):
     merchant_id = uuid4()
     captured = AsyncMock(return_value="processed")
+    payload = deepcopy(SAMPLE_MESSAGE_PAYLOAD)
+    message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    if picker_title is not None:
+        message.pop("text", None)
+        message.update(type="interactive", interactive={"type": "list_reply", "list_reply": {
+            "id": "product:p1", "title": picker_title,
+        }})
 
     async def classify(payload, **_kwargs):
-        return {**payload, "entry": []}, [(merchant_id, SAMPLE_MESSAGE_PAYLOAD["entry"][0]["changes"][0]["value"]["messages"][0])]
+        return {**payload, "entry": []}, [(merchant_id, payload["entry"][0]["changes"][0]["value"]["messages"][0])]
 
     monkeypatch.setattr("app.routers.whatsapp_webhook.classify_events", classify)
     monkeypatch.setattr("app.routers.whatsapp_webhook.process_bumpa_message", captured)
@@ -135,7 +144,7 @@ def test_signed_bumpa_webhook_routes_without_legacy_persistence(monkeypatch):
     previous = getattr(app.state, "bumpa_webhook_enabled", False)
     app.state.bumpa_webhook_enabled = True
     app.dependency_overrides[get_settings] = _settings
-    body = json.dumps(SAMPLE_MESSAGE_PAYLOAD).encode()
+    body = json.dumps(payload).encode()
     signature = "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
     try:
         response = TestClient(app, raise_server_exceptions=False).post(
@@ -147,7 +156,21 @@ def test_signed_bumpa_webhook_routes_without_legacy_persistence(monkeypatch):
         app.dependency_overrides.pop(get_settings, None)
     assert response.status_code == 200
     captured.assert_awaited_once()
+    assert captured.await_args.args[1] == message
     legacy.assert_not_awaited()
+
+
+@pytest.mark.parametrize("reply_type,title_length", [("list_reply", 25), ("button_reply", 21)])
+def test_interactive_title_limits_still_reject_oversized_replies(reply_type, title_length):
+    from app.routers.whatsapp_webhook import _validate_payload
+
+    payload = deepcopy(SAMPLE_MESSAGE_PAYLOAD)
+    message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    message.update(type="interactive", interactive={"type": reply_type, reply_type: {
+        "id": "product:p1", "title": "x" * title_length,
+    }})
+    with pytest.raises(ValueError, match="Malformed interactive reply"):
+        _validate_payload(payload)
 
 
 @pytest.mark.anyio

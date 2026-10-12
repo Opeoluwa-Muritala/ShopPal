@@ -266,9 +266,11 @@ def _validate_payload(payload):
                     if not isinstance(reply, dict):
                         raise ValueError("Malformed interactive reply")
                     identifier, title = reply.get("id"), reply.get("title", "")
+                    # Meta list rows allow 24 characters; button titles allow 20.
+                    title_limit = 24 if content.get("list_reply") else 20
                     if (
                         not isinstance(identifier, str) or not identifier
-                        or len(identifier) > 256 or not isinstance(title, str) or len(title) > 20
+                        or len(identifier) > 256 or not isinstance(title, str) or len(title) > title_limit
                     ):
                         raise ValueError("Malformed interactive reply")
 
