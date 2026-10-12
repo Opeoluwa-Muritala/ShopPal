@@ -421,3 +421,25 @@ async def test_order_command_routes_to_customer_scoped_bumpa_lookup():
     flow._payments = SimpleNamespace(customer_orders=AsyncMock(return_value="Your Bumpa order is paid."))
     await flow(merchant, _message("my orders"))
     flow._payments.customer_orders.assert_awaited_once_with(merchant, flow.state.customer_wa_id)
+
+
+@pytest.mark.anyio
+async def test_droid_demo_photo_fallback_matches_selected_item_and_tenant():
+    from app.services.demo_catalog_images import (
+        DEMO_IMAGES,
+        DROID_DEMO_MERCHANT,
+        demo_image_url,
+    )
+
+    name, url = next(iter(DEMO_IMAGES.items()))
+    assert demo_image_url(uuid4(), name) is None
+    assert demo_image_url(DROID_DEMO_MERCHANT, "Unknown product") is None
+    merchant = SimpleNamespace(id=DROID_DEMO_MERCHANT, business_name="Droid", name="Droid")
+    product = SimpleNamespace(name=name, price=Decimal("5000"), currency="NGN", stock_qty=10,
+                              is_published=True, variations=[], image_urls=["https://images.example/blocked.jpg"])
+    whatsapp = FakeWhatsApp()
+    flow = ConversationHarness(merchant, product, whatsapp)
+    await flow(merchant, _message("product:p1"))
+    assert whatsapp.sent[0] == ("image", flow.state.customer_wa_id, url, name)
+    await flow(merchant, _message("2"))
+    assert sum(message[0] == "image" for message in whatsapp.sent) == 1

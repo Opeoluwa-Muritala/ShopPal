@@ -1,10 +1,16 @@
 """Small outbound WhatsApp interface and Meta Cloud API implementation."""
 
+from asyncio import to_thread
 from collections.abc import Sequence
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 import httpx
+
+from app.services.product_images import (
+    MAX_PRODUCT_IMAGE_UPLOAD_BYTES,
+    compress_product_image,
+)
 
 MAX_MEDIA_BYTES = 10 * 1024 * 1024
 ALLOWED_MEDIA_HOSTS = {"graph.facebook.com", "lookaside.fbsbx.com", "mmg.whatsapp.net"}
@@ -46,6 +52,31 @@ class MetaWhatsAppClient:
         url = urlsplit(image_url)
         if url.scheme != "https" or not url.hostname or url.username or url.password or len(image_url) > 2048:
             raise ValueError("Invalid product image URL")
+        if url.path.lower().endswith(".webp"):
+            if url.hostname not in {"cdn.dummyjson.com", "raw.githubusercontent.com"}:
+                raise ValueError("Unsupported product image source")
+            # Fetch only trusted public hosts, never forwarding the Meta token.
+            content = bytearray()
+            async with self._http.stream("GET", image_url, timeout=10, follow_redirects=False) as response:
+                response.raise_for_status()
+                mime = response.headers.get("content-type", "").split(";", 1)[0]
+                async for chunk in response.aiter_bytes():
+                    content.extend(chunk)
+                    if len(content) > MAX_PRODUCT_IMAGE_UPLOAD_BYTES:
+                        raise ValueError("Product image exceeds the size limit")
+            jpeg = await to_thread(compress_product_image, bytes(content), mime)
+            uploaded = await self._http.post(
+                f"{self._base}/{self._phone_id}/media",
+                headers={"Authorization": f"Bearer {self._token}"},
+                data={"messaging_product": "whatsapp", "type": "image/jpeg"},
+                files={"file": ("product.jpg", jpeg, "image/jpeg")}, timeout=20,
+            )
+            uploaded.raise_for_status()
+            media_id = uploaded.json().get("id")
+            if not isinstance(media_id, str) or not media_id or len(media_id) > 255 or "/" in media_id:
+                raise ValueError("Meta did not return an image media ID")
+            await self._send(to, {"type": "image", "image": {"id": media_id, "caption": caption[:1024]}})
+            return
         await self._send(to, {"type": "image", "image": {"link": image_url, "caption": caption[:1024]}})
 
     async def mark_read_and_typing(self, message_id: str) -> None:

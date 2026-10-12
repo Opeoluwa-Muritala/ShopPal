@@ -27,3 +27,12 @@ line-item history. The database retains the current selection, basket count,
 step and payment/transfer reference only. TODO(BUMPA_SHARED_BASKETS): a
 restart discards temporary baskets; multiple workers require an encrypted,
 expiring shared transient store. No persistent basket/order table is added.
+
+For Droid's exact demo merchant and the 40 titles from the approved import
+pack, the original public demo image URLs replace the inaccessible imported
+Bumpa image URLs. This affects photos only, not inventory or prices. WebP
+images from the allowlisted public CDN or raw GitHub host are size-limited,
+validated and converted to JPEG in memory before upload to Meta. Shoppal
+stores neither downloaded image bytes nor Meta media IDs. Other merchants
+continue using their Bumpa photos. TODO(DROID_BUMPA_IMAGES): remove the demo
+fallback once Bumpa's original images are publicly fetchable.

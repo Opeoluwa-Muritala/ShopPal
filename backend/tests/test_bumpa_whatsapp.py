@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import io
 import json
 from copy import deepcopy
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.config import get_settings
 from app.integrations.whatsapp.client import MetaWhatsAppClient
@@ -212,6 +214,33 @@ async def test_meta_sends_native_image_and_picker_descriptions():
     assert row["description"] == "Rose Perfume — NGN 5,000.00"
     assert len(requests) == 2
     assert all("secret-token" not in request.content.decode() for request in requests)
+
+
+@pytest.mark.anyio
+async def test_public_webp_is_converted_in_memory_and_sent_as_native_image():
+    source = io.BytesIO()
+    Image.new("RGB", (4, 4), "blue").save(source, format="WEBP")
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.method == "GET":
+            assert "Authorization" not in request.headers
+            return httpx.Response(200, content=source.getvalue(), headers={"content-type": "image/webp"})
+        if request.url.path.endswith("/media"):
+            assert b"image/jpeg" in request.content and b"\xff\xd8" in request.content
+            return httpx.Response(200, json={"id": "media-photo-1"})
+        return httpx.Response(200, json={"messages": [{"id": "wamid.image"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = MetaWhatsAppClient("https://graph.facebook.com/v25.0", "123456789", "secret-token", http)
+        await client.send_image("2348012345678", "https://cdn.dummyjson.com/demo.webp", "Droid product")
+        with pytest.raises(ValueError, match="Unsupported"):
+            await client.send_image("2348012345678", "https://127.0.0.1/private.webp")
+    sent = json.loads(requests[-1].content)
+    assert sent["type"] == "image" and sent["image"]["id"] == "media-photo-1"
+    assert "link" not in sent["image"] and "secret-token" not in requests[-1].content.decode()
+    assert len(requests) == 3
 
 
 @pytest.mark.anyio

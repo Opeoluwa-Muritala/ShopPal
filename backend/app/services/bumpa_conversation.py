@@ -42,6 +42,7 @@ from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.delivery_postcodes import registered_postcode, supplied_postcode
+from app.services.demo_catalog_images import demo_image_url
 
 DETAILS_TTL = timedelta(hours=1)
 BASKET_TTL = timedelta(hours=24)
@@ -280,9 +281,12 @@ class BumpaConversation:
             await client.send_text(wa_id, "That product is out of stock. Here are other available items.")
             await self._menu(merchant, wa_id, client)
             return
-        if show_image and getattr(product, "image_urls", []):
+        image_url = demo_image_url(merchant.id, product.name)
+        if image_url is None and getattr(product, "image_urls", []):
+            image_url = str(product.image_urls[0])
+        if show_image and image_url:
             try:
-                await client.send_image(wa_id, str(product.image_urls[0]), product.name or "Product")
+                await client.send_image(wa_id, image_url, product.name or "Product")
             except (httpx.HTTPError, ValueError) as exc:
                 logger.warning("Selected product photo unavailable", extra={
                     "step": "bumpa_product_image", "error_type": type(exc).__name__,
