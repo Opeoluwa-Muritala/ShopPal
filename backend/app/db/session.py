@@ -19,6 +19,11 @@ def database_url(raw_url: str) -> URL:
     url = make_url(raw_url)
     if url.drivername not in {"postgres", "postgresql", "postgresql+psycopg"}:
         raise ValueError("DATABASE_URL must use PostgreSQL")
+    if url.host and url.host.endswith(".neon.tech"):
+        if "pooler" not in url.host:
+            raise ValueError("DATABASE_URL must use a Neon pooled host")
+        if url.query.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
+            raise ValueError("DATABASE_URL must require SSL for Neon")
     return url.set(drivername="postgresql+psycopg")
 
 
