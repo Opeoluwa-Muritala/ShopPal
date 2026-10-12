@@ -50,3 +50,19 @@ def test_unknown_fields_warn_with_keys_only(caplog):
 def test_invalid_invoice_and_authorization_urls_are_rejected():
     assert mappers.extract_invoice_url({"invoice_url": "javascript:alert(1)"}) is None
     assert mappers.extract_authorization_url({"authorization_url": "http://example.com/pay"}) is None
+
+
+# HAND-WRITTEN FROM DOCS, NOT REAL BUMPA OUTPUT
+@pytest.mark.parametrize("empty_images", [[], {}, [None, {}, {"url": " "}], ["", " "]])
+@pytest.mark.parametrize("nested", [False, True])
+def test_empty_image_collection_falls_back_to_single_image(empty_images, nested):
+    product = {"images": empty_images, "image_url": "https://example.com/product.jpg"}
+    raw = {"data": product} if nested else product
+    assert mappers.extract_image_urls(raw) == ["https://example.com/product.jpg"]
+
+
+def test_empty_image_fields_warn_without_values(caplog):
+    with caplog.at_level(logging.WARNING):
+        assert mappers.extract_image_urls({"images": [], "private": "hidden-value"}) == []
+    assert "image_urls" in caplog.text
+    assert "hidden-value" not in caplog.text

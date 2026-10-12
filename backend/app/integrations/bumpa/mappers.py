@@ -85,14 +85,13 @@ def extract_stock(raw: Any) -> int | None:
 
 
 def extract_image_urls(raw: Any) -> list[str]:
-    value = _lookup(raw, "image_urls", "images", "image_url", "image", "data.image_urls", "data.images", "data.image_url")
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        urls = [item if isinstance(item, str) else item.get("url") if isinstance(item, dict) else None for item in value]
-        return [url for url in urls if isinstance(url, str)]
-    if isinstance(value, dict) and isinstance(value.get("url"), str):
-        return [value["url"]]
+    for path in ("image_urls", "images", "image_url", "image", "data.image_urls", "data.images", "data.image_url", "data.image"):
+        value = _lookup(raw, path)
+        items = value if isinstance(value, list) else [value]
+        candidates = [item.get("url") if isinstance(item, dict) else item for item in items]
+        urls = [url.strip() for url in candidates if isinstance(url, str) and url.strip()]
+        if urls:
+            return urls
     _missing("image_urls", raw)
     return []
 
