@@ -1,17 +1,29 @@
 import os
 import re
+from functools import partial
+from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from tenacity import AsyncRetrying
 
 import app.services.llm as llm
 from app.db.session import database_url
+from app.integrations.bumpa import client as bumpa_client
 from app.main import app
 from app.services.frontend_auth import require_frontend_api_key
 
 os.environ.setdefault("KEY_ENCRYPTION_SECRET", Fernet.generate_key().decode("ascii"))
+
+
+@pytest.fixture(autouse=True)
+def bumpa_retry_sleep(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Keep retry policy and attempts, but skip real backoff in mocked tests."""
+    sleep = AsyncMock()
+    monkeypatch.setattr(bumpa_client, "AsyncRetrying", partial(AsyncRetrying, sleep=sleep))
+    return sleep
 
 
 @pytest.fixture(autouse=True)

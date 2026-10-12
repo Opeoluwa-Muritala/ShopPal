@@ -93,7 +93,7 @@ def test_422_retains_errors_payload_without_logging_secrets(caplog):
 
 
 @pytest.mark.parametrize("status", [429, 503])
-def test_get_retries_rate_limits_and_server_errors(status):
+def test_get_retries_rate_limits_and_server_errors(status, bumpa_retry_sleep):
     with respx.mock(assert_all_called=True) as mock:
         route = mock.get(BASE + "/products").mock(
             side_effect=[
@@ -108,10 +108,11 @@ def test_get_retries_rate_limits_and_server_errors(status):
 
         asyncio.run(run())
         assert route.call_count == 2
+        bumpa_retry_sleep.assert_awaited_once()
 
 
 @pytest.mark.parametrize("method,path", [("POST", "/carts"), ("PATCH", "/carts/items"), ("DELETE", "/carts/clear")])
-def test_mutations_are_not_retried(method, path):
+def test_mutations_are_not_retried(method, path, bumpa_retry_sleep):
     with respx.mock(assert_all_called=True) as mock:
         route = mock.route(method=method, url=BASE + path).respond(503)
 
@@ -122,9 +123,10 @@ def test_mutations_are_not_retried(method, path):
 
         asyncio.run(run())
         assert route.call_count == 1
+        bumpa_retry_sleep.assert_not_awaited()
 
 
-def test_payment_intent_is_the_only_retry_safe_post():
+def test_payment_intent_is_the_only_retry_safe_post(bumpa_retry_sleep):
     with respx.mock(assert_all_called=True) as mock:
         route = mock.post(BASE + "/checkouts/checkout-doc-1/payment-intent").mock(
             side_effect=[
@@ -140,6 +142,7 @@ def test_payment_intent_is_the_only_retry_safe_post():
 
         asyncio.run(run())
         assert route.call_count == 2
+        bumpa_retry_sleep.assert_awaited_once()
 
 
 def test_secret_key_is_required_for_orders():
