@@ -22,9 +22,14 @@ from app.integrations.bumpa import mappers
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
-from app.services.bumpa_assistant import BumpaAssistant, ConversationalWhatsAppClient
+from app.services.bumpa_assistant import (
+    BumpaAssistant,
+    ConversationalWhatsAppClient,
+    local_delivery_address,
+)
 from app.services.bumpa_checkout import (
     CheckoutError,
+    CheckoutPostcodeRequired,
     CustomerDetails,
     FulfilmentDetails,
     list_shipping_options,
@@ -34,6 +39,7 @@ from app.services.bumpa_payments import PaymentTracker
 from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
+from app.services.delivery_postcodes import registered_postcode, supplied_postcode
 
 DETAILS_TTL = timedelta(hours=1)
 PAGE_SIZE = 9
@@ -183,6 +189,10 @@ class BumpaConversation:
                 merchant, state.payload["product_id"], state.payload.get("variation_id"), int(state.payload["qty"]),
                 customer, fulfilment, session_factory=self._sessions, http_client=self._http, settings=self._settings,
             )
+        except CheckoutPostcodeRequired:
+            await self._set_state(state, "zip", state.payload)
+            await client.send_text(wa_id, "Bumpa needs a postcode for this address. What is your delivery postcode?")
+            return
         except (CheckoutError, ValidationError, KeyError, ValueError):
             await client.send_text(wa_id, "Shipping is unavailable. Please try again shortly or send CANCEL.")
             return
@@ -194,6 +204,28 @@ class BumpaConversation:
         await self._set_state(state, "shipping", {**state.payload, "shipping_ids": [row[0][9:] for row in rows]})
         await client.send_list(wa_id, "Choose a delivery option.", rows[:10])
 
+    async def _fulfilment_choice(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
+        choices = []
+        if merchant.pickup_location_id:
+            choices.append(("pickup", "Pickup"))
+        if merchant.delivery_enabled:
+            choices.append(("delivery", "Delivery"))
+        if not choices:
+            await client.send_text(wa_id, "This shop has no fulfilment method configured yet.")
+        elif len(choices) == 1 and choices[0][0] == "delivery":
+            await self._begin_delivery(merchant, wa_id, client, state)
+        elif len(choices) == 1:
+            await self._set_state(state, "confirm", {**state.payload, "fulfilment": "pickup"})
+            await self._confirm(merchant, wa_id, client, state)
+        else:
+            await self._set_state(state, "fulfilment", state.payload)
+            await client.send_buttons(wa_id, "Would you like pickup or delivery?", choices)
+
+    async def _begin_delivery(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
+        self._put_detail(merchant.id, wa_id, "country", "Nigeria")
+        await self._set_state(state, "address", {**state.payload, "fulfilment": "delivery"})
+        await client.send_text(wa_id, "What's your delivery address? Include the area or a landmark. I'll assume Ilorin, Kwara unless you include another city.")
+
     async def _confirm(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         product, cached_only = await self._product(merchant, state.payload["product_id"])
         if product is None or not product.is_published or (product.stock_qty is not None and product.stock_qty < int(state.payload["qty"])):
@@ -202,7 +234,11 @@ class BumpaConversation:
         total = product.price * int(state.payload["qty"]) if product.price is not None else None
         note = " Final amount is checked by Bumpa before payment." if cached_only or state.payload.get("fulfilment") == "delivery" else ""
         await self._set_state(state, "confirm", state.payload)
-        await client.send_buttons(wa_id, f"{product.name or 'Product'} × {state.payload['qty']}: {_money(total, product.currency)}.{note} Confirm checkout?", [("confirm", "Confirm"), ("cancel", "Cancel")])
+        address_note = ""
+        if state.payload.get("fulfilment") == "delivery":
+            details = self._details_for(merchant.id, wa_id)
+            address_note = f" Deliver to: {details.get('street', '')}, {details.get('city', '')}, {details.get('state', '')}."
+        await client.send_buttons(wa_id, f"{product.name or 'Product'} × {state.payload['qty']}: {_money(total, product.currency)}.{address_note}{note} Confirm checkout?", [("confirm", "Confirm"), ("cancel", "Cancel")])
 
     async def _start_checkout(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         async with self._sessions() as session:
@@ -281,6 +317,7 @@ class BumpaConversation:
             client = ConversationalWhatsAppClient(client, assistant, key, business, [
                 getattr(merchant, "payout_bank_name", None) or "", getattr(merchant, "payout_account_name", None) or "",
                 getattr(merchant, "payout_account_number", None) or "",
+                *self._details_for(merchant.id, wa_id).values(),
             ])
             canonical = lower in {"cancel", "start over", "menu", "hi", "hello", "start", "pay_online", "pay_transfer"} or ":" in lower or lower.isdigit()
             if message.get("type") == "text" and state.step in {"start", "quantity", "payment_method"} and not canonical:
@@ -366,8 +403,8 @@ class BumpaConversation:
                 await client.send_text(wa_id, "Please send a valid email address.")
                 return
             self._put_detail(merchant.id, wa_id, "email", email)
-            await self._set_state(state, "phone", payload)
-            await client.send_text(wa_id, "What phone number should Bumpa use? Reply SAME to use this WhatsApp number.")
+            self._put_detail(merchant.id, wa_id, "phone", "+" + wa_id.lstrip("+"))
+            await self._fulfilment_choice(merchant, wa_id, client, state)
             return
         elif state.step == "phone":
             phone = wa_id if lower == "same" else text
@@ -375,24 +412,44 @@ class BumpaConversation:
                 await client.send_text(wa_id, "Please send a valid phone number or SAME.")
                 return
             self._put_detail(merchant.id, wa_id, "phone", phone)
-            choices = []
-            if merchant.pickup_location_id:
-                choices.append(("pickup", "Pickup"))
-            if merchant.delivery_enabled:
-                choices.append(("delivery", "Delivery"))
-            if not choices:
-                await client.send_text(wa_id, "This shop has no fulfilment method configured yet.")
-                return
-            await self._set_state(state, "fulfilment", payload)
-            await client.send_buttons(wa_id, "Pickup or delivery?", choices)
+            await self._fulfilment_choice(merchant, wa_id, client, state)
             return
         elif state.step == "fulfilment" and lower == "pickup" and merchant.pickup_location_id:
             await self._set_state(state, "confirm", {**payload, "fulfilment": "pickup"})
             await self._confirm(merchant, wa_id, client, state)
             return
         elif state.step == "fulfilment" and lower == "delivery" and merchant.delivery_enabled:
-            await self._set_state(state, "street", {**payload, "fulfilment": "delivery"})
-            await client.send_text(wa_id, "What is your street address?")
+            await self._begin_delivery(merchant, wa_id, client, state)
+            return
+        elif state.step == "address":
+            if not 5 <= len(text) <= 500:
+                await client.send_text(wa_id, "Please send your full delivery address, including the area or a landmark.")
+                return
+            address = await assistant.delivery_address(text) if assistant is not None and assistant.enabled else local_delivery_address(text)
+            postcode = supplied_postcode(text) or address.get("zip") or registered_postcode(text, address["city"], address["state"])
+            if postcode:
+                address["zip"] = postcode
+            for field, value in address.items():
+                if value:
+                    self._put_detail(merchant.id, wa_id, field, value)
+            if not address["state"]:
+                await self._set_state(state, "address_state", payload)
+                await client.send_text(wa_id, "Which state is that address in?")
+                return
+            await self._shipping(merchant, wa_id, client, state)
+            return
+        elif state.step == "address_state" and 1 <= len(text) <= 120:
+            self._put_detail(merchant.id, wa_id, "state", text)
+            await self._shipping(merchant, wa_id, client, state)
+            return
+        elif state.step == "zip":
+            import re
+
+            if not re.fullmatch(r"\d{6}|[A-Za-z]{2}[A-Za-z0-9]{9}", text):
+                await client.send_text(wa_id, "Please send a valid Nigerian postcode.")
+                return
+            self._put_detail(merchant.id, wa_id, "zip", text.upper())
+            await self._shipping(merchant, wa_id, client, state)
             return
         elif state.step in {"street", "city", "state", "country", "zip"}:
             if not 1 <= len(text) <= 200:

@@ -9,7 +9,7 @@ import pytest
 
 from app.services import bumpa_conversation
 from app.services.bumpa_assistant import ShoppingIntent
-from app.services.bumpa_checkout import CheckoutResult
+from app.services.bumpa_checkout import CheckoutPostcodeRequired, CheckoutResult
 from app.services.bumpa_conversation import BumpaConversation
 
 
@@ -113,7 +113,7 @@ async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypat
     for body, expected_step in [
         ("hi", "start"), ("product:p1", "quantity"), ("1", "payment_method"),
         ("pay_online", "full_name"), ("Ada Nwosu", "email"),
-        ("ada@example.com", "phone"), ("SAME", "fulfilment"),
+        ("ada@example.com", "fulfilment"),
         ("pickup", "confirm"), ("confirm", "start"),
     ]:
         await flow(merchant, _message(body))
@@ -122,6 +122,7 @@ async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypat
     args = checkout.await_args.args
     assert args[4].first_name == "Ada"
     assert args[4].email == "ada@example.com"
+    assert args[4].phone == "+2348012345678"
     assert args[5].type == "pickup"
     assert args[5].pickup_location_id == "pickup-1"
     assert not flow._details
@@ -160,8 +161,8 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
     monkeypatch.setattr(bumpa_conversation, "start_checkout", checkout)
     monkeypatch.setattr(bumpa_conversation, "has_open_capacity", AsyncMock(return_value=True))
     for body in [
-        "product:p1", "1", "pay_online", "Ada Nwosu", "ada@example.com", "SAME",
-        "delivery", "12 Main Street", "Lagos", "Lagos", "Nigeria", "100001",
+        "product:p1", "1", "pay_online", "Ada Nwosu", "ada@example.com",
+        "12 Main Street, Lagos, Lagos",
     ]:
         await flow(merchant, _message(body))
     assert flow.state.step == "shipping"
@@ -172,12 +173,15 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
     await flow(merchant, _message("confirm"))
     assert checkout.await_args.args[5].shipping_id == "ship-1"
     assert checkout.await_args.args[5].street == "12 Main Street"
+    assert checkout.await_args.args[5].city == "Lagos"
+    assert checkout.await_args.args[5].country == "Nigeria"
+    assert checkout.await_args.args[5].zip is None
     assert not flow._details
     assert all("12 Main Street" not in str(payload) for payload in flow.saved_payloads)
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("step", ["variation", "quantity", "payment_method", "full_name", "email", "phone", "fulfilment", "street", "city", "state", "country", "zip", "shipping", "confirm"])
+@pytest.mark.parametrize("step", ["variation", "quantity", "payment_method", "full_name", "email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"])
 async def test_cancel_works_at_every_checkout_step(step):
     merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
     whatsapp = FakeWhatsApp()
@@ -190,3 +194,38 @@ async def test_cancel_works_at_every_checkout_step(step):
     assert flow.state.payload == {}
     assert not flow._details
     assert whatsapp.sent[-1][0] == "list"
+
+
+@pytest.mark.anyio
+async def test_one_ilorin_address_autofills_location_and_registered_postcode(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id=None, delivery_enabled=True)
+    flow = ConversationHarness(merchant, None, FakeWhatsApp())
+    flow.state.step = "address"
+    flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
+    flow._put_detail(merchant.id, flow.state.customer_wa_id, "first_name", "Ada")
+    flow._put_detail(merchant.id, flow.state.customer_wa_id, "last_name", "Nwosu")
+    flow._put_detail(merchant.id, flow.state.customer_wa_id, "email", "ada@example.com")
+    flow._put_detail(merchant.id, flow.state.customer_wa_id, "phone", "+2348012345678")
+    shipping = AsyncMock(return_value=[{"shipping_id": "ship-1", "name": "Delivery"}])
+    monkeypatch.setattr(bumpa_conversation, "list_shipping_options", shipping)
+    await flow(merchant, _message("12 Taiwo Road near the pharmacy"))
+    fulfilment = shipping.await_args.args[5]
+    assert (fulfilment.city, fulfilment.state, fulfilment.country, fulfilment.zip) == ("Ilorin", "Kwara", "Nigeria", "240241")
+    assert flow.state.step == "shipping"
+    assert all("pharmacy" not in str(payload) for payload in flow.saved_payloads)
+
+
+@pytest.mark.anyio
+async def test_postcode_is_asked_only_after_bumpa_requires_it(monkeypatch):
+    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    flow = ConversationHarness(merchant, None, FakeWhatsApp())
+    flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
+    for field, value in {"first_name": "Ada", "last_name": "Nwosu", "email": "ada@example.com", "phone": "+2348012345678", "street": "12 Main Street", "city": "Ilorin", "state": "Kwara", "country": "Nigeria"}.items():
+        flow._put_detail(merchant.id, flow.state.customer_wa_id, field, value)
+    shipping = AsyncMock(side_effect=[CheckoutPostcodeRequired(), [{"shipping_id": "ship-1", "name": "Delivery"}]])
+    monkeypatch.setattr(bumpa_conversation, "list_shipping_options", shipping)
+    await flow._shipping(merchant, flow.state.customer_wa_id, flow.client, flow.state)
+    assert flow.state.step == "zip"
+    await flow(merchant, _message("240241"))
+    assert flow.state.step == "shipping"
+    assert shipping.await_args.args[5].zip == "240241"

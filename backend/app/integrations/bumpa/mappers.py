@@ -96,6 +96,14 @@ def extract_image_urls(raw: Any) -> list[str]:
     return []
 
 
+def extract_requires_postcode(raw: Any) -> bool:
+    """Recognise a postcode validation error without logging its values."""
+    errors = _lookup(raw, "errors", "data.errors")
+    if not isinstance(errors, dict):
+        return False
+    return any(str(key).split(".")[-1] in {"zip", "postcode", "postal_code"} for key in errors)
+
+
 def extract_variations(raw: Any) -> list[dict[str, Any]]:
     value = _lookup(raw, "variations", "variants", "data.variations", "data.variants")
     if isinstance(value, list):

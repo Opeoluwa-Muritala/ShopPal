@@ -102,3 +102,14 @@ async def test_provider_failure_keeps_a_reply_and_logs_no_token(caplog):
         assistant = BumpaAssistant(settings(), http)
         assert await assistant.phrase((uuid4(), "customer"), "What is your full name?", "Droid") == "What is your full name?"
     assert "synthetic-ai-key" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_address_extraction_rejects_invented_components_and_keeps_no_history():
+    assistant = BumpaAssistant(settings(), None)
+    assistant._generate = AsyncMock(return_value={"street": "12 Main Street", "city": "Lagos", "state": "Lagos", "zip": "999999"})
+    address = await assistant.delivery_address("12 Main Street, Ilorin")
+    assert address["street"] == "12 Main Street"
+    assert (address["city"], address["state"]) == ("Ilorin", "Kwara")
+    assert "zip" not in address
+    assert assistant.contexts == {}

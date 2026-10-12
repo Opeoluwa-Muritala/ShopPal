@@ -47,6 +47,13 @@ def _customer():
     return bumpa_checkout.CustomerDetails(first_name="Ada", last_name="Okafor", email="ada@example.com", phone="+2348012345678")
 
 
+def test_delivery_without_postcode_does_not_invent_one():
+    context = bumpa_checkout._delivery_context(_customer(), bumpa_checkout.FulfilmentDetails(
+        type="delivery", street="12 Road", city="Ilorin", state="Kwara", country="Nigeria",
+    ))
+    assert context["zip"] == ""
+
+
 def test_pickup_checkout_returns_only_bumpa_pay_link_and_thin_ref(monkeypatch):
     merchant, settings, connection = _merchant_and_settings()
     monkeypatch.setattr(bumpa_checkout, "get_connection", AsyncMock(return_value=connection))

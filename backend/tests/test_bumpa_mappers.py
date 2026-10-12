@@ -66,3 +66,9 @@ def test_empty_image_fields_warn_without_values(caplog):
         assert mappers.extract_image_urls({"images": [], "private": "hidden-value"}) == []
     assert "image_urls" in caplog.text
     assert "hidden-value" not in caplog.text
+
+
+# HAND-WRITTEN FROM DOCS, NOT REAL BUMPA OUTPUT
+def test_postcode_validation_error_is_detected_by_field_name():
+    assert mappers.extract_requires_postcode({"errors": {"fulfillment_context.zip": ["Required"]}})
+    assert not mappers.extract_requires_postcode({"errors": {"email": ["Required"]}})

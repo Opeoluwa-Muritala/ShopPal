@@ -107,6 +107,14 @@ selection and payment transition; Bumpa remains authoritative for prices and sto
 If Gemma is unavailable, the guided checkout still works. Read receipts and typing
 indicators are sent before preparing replies; their failure does not suppress replies.
 
+Delivery asks for one address and defaults to Ilorin, Kwara, Nigeria. A location
+included by the customer overrides that default, and their WhatsApp number supplies
+the phone field. Name and email remain required by Bumpa online checkout. Recognised
+Ilorin areas use the small [postcode registry](docs/DELIVERY_POSTCODES.md); unmatched
+addresses are never assigned an invented postcode. Ask for a postcode only if Bumpa
+requires it. The shipping service's acceptance of an empty postcode still needs
+verification on staging.
+
 ### WhatsApp bank-transfer checkout
 
 New orders use Flutterwave dynamic virtual accounts and stay entirely in WhatsApp:

@@ -43,6 +43,10 @@ class CheckoutRejected(CheckoutError):
     pass
 
 
+class CheckoutPostcodeRequired(CheckoutRejected):
+    pass
+
+
 class CustomerDetails(BaseModel):
     first_name: str = Field(min_length=1, max_length=120)
     last_name: str = Field(min_length=1, max_length=120)
@@ -113,7 +117,7 @@ def _customer_context(customer: CustomerDetails) -> dict[str, Any]:
 
 
 def _delivery_context(customer: CustomerDetails, fulfilment: FulfilmentDetails) -> dict[str, Any]:
-    if not all((fulfilment.street, fulfilment.city, fulfilment.state, fulfilment.country, fulfilment.zip)):
+    if not all((fulfilment.street, fulfilment.city, fulfilment.state, fulfilment.country)):
         raise CheckoutRejected("Delivery address is incomplete")
     return {
         "type": "delivery",
@@ -123,7 +127,9 @@ def _delivery_context(customer: CustomerDetails, fulfilment: FulfilmentDetails) 
         "city": fulfilment.city,
         "state": fulfilment.state,
         "country": fulfilment.country,
-        "zip": fulfilment.zip,
+        # TODO(BUMPA_OPTIONAL_POSTCODE): verify empty zip support on staging.
+        # Ask only if Bumpa rejects it; never invent a customer's postcode.
+        "zip": fulfilment.zip or "",
     }
 
 
@@ -164,6 +170,10 @@ async def list_shipping_options(
         raise CheckoutConnectionInvalid("This shop's Bumpa connection needs attention") from exc
     except (BumpaRateLimited, BumpaUnavailable) as exc:
         raise CheckoutUnavailable("Checkout is temporarily unavailable; please try again shortly") from exc
+    except BumpaValidationError as exc:
+        if not fulfilment.zip and mappers.extract_requires_postcode(exc.errors_payload):
+            raise CheckoutPostcodeRequired("Bumpa requires a delivery postcode") from exc
+        raise CheckoutRejected("Bumpa could not calculate shipping") from exc
     except BumpaError as exc:
         raise CheckoutRejected("Bumpa could not calculate shipping") from exc
 
