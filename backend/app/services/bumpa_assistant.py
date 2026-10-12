@@ -6,6 +6,7 @@ excludes collected names, emails, addresses, bank details and payment links.
 
 import json
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
@@ -14,7 +15,7 @@ import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import Settings
-from app.integrations.whatsapp.client import WhatsAppClient
+from app.integrations.whatsapp.client import ListRow, WhatsAppClient
 from app.logging_conf import logger
 from app.services.llm import GemmaError, LLMService
 
@@ -215,12 +216,16 @@ class ConversationalWhatsAppClient:
     async def send_text(self, to: str, body: str) -> None:
         await self.client.send_text(to, await self._body(body))
 
+    async def send_image(self, to: str, image_url: str, caption: str = "") -> None:
+        await self.client.send_image(to, image_url, caption)
+        self.assistant.record(self.key, "assistant", "Product photo shown: " + caption)
+
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> None:
         await self.client.send_buttons(to, await self._body(body), buttons)
 
-    async def send_list(self, to: str, body: str, rows: list[tuple[str, str]]) -> None:
+    async def send_list(self, to: str, body: str, rows: Sequence[ListRow]) -> None:
         await self.client.send_list(to, await self._body(body), rows)
-        self.assistant.record(self.key, "assistant", "Products shown: " + "; ".join(title for _, title in rows))
+        self.assistant.record(self.key, "assistant", "Products shown: " + "; ".join(row[2] if len(row) == 3 else row[1] for row in rows))
 
     async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None:
         await self.client.send_template(to, name, language, parameters)

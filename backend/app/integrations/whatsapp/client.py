@@ -1,5 +1,6 @@
 """Small outbound WhatsApp interface and Meta Cloud API implementation."""
 
+from collections.abc import Sequence
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -7,12 +8,14 @@ import httpx
 
 MAX_MEDIA_BYTES = 10 * 1024 * 1024
 ALLOWED_MEDIA_HOSTS = {"graph.facebook.com", "lookaside.fbsbx.com", "mmg.whatsapp.net"}
+ListRow = tuple[str, str] | tuple[str, str, str]
 
 
 class WhatsAppClient(Protocol):
     async def send_text(self, to: str, body: str) -> None: ...
+    async def send_image(self, to: str, image_url: str, caption: str = "") -> None: ...
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> None: ...
-    async def send_list(self, to: str, body: str, rows: list[tuple[str, str]]) -> None: ...
+    async def send_list(self, to: str, body: str, rows: Sequence[ListRow]) -> None: ...
     async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None: ...
     async def get_media(self, media_id: str) -> bytes: ...
 
@@ -37,6 +40,13 @@ class MetaWhatsAppClient:
 
     async def send_text(self, to: str, body: str) -> None:
         await self._send(to, {"type": "text", "text": {"preview_url": False, "body": body[:4096]}})
+
+    async def send_image(self, to: str, image_url: str, caption: str = "") -> None:
+        """Send native image media; Meta fetches the public image without our token."""
+        url = urlsplit(image_url)
+        if url.scheme != "https" or not url.hostname or url.username or url.password or len(image_url) > 2048:
+            raise ValueError("Invalid product image URL")
+        await self._send(to, {"type": "image", "image": {"link": image_url, "caption": caption[:1024]}})
 
     async def mark_read_and_typing(self, message_id: str) -> None:
         """Acknowledge a real inbound message while preparing its reply."""
@@ -73,7 +83,7 @@ class MetaWhatsAppClient:
             },
         })
 
-    async def send_list(self, to: str, body: str, rows: list[tuple[str, str]]) -> None:
+    async def send_list(self, to: str, body: str, rows: Sequence[ListRow]) -> None:
         if not 1 <= len(rows) <= 10:
             raise ValueError("WhatsApp lists support one to ten rows")
         await self._send(to, {
@@ -84,7 +94,8 @@ class MetaWhatsAppClient:
                 "action": {
                     "button": "Choose a product",
                     "sections": [{"title": "Products", "rows": [
-                        {"id": identifier[:200], "title": title[:24]} for identifier, title in rows
+                        {"id": row[0][:200], "title": row[1][:24],
+                         **({"description": row[2][:72]} if len(row) == 3 else {})} for row in rows
                     ]}],
                 },
             },

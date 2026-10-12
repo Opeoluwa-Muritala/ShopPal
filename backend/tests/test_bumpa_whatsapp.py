@@ -169,6 +169,29 @@ async def test_meta_client_sends_only_expected_payload_and_token_header():
 
 
 @pytest.mark.anyio
+async def test_meta_sends_native_image_and_picker_descriptions():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"messages": [{"id": "wamid.sent"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = MetaWhatsAppClient("https://graph.facebook.com/v25.0", "123456789", "secret-token", http)
+        await client.send_image("2348012345678", "https://images.example/rose.jpg", "Rose Perfume")
+        await client.send_list("2348012345678", "Droid", [("product:p1", "Rose Perfume", "Rose Perfume — NGN 5,000.00")])
+        with pytest.raises(ValueError):
+            await client.send_image("2348012345678", "https://user:password@images.example/rose.jpg")
+    image = json.loads(requests[0].content)
+    assert image["type"] == "image"
+    assert image["image"] == {"link": "https://images.example/rose.jpg", "caption": "Rose Perfume"}
+    row = json.loads(requests[1].content)["interactive"]["action"]["sections"][0]["rows"][0]
+    assert row["description"] == "Rose Perfume — NGN 5,000.00"
+    assert len(requests) == 2
+    assert all("secret-token" not in request.content.decode() for request in requests)
+
+
+@pytest.mark.anyio
 async def test_meta_read_and_typing_uses_inbound_id_without_customer_text():
     requests = []
 

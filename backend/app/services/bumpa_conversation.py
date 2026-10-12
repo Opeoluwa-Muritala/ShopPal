@@ -10,7 +10,6 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -22,7 +21,7 @@ from app.config import Settings
 from app.db.models import ConversationState, ProductCache, Vendor
 from app.integrations.bumpa import mappers
 from app.integrations.bumpa.credentials import decrypt_credential
-from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
+from app.integrations.whatsapp.client import ListRow, MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
 from app.services.bumpa_assistant import (
     BumpaAssistant,
@@ -155,29 +154,13 @@ class BumpaConversation:
             "menu_page": page, "menu_search": search, "menu_more": len(rows) > PAGE_SIZE,
         })
         business = merchant.business_name or merchant.name
-        body = f"{business}\nHere's what's available:\n"
-        for number, item in enumerate(products, 1):
-            entry = f"\n{number}. {item.name or 'Product'} — {_money(item.price, item.currency)}\n"
-            if item.image_urls:
-                image = str(item.image_urls[0])
-                try:
-                    url = urlsplit(image)
-                    if url.scheme == "https" and url.hostname and not url.username and not url.password and len(image) < 500:
-                        entry += image + "\n"
-                except ValueError:
-                    pass
-            if body and len(body) + len(entry) > 3500:
-                await client.send_text(wa_id, body)
-                body = ""
-            body += entry
-        body += "\nReply with a number or product name."
-        if len(rows) > PAGE_SIZE:
-            body += " Send NEXT for more."
-        await client.send_text(wa_id, body)
-        # Full names above remain readable even though Meta crops row titles.
-        menu_rows = [(f"product:{item.bumpa_product_id}", f"{number}. {item.name or 'Product'}")
-                     for number, item in enumerate(products, 1)]
-        await client.send_list(wa_id, f"Choose an item from {business}.", menu_rows)
+        menu_rows: list[ListRow] = [
+            (f"product:{item.bumpa_product_id}", f"{number}. {item.name or 'Product'}",
+             f"{item.name or 'Product'}: {_money(item.price, item.currency)}")
+            for number, item in enumerate(products, 1)
+        ]
+        note = " Send NEXT for more." if len(rows) > PAGE_SIZE else ""
+        await client.send_list(wa_id, f"Choose an item from {business}.{note}", menu_rows)
 
     async def _product(self, merchant: Vendor, product_id: str) -> tuple[ProductCache | None, bool]:
         return await refresh_product_live(
@@ -185,7 +168,7 @@ class BumpaConversation:
             http_client=self._http, settings=self._settings,
         )
 
-    async def _selected(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState, product_id: str, qty: int | None = None) -> None:
+    async def _selected(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState, product_id: str, qty: int | None = None, *, show_image: bool = True) -> None:
         product, cached_only = await self._product(merchant, product_id)
         if product is None or not product.is_published:
             await client.send_text(wa_id, "That product is no longer available. Choose another from the menu.")
@@ -195,6 +178,13 @@ class BumpaConversation:
             await client.send_text(wa_id, "That product is out of stock. Here are other available items.")
             await self._menu(merchant, wa_id, client)
             return
+        if show_image and getattr(product, "image_urls", []):
+            try:
+                await client.send_image(wa_id, str(product.image_urls[0]), product.name or "Product")
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("Selected product photo unavailable", extra={
+                    "step": "bumpa_product_image", "error_type": type(exc).__name__,
+                })
         payload = {"product_id": product_id}
         description = f"{product.name or 'Product'} — {_money(product.price, product.currency)}."
         if cached_only:
@@ -358,7 +348,7 @@ class BumpaConversation:
             ids = (state.payload or {}).get("menu_ids", [])
             number = int(lower)
             if 1 <= number <= len(ids):
-                await self._selected(merchant, wa_id, client, state, ids[number - 1])
+                await self._selected(merchant, wa_id, client, state, ids[number - 1], 1)
             else:
                 await client.send_text(wa_id, "Choose one of the numbers shown, or send MENU for the products.")
             return
@@ -388,6 +378,13 @@ class BumpaConversation:
                 await client.send_text(wa_id, "There are different offers with that name. Which one would you like?")
                 await self._menu(merchant, wa_id, client, search=text)
                 return
+        if state.step == "payment_method" and lower.isdigit():
+            qty = int(lower)
+            if 1 <= qty <= 100:
+                await self._selected(merchant, wa_id, client, state, state.payload["product_id"], qty, show_image=False)
+            else:
+                await client.send_text(wa_id, "Choose a quantity from 1 to 100.")
+            return
         online = lower in {"online", "pay online", "card", "pay by card", "payment link", "pay_online"}
         transfer = lower in {"transfer", "bank transfer", "pay by transfer", "pay_transfer"}
         checkout = lower in {"checkout", "check out", "buy", "buy now", "proceed", "continue"}
@@ -460,7 +457,7 @@ class BumpaConversation:
             await self._menu(merchant, wa_id, client, page=page)
             return
         if lower.startswith("product:"):
-            await self._selected(merchant, wa_id, client, state, text.split(":", 1)[1])
+            await self._selected(merchant, wa_id, client, state, text.split(":", 1)[1], 1)
             return
         if state.step == "start":
             if lower in {"hi", "hello", "start", ""}:
