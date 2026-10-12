@@ -44,6 +44,7 @@ async def lifespan(application):
         factory = get_async_session_factory()
         job_kwargs = {"session_factory": factory, "http_client": application.state.bumpa_http_client, "settings": settings}
         application.state.bumpa_initial_sync = partial(sync_merchant_products, **job_kwargs)
+        application.state.bumpa_webhook_enabled = True
         scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
         scheduler.start()
     stop = asyncio.Event()
@@ -59,6 +60,7 @@ async def lifespan(application):
         yield
     finally:
         stop.set()
+        application.state.bumpa_webhook_enabled = False
         if scheduler.running:
             scheduler.shutdown(wait=False)
         if task is not None:

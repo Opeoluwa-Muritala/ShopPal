@@ -26,8 +26,9 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db.models import ReplyJob, WhatsAppMessage
-from app.db.session import get_engine
+from app.db.session import get_async_session_factory, get_engine
 from app.logging_conf import logger
+from app.services.bumpa_whatsapp import classify_events, process_bumpa_message
 from app.services.payments import handle_whatsapp_payment_action
 from app.services.security import check_phone_rate_limit, mask_phone
 from app.services.whatsapp import mark_whatsapp_message_read
@@ -143,8 +144,25 @@ async def receive_whatsapp_webhook(
         raise HTTPException(status_code=400, detail="Malformed webhook payload")
     try:
         _validate_payload(payload)
-        read_receipts, media_jobs = await to_thread(process_whatsapp_payload, payload, settings)
-        for action, tx_ref, wa_number, bot_number in _extract_payment_actions(payload):
+        legacy_payload = payload
+        if getattr(request.app.state, "bumpa_webhook_enabled", False):
+            factory = get_async_session_factory()
+            legacy_payload, bumpa_messages = await classify_events(
+                payload, session_factory=factory,
+                legacy_phone_number_id=settings.whatsapp_phone_number_id,
+            )
+            for merchant_id, message in bumpa_messages:
+                background_tasks.add_task(
+                    process_bumpa_message,
+                    merchant_id, message,
+                    session_factory=factory,
+                    handler=getattr(request.app.state, "bumpa_conversation_handler", None),
+                )
+        if legacy_payload.get("entry"):
+            read_receipts, media_jobs = await to_thread(process_whatsapp_payload, legacy_payload, settings)
+        else:
+            read_receipts, media_jobs = [], []
+        for action, tx_ref, wa_number, bot_number in _extract_payment_actions(legacy_payload):
             background_tasks.add_task(handle_whatsapp_payment_action, action, tx_ref=tx_ref, wa_number=wa_number, bot_number=bot_number, settings=settings)
         for media_id, message_type, mime_type in media_jobs:
             background_tasks.add_task(
