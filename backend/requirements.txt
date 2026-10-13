@@ -11,3 +11,4 @@ cryptography>=44,<51
 tenacity>=9,<10
 APScheduler>=3.11,<4
 Pillow>=11.0,<13.0
+geopy>=2.4,<3.0
