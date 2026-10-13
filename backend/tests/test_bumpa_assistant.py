@@ -123,3 +123,16 @@ async def test_customer_reply_never_contains_a_generated_sample_conversation():
     assert await assistant.phrase((uuid4(), "customer"), original, "Droid") == original
     prompt = assistant._generate.await_args.args[0]
     assert "Default to English" in prompt
+
+
+@pytest.mark.anyio
+async def test_product_selector_heading_is_not_rewritten_by_ai():
+    assistant = BumpaAssistant(settings(), None)
+    assistant.phrase = AsyncMock(return_value="Sorry, we don't have any matching products.")
+    client = SimpleNamespace(send_list=AsyncMock())
+    wrapped = ConversationalWhatsAppClient(client, assistant, (uuid4(), "customer"), "Avaiabyaminat", [])
+
+    await wrapped.send_list("customer", "Choose an item from Avaiabyaminat.", [("product:p1", "1. Product", "Product")])
+
+    assert client.send_list.await_args.args[1] == "Choose an item from Avaiabyaminat."
+    assistant.phrase.assert_not_awaited()

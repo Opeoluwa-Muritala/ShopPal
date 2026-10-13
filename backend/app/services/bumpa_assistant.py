@@ -224,7 +224,10 @@ class ConversationalWhatsAppClient:
         await self.client.send_buttons(to, await self._body(body), buttons)
 
     async def send_list(self, to: str, body: str, rows: Sequence[ListRow]) -> None:
-        await self.client.send_list(to, await self._body(body), rows)
+        # Product selectors are authoritative UI: the heading must stay aligned
+        # with the rows. Letting the language model rewrite it can produce a
+        # contradictory apology while the selector still contains products.
+        await self.client.send_list(to, body, rows)
         self.assistant.record(self.key, "assistant", "Products shown: " + "; ".join(row[2] if len(row) == 3 else row[1] for row in rows))
 
     async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None:
