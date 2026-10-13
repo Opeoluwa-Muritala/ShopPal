@@ -10,7 +10,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from pydantic import ValidationError
@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
-from app.db.models import ConversationState, ProductCache, Vendor
+from app.db.models import ConversationState, ProductCache, Vendor, WhatsAppMessage
 from app.integrations.bumpa import mappers
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import ListRow, MetaWhatsAppClient, WhatsAppClient
@@ -26,6 +26,7 @@ from app.logging_conf import logger
 from app.services.bumpa_assistant import (
     BumpaAssistant,
     ConversationalWhatsAppClient,
+    geocode_delivery_address,
     local_delivery_address,
 )
 from app.services.bumpa_baskets import BumpaBaskets
@@ -85,6 +86,11 @@ def _customer(details: dict[str, str]) -> CustomerDetails:
     return CustomerDetails.model_validate({key: details.get(key) for key in ("first_name", "last_name", "email", "phone")})
 
 
+def _default_customer_email(wa_id: str) -> str:
+    digits = "".join(character for character in wa_id if character.isdigit())
+    return f"wa-{digits[-15:] or 'customer'}@checkout.shoppal.app"
+
+
 class BumpaConversation:
     def __init__(
         self,
@@ -117,6 +123,15 @@ class BumpaConversation:
         details = dict(self._details_for(merchant_id, wa_id))
         details[field] = value
         self._details[merchant_id, wa_id] = datetime.now(UTC), details
+
+    async def _record_outbound_message(self, wa_id: str, body: str) -> None:
+        async with self._sessions() as session:
+            session.add(WhatsAppMessage(
+                message_id=f"bot-{uuid4()}", from_number=wa_id, message_type="bot_text",
+                body=body, status="sent", raw_payload={"direction": "outbound", "body": body},
+                wa_timestamp=datetime.now(UTC),
+            ))
+            await session.commit()
 
     def _basket_for(self, merchant_id: UUID, wa_id: str) -> list[CheckoutItem]:
         if not hasattr(self, "_baskets"):
@@ -402,10 +417,9 @@ class BumpaConversation:
         if not all(details.get(field) for field in ("first_name", "last_name")):
             await self._set_state(state, "full_name", state.payload)
             await client.send_text(wa_id, "What is your full name?")
-        elif not details.get("email"):
-            await self._set_state(state, "email", state.payload)
-            await client.send_text(wa_id, "What email should Bumpa attach to your order?")
         else:
+            if not details.get("email"):
+                self._put_detail(merchant.id, wa_id, "email", _default_customer_email(wa_id))
             if not details.get("phone"):
                 self._put_detail(merchant.id, wa_id, "phone", "+" + wa_id.lstrip("+"))
             await self._fulfilment_choice(merchant, wa_id, client, state)
@@ -607,6 +621,13 @@ class BumpaConversation:
                 await client.send_text(wa_id, "There are different offers with that name. Which one would you like?")
                 await self._menu(merchant, wa_id, client, search=text)
                 return
+        if state.step == "start" and lower in {
+            "what is available", "what's available", "what do you have",
+            "what do you have in stock", "what products are available",
+            "show me your products", "show products", "catalog", "catalogue",
+        }:
+            await self._menu(merchant, wa_id, client)
+            return
         if state.step in {"payment_method", "more_items", "edit_quantity"} and lower.isdigit():
             qty = int(lower)
             if 1 <= qty <= 100:
@@ -649,12 +670,28 @@ class BumpaConversation:
         assistant = getattr(self, "_assistant", None)
         if assistant is not None and assistant.enabled:
             key = merchant.id, wa_id
+            if not assistant.history(key):
+                async with self._sessions() as session:
+                    saved_messages = (await session.execute(
+                        select(WhatsAppMessage.message_type, WhatsAppMessage.body)
+                        .where(
+                            WhatsAppMessage.from_number == wa_id,
+                            WhatsAppMessage.body.is_not(None),
+                            WhatsAppMessage.message_type != "status",
+                        )
+                        .order_by(WhatsAppMessage.received_at.desc())
+                        .limit(6)
+                    )).all()
+                assistant.restore_conversation_history(key, [
+                    {"role": "assistant" if message_type == "bot_text" else "user", "content": body or ""}
+                    for message_type, body in reversed(saved_messages)
+                ])
             business = merchant.business_name or merchant.name
             client = ConversationalWhatsAppClient(client, assistant, key, business, [
                 getattr(merchant, "payout_bank_name", None) or "", getattr(merchant, "payout_account_name", None) or "",
                 getattr(merchant, "payout_account_number", None) or "",
                 *self._details_for(merchant.id, wa_id).values(),
-            ])
+            ], self._record_outbound_message)
             canonical = lower in {"cancel", "start over", "menu", "hi", "hello", "start", "pay_online", "pay_transfer"} or ":" in lower or lower.isdigit()
             if message.get("type") == "text" and state.step in {"start", "quantity", "payment_method"} and not canonical:
                 async with self._sessions() as session:
@@ -777,7 +814,7 @@ class BumpaConversation:
             if not 5 <= len(text) <= 500:
                 await client.send_text(wa_id, "Please send your full delivery address, including the area or a landmark.")
                 return
-            address = await assistant.delivery_address(text) if assistant is not None and assistant.enabled else local_delivery_address(text)
+            address = await assistant.delivery_address(text) if assistant is not None and assistant.enabled else await geocode_delivery_address(text)
             postcode = supplied_postcode(text) or address.get("zip") or registered_postcode(text, address["city"], address["state"])
             if postcode:
                 address["zip"] = postcode

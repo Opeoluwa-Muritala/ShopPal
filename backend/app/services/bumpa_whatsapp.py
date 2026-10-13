@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+import json
 from typing import Any
 from uuid import UUID
 
@@ -15,6 +16,7 @@ from app.db.models import (
     ConversationState,
     PendingTransfer,
     Vendor,
+    WhatsAppMessage,
     WhatsAppOptOut,
 )
 from app.logging_conf import logger
@@ -28,7 +30,7 @@ async def classify_events(
     session_factory: async_sessionmaker[AsyncSession],
     legacy_phone_number_id: str,
 ) -> tuple[dict[str, Any], list[tuple[UUID, dict[str, Any]]]]:
-    """Keep Bumpa chat bodies out of the legacy raw-message persistence path."""
+    """Route Bumpa messages while persisting them for conversation history."""
     ids: set[str] = set()
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
@@ -57,6 +59,21 @@ async def classify_events(
             if merchant_id is not None:
                 for message in value.get("messages", []):
                     bumpa_messages.append((merchant_id, message))
+                    message_id = message.get("id")
+                    if message_id:
+                        await session.execute(
+                            insert(WhatsAppMessage)
+                            .values(
+                                message_id=str(message_id),
+                                from_number=str(message.get("from", "")) or None,
+                                message_type=str(message.get("type", "unknown")),
+                                body=_bumpa_message_body(message),
+                                status="received",
+                                wa_timestamp=_bumpa_timestamp(message.get("timestamp")),
+                                raw_payload=message,
+                            )
+                            .on_conflict_do_nothing(index_elements=[WhatsAppMessage.message_id])
+                        )
                 for status in value.get("statuses", []):
                     if status.get("status") == "failed":
                         logger.warning("Bumpa WhatsApp delivery failed", extra={"message_id": status.get("id"), "step": "bumpa_delivery"})
@@ -64,7 +81,27 @@ async def classify_events(
                 legacy_changes.append(change)
         if legacy_changes:
             legacy_entries.append({**entry, "changes": legacy_changes})
+        await session.commit()
     return {**payload, "entry": legacy_entries}, bumpa_messages
+
+
+def _bumpa_timestamp(value: Any) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(int(value), tz=UTC)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _bumpa_message_body(message: dict[str, Any]) -> str | None:
+    message_type = str(message.get("type", "unknown"))
+    typed = message.get(message_type)
+    if message_type == "text" and isinstance(typed, dict):
+        return str(typed.get("body", ""))
+    if message_type == "interactive" and isinstance(typed, dict):
+        reply = typed.get("button_reply") or typed.get("list_reply") or {}
+        if isinstance(reply, dict):
+            return str(reply.get("title") or reply.get("id") or "")
+    return json.dumps(typed, separators=(",", ":"), default=str) if typed is not None else None
 
 
 async def _rate_allowed(session: AsyncSession, merchant_id: UUID, customer_wa_id: str) -> bool:
