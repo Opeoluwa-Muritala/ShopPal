@@ -427,7 +427,7 @@ class BumpaConversation:
     async def _begin_delivery(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         self._put_detail(merchant.id, wa_id, "country", "Nigeria")
         await self._set_state(state, "address", {**state.payload, "fulfilment": "delivery"})
-        await client.send_text(wa_id, "What's your delivery address? Include the area or a landmark. I'll assume Ilorin, Kwara unless you include another city.")
+        await client.send_text(wa_id, "What's your delivery address? Include the area or a nearby landmark.")
 
     async def _confirm(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         try:
@@ -661,7 +661,12 @@ class BumpaConversation:
                 return
         if state.step in {"email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"} and lower not in {"cancel", "start over", "menu"}:
             details = self._details_for(merchant.id, wa_id)
-            needed = ("first_name", "last_name") if state.step == "email" else ("first_name", "last_name", "email")
+            if state.step == "email":
+                self._put_detail(merchant.id, wa_id, "email", details.get("email") or _default_customer_email(wa_id))
+                self._put_detail(merchant.id, wa_id, "phone", details.get("phone") or "+" + wa_id.lstrip("+"))
+                await self._fulfilment_choice(merchant, wa_id, client, state)
+                return
+            needed = ("first_name", "last_name", "email")
             if not all(details.get(field) for field in needed):
                 payload = {key: value for key, value in state.payload.items() if key in {"product_id", "variation_id", "qty", "basket_count"}}
                 await self._set_state(state, "full_name", payload)
@@ -670,7 +675,7 @@ class BumpaConversation:
         assistant = getattr(self, "_assistant", None)
         if assistant is not None and assistant.enabled:
             key = merchant.id, wa_id
-            if not assistant.history(key):
+            if not getattr(assistant, "history", lambda _key: [])(key):
                 async with self._sessions() as session:
                     saved_messages = (await session.execute(
                         select(WhatsAppMessage.message_type, WhatsAppMessage.body)
@@ -766,10 +771,9 @@ class BumpaConversation:
             await self._checkout_details(merchant, wa_id, client, state)
             return
         elif state.step == "payment_method" and lower == "pay_transfer":
-            if len(self._basket_for(merchant.id, wa_id)) > 1:
-                await client.send_text(wa_id, "For a basket with several products, please pay online. Bank transfers currently support one product per reference.")
-                return
-            row = await self._transfers.create(merchant, wa_id, payload["product_id"], int(payload["qty"]), client)
+            basket = self._checkout_items(state)
+            row = await self._transfers.create(merchant, wa_id, payload["product_id"], int(payload["qty"]), client,
+                                               items=[item.model_dump() for item in basket])
             if row is not None:
                 await self._set_state(state, "awaiting_transfer", {"transfer_ref_id": str(row.id)})
             return
@@ -782,18 +786,6 @@ class BumpaConversation:
             self._put_detail(merchant.id, wa_id, "first_name", first)
             self._put_detail(merchant.id, wa_id, "last_name", last)
             await self._checkout_details(merchant, wa_id, client, state)
-            return
-        elif state.step == "email":
-            try:
-                from pydantic import EmailStr, TypeAdapter
-
-                email = str(TypeAdapter(EmailStr).validate_python(text))
-            except ValidationError:
-                await client.send_text(wa_id, "Please send a valid email address.")
-                return
-            self._put_detail(merchant.id, wa_id, "email", email)
-            self._put_detail(merchant.id, wa_id, "phone", "+" + wa_id.lstrip("+"))
-            await self._fulfilment_choice(merchant, wa_id, client, state)
             return
         elif state.step == "phone":
             phone = wa_id if lower == "same" else text

@@ -380,6 +380,7 @@ class PendingTransfer(Identity, Base):
     bumpa_product_id: Mapped[str] = mapped_column(String(120), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    items: Mapped[list | None] = mapped_column(JSONB)
     customer_wa_id: Mapped[str | None] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(30), server_default=text("'awaiting_proof'"), nullable=False)
     proof_media_id: Mapped[str | None] = mapped_column(String(255))

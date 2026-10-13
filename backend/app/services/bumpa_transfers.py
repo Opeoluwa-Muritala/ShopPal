@@ -56,6 +56,7 @@ class TransferService:
 
     async def create(
         self, merchant: Vendor, customer_wa_id: str, product_id: str, qty: int, client: WhatsAppClient,
+        *, items: list[dict[str, Any]] | None = None,
     ) -> PendingTransfer | None:
         if qty < 1 or qty > 100:
             await client.send_text(customer_wa_id, "Choose a quantity from 1 to 100 first.")
@@ -63,22 +64,26 @@ class TransferService:
         if not all((merchant.payout_bank_name, merchant.payout_account_name, merchant.payout_account_number)):
             await client.send_text(customer_wa_id, "Bank transfer is not configured for this shop.")
             return None
-        product, cached_only = await refresh_product_live(
-            merchant.id, product_id, session_factory=self.sessions, http_client=self.http, settings=self.settings,
-        )
-        if product is None or not product.is_published or product.price is None:
-            await client.send_text(customer_wa_id, "This item cannot be quoted for transfer right now.")
-            return None
-        if product.currency != "NGN":
-            await client.send_text(customer_wa_id, "Bank transfer is available only for NGN products.")
-            return None
-        if product.stock_qty is not None and product.stock_qty < qty:
-            await client.send_text(customer_wa_id, "This item is out of stock in that quantity.")
-            return None
-        if cached_only:
-            await client.send_text(customer_wa_id, "Bumpa is unavailable, so I cannot confirm the transfer price. Please try again shortly.")
-            return None
-        amount = product.price * qty
+        basket = items or [{"product_id": product_id, "variation_id": None, "qty": qty}]
+        quoted: list[dict[str, Any]] = []
+        amount = Decimal(0)
+        for item in basket:
+            product, cached_only = await refresh_product_live(
+                merchant.id, item["product_id"], session_factory=self.sessions, http_client=self.http, settings=self.settings,
+            )
+            item_qty = int(item["qty"])
+            if product is None or not product.is_published or product.price is None or product.currency != "NGN":
+                await client.send_text(customer_wa_id, "One of the items cannot be quoted for transfer right now.")
+                return None
+            if product.stock_qty is not None and product.stock_qty < item_qty:
+                await client.send_text(customer_wa_id, f"{product.name or 'An item'} is not available in that quantity.")
+                return None
+            if cached_only:
+                await client.send_text(customer_wa_id, "Bumpa is unavailable, so I cannot confirm the transfer total. Please try again shortly.")
+                return None
+            line_total = product.price * item_qty
+            amount += line_total
+            quoted.append({"product_id": item["product_id"], "variation_id": item.get("variation_id"), "qty": item_qty, "name": product.name, "unit_price": str(product.price)})
         row: PendingTransfer | None = None
         for _ in range(5):
             try:
@@ -90,7 +95,7 @@ class TransferService:
                     if not await has_open_capacity(session, merchant.id, customer_wa_id, kind="transfer"):
                         await client.send_text(customer_wa_id, "You have three pending transfers. Please resolve one before starting another.")
                         return None
-                    row = await save_pending_transfer(session, merchant.id, _reference(), product_id, qty, amount, customer_wa_id)
+                    row = await save_pending_transfer(session, merchant.id, _reference(), product_id, qty, amount, customer_wa_id, items=quoted)
                     await session.commit()
                     break
             except IntegrityError:

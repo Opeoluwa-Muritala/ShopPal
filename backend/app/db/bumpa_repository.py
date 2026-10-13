@@ -123,6 +123,7 @@ async def save_pending_transfer(
     quantity: int,
     amount: Decimal,
     customer_wa_id: str,
+    items: list[dict] | None = None,
 ) -> PendingTransfer:
     if quantity < 1 or amount < 0:
         raise ValueError("Invalid transfer quantity or amount")
@@ -132,6 +133,7 @@ async def save_pending_transfer(
         bumpa_product_id=product_id,
         quantity=quantity,
         amount=amount,
+        items=items,
         customer_wa_id=customer_wa_id,
         status="awaiting_proof",
     )
