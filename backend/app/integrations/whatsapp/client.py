@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.logging_conf import logger
 from app.services.product_images import (
     MAX_PRODUCT_IMAGE_UPLOAD_BYTES,
     compress_product_image,
@@ -42,7 +43,15 @@ class MetaWhatsAppClient:
             json={"messaging_product": "whatsapp", "to": to, **payload},
             timeout=20,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.error(
+                "Meta WhatsApp send rejected",
+                extra={"step": "whatsapp_send", "status_code": response.status_code,
+                       "error_body": response.text[:1000]},
+            )
+            raise
 
     async def send_text(self, to: str, body: str) -> None:
         await self._send(to, {"type": "text", "text": {"preview_url": False, "body": body[:4096]}})

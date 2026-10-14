@@ -335,13 +335,24 @@ class BumpaConversation:
 
     async def _menu(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, *, page: int = 0, search: str | None = None) -> None:
         async with self._sessions() as session:
-            query = select(ProductCache).where(ProductCache.merchant_id == merchant.id, ProductCache.is_published.is_(True))
+            query = select(ProductCache).where(
+                ProductCache.merchant_id == merchant.id,
+                ProductCache.is_published.is_(True),
+                (ProductCache.stock_qty.is_(None) | (ProductCache.stock_qty > 0)),
+            )
             if search:
                 query = query.where(ProductCache.name.ilike(f"%{search[:80]}%"))
             rows = _unique_offers(list((await session.scalars(query.order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()))
         rows = rows[page * PAGE_SIZE: (page + 1) * PAGE_SIZE + 1]
         products = rows[:PAGE_SIZE - 1] if len(rows) > PAGE_SIZE else rows
         if not products:
+            if search:
+                await client.send_text(
+                    wa_id,
+                    f"I couldn't find a product matching \"{search[:80]}\". Here are the available scarves instead:",
+                )
+                await self._menu(merchant, wa_id, client)
+                return
             await client.send_text(wa_id, "No matching products right now. Send a product name to search, or MENU to browse.")
             return
         state = await self._state(merchant.id, wa_id)
@@ -853,7 +864,8 @@ class BumpaConversation:
                 matches = list((await exact.scalars(select(ProductCache).where(
                     ProductCache.merchant_id == merchant.id,
                     ProductCache.is_published.is_(True),
-                    func.lower(ProductCache.name) == lower,
+                    (ProductCache.stock_qty.is_(None) | (ProductCache.stock_qty > 0)),
+                    func.lower(ProductCache.name).ilike(f"%{lower[:80]}%"),
                 ))).all())
             matches = _unique_offers(matches)
             if len(matches) == 1:

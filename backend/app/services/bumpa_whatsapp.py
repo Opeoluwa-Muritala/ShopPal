@@ -6,6 +6,8 @@ import json
 from typing import Any
 from uuid import UUID
 
+import httpx
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -194,6 +196,9 @@ async def process_bumpa_message(
         logger.info("Bumpa WhatsApp rate limit", extra={"message_id": message_id, "step": "bumpa_rate_limit"})
         return "rate_limited"
     if handler is not None:
-        await handler(merchant, message)
+        try:
+            await handler(merchant, message)
+        except httpx.HTTPStatusError:
+            logger.exception("Bumpa WhatsApp reply was rejected by Meta", extra={"step": "bumpa_reply"})
     logger.info("Bumpa WhatsApp message processed", extra={"message_id": message_id, "step": "bumpa_message"})
     return "processed"
