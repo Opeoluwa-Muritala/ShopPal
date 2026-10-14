@@ -188,9 +188,20 @@ class BumpaConversation:
             await client.send_text(wa_id, "Choose a product first.")
             await self._menu(merchant, wa_id, client)
             return
-        await self._set_state(state, "payment_method", payload)
-        await client.send_buttons(wa_id, "How would you like to pay?",
-                                  [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
+        await self._start_transfer(merchant, wa_id, client, state, payload)
+
+    async def _start_transfer(
+        self, merchant: Vendor, wa_id: str, client: WhatsAppClient,
+        state: ConversationState, payload: dict[str, Any],
+    ) -> None:
+        """Start the single supported payment path for every customer."""
+        basket = self._checkout_items(state)
+        row = await self._transfers.create(
+            merchant, wa_id, payload["product_id"], int(payload["qty"]), client,
+            items=[item.model_dump() for item in basket],
+        )
+        if row is not None:
+            await self._set_state(state, "awaiting_transfer", {"transfer_ref_id": str(row.id)})
 
     async def _add_selection(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState,
                              payload: dict[str, Any], product: ProductCache, *, replace: bool = False) -> None:
@@ -558,6 +569,8 @@ class BumpaConversation:
             await client.send_text(wa_id, await self._payments.customer_orders(merchant, wa_id))
             return
         if lower in {"i've paid", "ive paid", "paid", "order status", "resend"}:
+            if lower == "resend" and await self._transfers.resend(merchant, wa_id, client):
+                return
             ref = await self._payments.latest_for_customer(merchant.id, wa_id)
             if ref is not None:
                 if lower == "resend":
@@ -575,7 +588,7 @@ class BumpaConversation:
                     await client.send_text(wa_id, "Bumpa has confirmed your payment. Send ORDER STATUS for the latest order update.")
                     return
                 else:
-                    await client.send_text(wa_id, "This payment link is no longer active. Reply RESEND for a fresh link.")
+                    await client.send_text(wa_id, "That payment attempt is no longer active. Reply RESEND for the bank transfer details again.")
                     return
         state = await self._state(merchant.id, wa_id)
         if (
@@ -599,7 +612,7 @@ class BumpaConversation:
             await self._menu(merchant, wa_id, client)
             return
         if state.step in {"awaiting_payment", "awaiting_transfer"} and lower not in {"cancel", "start over"}:
-            await client.send_text(wa_id, "Your basket is waiting for payment confirmation. I'll clear it once payment is confirmed. For an online payment, reply RESEND for a fresh link.")
+            await client.send_text(wa_id, "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or send I've paid after transferring.")
             return
         if state.step == "cart_menu":
             if lower.startswith("cartpage:"):
@@ -705,17 +718,10 @@ class BumpaConversation:
             if state.step != "more_items":
                 return
             await self._payment_choices(merchant, wa_id, client, state)
-            if checkout:
-                await client.send_buttons(wa_id, "Would you like a payment link or a bank transfer?",
-                                          [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
-                return
+            return
         if state.step == "payment_method":
-            if online or transfer:
-                text = "pay_online" if online else "pay_transfer"
-                lower = text
-            elif checkout:
-                await client.send_buttons(wa_id, "Would you like a payment link or a bank transfer?",
-                                          [("pay_online", "Pay online"), ("pay_transfer", "Pay by transfer")])
+            if online or transfer or checkout:
+                await self._start_transfer(merchant, wa_id, client, state, state.payload)
                 return
         if state.step in {"email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"} and lower not in {"cancel", "start over", "menu"}:
             details = self._details_for(merchant.id, wa_id)
@@ -825,15 +831,8 @@ class BumpaConversation:
                 return
             await client.send_text(wa_id, "Reply with a quantity from 1 to 100.")
             return
-        elif state.step == "payment_method" and lower == "pay_online":
-            await self._checkout_details(merchant, wa_id, client, state)
-            return
-        elif state.step == "payment_method" and lower == "pay_transfer":
-            basket = self._checkout_items(state)
-            row = await self._transfers.create(merchant, wa_id, payload["product_id"], int(payload["qty"]), client,
-                                               items=[item.model_dump() for item in basket])
-            if row is not None:
-                await self._set_state(state, "awaiting_transfer", {"transfer_ref_id": str(row.id)})
+        elif state.step == "payment_method" and lower in {"pay_online", "pay_transfer"}:
+            await self._start_transfer(merchant, wa_id, client, state, payload)
             return
         elif state.step == "full_name":
             names = text.split(maxsplit=1)

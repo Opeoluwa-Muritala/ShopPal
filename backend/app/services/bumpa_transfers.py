@@ -49,6 +49,30 @@ class TransferService:
         self.on_confirm: Callable[[PendingTransfer], Awaitable[None]] | None = None
         self.on_owner_notified: Callable[[str, str], Awaitable[None]] | None = None
 
+    async def resend(self, merchant: Vendor, wa_id: str, client: WhatsAppClient) -> bool:
+        """Resend active transfer instructions instead of an online link."""
+        async with self.sessions() as session:
+            row = await session.scalar(
+                select(PendingTransfer).where(
+                    PendingTransfer.merchant_id == merchant.id,
+                    PendingTransfer.customer_wa_id == wa_id,
+                    PendingTransfer.status.in_(["awaiting_proof", "proof_received"]),
+                ).order_by(PendingTransfer.created_at.desc())
+            )
+        if row is None:
+            return False
+        await client.send_text(
+            wa_id,
+            f"Pay {_amount(row.amount)} using these bank details:\n"
+            f"Bank: {merchant.payout_bank_name}\n"
+            f"Account name: {merchant.payout_account_name}\n"
+            f"Account number: {merchant.payout_account_number}\n\n"
+            f"Put {row.reference} in the transfer narration. "
+            "Send 'I've paid' or a screenshot of your receipt when done. "
+            "Your payment is confirmed only after the owner checks their bank.",
+        )
+        return True
+
     def client_for(self, merchant: Vendor) -> WhatsAppClient | None:
         if not merchant.whatsapp_phone_number_id or not merchant.whatsapp_token_enc:
             return None
