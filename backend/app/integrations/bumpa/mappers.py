@@ -204,6 +204,26 @@ def extract_shipping_id(raw: Any) -> str | None:
     return _string(raw, "shipping_id", "shipping_id", "shipping_method_id", "id")
 
 
+def extract_shipping_fee(raw: Any) -> Decimal | None:
+    return _decimal(
+        raw,
+        "shipping_fee",
+        "shipping_fee",
+        "delivery_fee",
+        "delivery_fee",
+        "fee",
+        "cost",
+        "price",
+        "amount",
+        "data.shipping_fee",
+        "data.delivery_fee",
+        "data.fee",
+        "data.cost",
+        "data.price",
+        "data.amount",
+    )
+
+
 def extract_product_rows(raw: Any) -> list[dict[str, Any]] | None:
     value = raw if isinstance(raw, list) else _lookup(raw, "data.products", "products", "data", "items")
     if isinstance(value, list):

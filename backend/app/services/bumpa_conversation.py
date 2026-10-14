@@ -27,7 +27,6 @@ from app.services.bumpa_assistant import (
     BumpaAssistant,
     ConversationalWhatsAppClient,
     geocode_delivery_address,
-    local_delivery_address,
 )
 from app.services.bumpa_baskets import BumpaBaskets
 from app.services.bumpa_checkout import (
@@ -45,7 +44,6 @@ from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.delivery_postcodes import registered_postcode, supplied_postcode
-from app.services.demo_catalog_images import demo_image_url
 
 DETAILS_TTL = timedelta(hours=1)
 BASKET_TTL = timedelta(hours=24)
@@ -337,9 +335,7 @@ class BumpaConversation:
             await client.send_text(wa_id, "That product is out of stock. Here are other available items.")
             await self._menu(merchant, wa_id, client)
             return
-        image_url = demo_image_url(merchant.id, product.name)
-        if image_url is None and getattr(product, "image_urls", []):
-            image_url = str(product.image_urls[0])
+        image_url = str(product.image_urls[0]) if getattr(product, "image_urls", []) else None
         if show_image and image_url:
             try:
                 await client.send_image(wa_id, image_url, product.name or "Product")
@@ -396,12 +392,22 @@ class BumpaConversation:
         except (CheckoutError, ValidationError, KeyError, ValueError):
             await client.send_text(wa_id, "Shipping is unavailable. Please try again shortly or send CANCEL.")
             return
-        rows = [(f"shipping:{shipping_id}", str(option.get("name") or option.get("title") or "Delivery option"))
-                for option in options if (shipping_id := mappers.extract_shipping_id(option))]
+        shipping_options: list[dict[str, Any]] = []
+        rows = []
+        for option in options:
+            shipping_id = mappers.extract_shipping_id(option)
+            if not shipping_id:
+                continue
+            name = str(option.get("name") or option.get("title") or "Delivery option")
+            fee = mappers.extract_shipping_fee(option)
+            label = f"{name} ({_money(fee, 'NGN')})" if fee is not None else name
+            rows.append((f"shipping:{shipping_id}", label))
+            shipping_options.append({"id": shipping_id, "name": name, "fee": str(fee) if fee is not None else None})
         if not rows:
             await client.send_text(wa_id, "No delivery options are available for that address. Send CANCEL to start over.")
             return
-        await self._set_state(state, "shipping", {**state.payload, "shipping_ids": [row[0][9:] for row in rows]})
+        await self._set_state(state, "shipping", {**state.payload, "shipping_options": shipping_options,
+                                                   "shipping_ids": [row[0][9:] for row in rows]})
         await client.send_list(wa_id, "Choose a delivery option.", rows[:10])
 
     async def _payment_outage(self, merchant: Vendor, wa_id: str, client: WhatsAppClient) -> None:
@@ -481,6 +487,15 @@ class BumpaConversation:
         if state.payload.get("fulfilment") == "delivery":
             details = self._details_for(merchant.id, wa_id)
             address_note = f" Deliver to: {details.get('street', '')}, {details.get('city', '')}, {details.get('state', '')}."
+        shipping_fee = Decimal("0")
+        shipping_id = state.payload.get("shipping_id")
+        for option in state.payload.get("shipping_options", []):
+            if option.get("id") == shipping_id and option.get("fee") is not None:
+                shipping_fee = Decimal(str(option["fee"]))
+                break
+        if shipping_fee:
+            summaries.append(f"Delivery: {_money(shipping_fee, currency)}")
+            total += shipping_fee
         await client.send_buttons(wa_id, f"{'; '.join(summaries)}: {_money(total, currency)}.{address_note}{note} Confirm checkout?", [("confirm", "Confirm"), ("cancel", "Cancel")])
 
     async def _start_checkout(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
