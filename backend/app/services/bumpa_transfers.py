@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.db.bumpa_repository import save_pending_transfer
-from app.db.models import ConversationState, PendingTransfer, Vendor
+from app.db.models import ConversationState, PendingTransfer, Vendor, WhatsAppMessage
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
@@ -47,6 +47,7 @@ class TransferService:
         self.http = http_client
         self.settings = settings
         self.on_confirm: Callable[[PendingTransfer], Awaitable[None]] | None = None
+        self.on_owner_notified: Callable[[str, str], Awaitable[None]] | None = None
 
     def client_for(self, merchant: Vendor) -> WhatsAppClient | None:
         if not merchant.whatsapp_phone_number_id or not merchant.whatsapp_token_enc:
@@ -119,8 +120,11 @@ class TransferService:
             return None
         await client.send_text(
             customer_wa_id,
-            f"Pay {_amount(amount)} to {merchant.payout_bank_name}, {merchant.payout_account_name}, "
-            f"account {merchant.payout_account_number}. Put {row.reference} in the transfer narration. "
+            f"Pay {_amount(amount)} using these bank details:\n"
+            f"Bank: {merchant.payout_bank_name}\n"
+            f"Account name: {merchant.payout_account_name}\n"
+            f"Account number: {merchant.payout_account_number}\n\n"
+            f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. Your payment is confirmed only after the owner checks their bank.",
         )
         return row
@@ -165,6 +169,9 @@ class TransferService:
                 # TODO(WHATSAPP_OWNER_TEMPLATE): register this template for alerts
                 # outside the owner conversation window.
                 await client.send_text(merchant.owner_whatsapp_number, notice)
+            on_owner_notified = getattr(self, "on_owner_notified", None)
+            if on_owner_notified is not None:
+                await on_owner_notified(merchant.owner_whatsapp_number, notice)
         return True
 
     async def owner_action(self, merchant: Vendor, message: dict[str, Any], client: WhatsAppClient) -> bool:

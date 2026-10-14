@@ -105,6 +105,7 @@ class BumpaConversation:
         self._remote_baskets = BumpaBaskets(session_factory, http_client, settings)
         self._transfers = TransferService(session_factory, http_client, settings)
         self._transfers.on_confirm = self._basket_paid
+        self._transfers.on_owner_notified = self._record_outbound_message
         self._payments = payment_tracker or PaymentTracker(session_factory, http_client, settings)
         self._payments.on_paid = self._basket_paid
         self._assistant = BumpaAssistant(settings, http_client)
@@ -587,6 +588,13 @@ class BumpaConversation:
             return
         if lower in {"cart", "my cart", "view cart", "show cart", "show my cart", "edit cart", "basket", "edit basket"}:
             await self._show_basket(merchant, wa_id, client, state)
+            return
+        if state.step in {"awaiting_payment", "awaiting_transfer"} and lower in {"new order", "order more", "shop more", "browse more"}:
+            self._details.pop((merchant.id, wa_id), None)
+            self._baskets.pop((merchant.id, wa_id), None)
+            self._remote_baskets.forget(merchant.id, wa_id)
+            await self._set_state(state, "start", {})
+            await self._menu(merchant, wa_id, client)
             return
         if state.step in {"awaiting_payment", "awaiting_transfer"} and lower not in {"cancel", "start over"}:
             await client.send_text(wa_id, "Your basket is waiting for payment confirmation. I'll clear it once payment is confirmed. For an online payment, reply RESEND for a fresh link.")
