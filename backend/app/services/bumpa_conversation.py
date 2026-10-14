@@ -340,7 +340,7 @@ class BumpaConversation:
                 query = query.where(ProductCache.name.ilike(f"%{search[:80]}%"))
             rows = _unique_offers(list((await session.scalars(query.order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()))
         rows = rows[page * PAGE_SIZE: (page + 1) * PAGE_SIZE + 1]
-        products = rows[:PAGE_SIZE]
+        products = rows[:PAGE_SIZE - 1] if len(rows) > PAGE_SIZE else rows
         if not products:
             await client.send_text(wa_id, "No matching products right now. Send a product name to search, or MENU to browse.")
             return
@@ -356,6 +356,8 @@ class BumpaConversation:
              f"{item.name or 'Product'}: {_money(item.price, item.currency)}")
             for number, item in enumerate(products, 1)
         ]
+        if len(rows) > PAGE_SIZE:
+            menu_rows.append(("menu:more", "More scarves", "See more scarves"))
         note = " Send NEXT for more." if len(rows) > PAGE_SIZE else ""
         await client.send_list(wa_id, f"Choose an item from {business}.{note}", menu_rows)
 
@@ -839,9 +841,23 @@ class BumpaConversation:
         if lower.startswith("product:"):
             await self._selected(merchant, wa_id, client, state, text.split(":", 1)[1], 1)
             return
+        if state.step == "start" and lower == "menu:more":
+            await self._menu(merchant, wa_id, client, page=int(state.payload.get("menu_page", 0)) + 1,
+                             search=state.payload.get("menu_search"))
+            return
         if state.step == "start":
             if lower in {"hi", "hello", "start", ""}:
                 await client.send_text(wa_id, f"Hi! Welcome to {merchant.business_name or merchant.name}. What are you looking for today?")
+                return
+            async with self._sessions() as exact:
+                matches = list((await exact.scalars(select(ProductCache).where(
+                    ProductCache.merchant_id == merchant.id,
+                    ProductCache.is_published.is_(True),
+                    func.lower(ProductCache.name) == lower,
+                ))).all())
+            matches = _unique_offers(matches)
+            if len(matches) == 1:
+                await self._selected(merchant, wa_id, client, state, matches[0].bumpa_product_id, 1)
                 return
             await self._menu(merchant, wa_id, client, search=None if lower in {"hi", "hello", "start", ""} else text)
             return
