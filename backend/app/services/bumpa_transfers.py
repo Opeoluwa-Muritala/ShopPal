@@ -72,18 +72,32 @@ class TransferService:
                 merchant.id, item["product_id"], session_factory=self.sessions, http_client=self.http, settings=self.settings,
             )
             item_qty = int(item["qty"])
-            if product is None or not product.is_published or product.price is None or product.currency != "NGN":
+            currency = (product.currency or "NGN").upper() if product is not None else None
+            if product is None:
+                reason = "missing_product"
+            elif not product.is_published:
+                reason = "unpublished_product"
+            elif product.price is None:
+                reason = "missing_price"
+            elif currency != "NGN":
+                reason = "unsupported_currency"
+            else:
+                reason = None
+            if reason is not None:
+                logger.warning("Transfer item could not be quoted", extra={
+                    "step": "bumpa_transfer_quote",
+                    "merchant_id": str(merchant.id),
+                    "product_id": str(item.get("product_id", ""))[:120],
+                    "reason": reason,
+                })
                 await client.send_text(customer_wa_id, "One of the items cannot be quoted for transfer right now.")
                 return None
             if product.stock_qty is not None and product.stock_qty < item_qty:
                 await client.send_text(customer_wa_id, f"{product.name or 'An item'} is not available in that quantity.")
                 return None
-            if cached_only:
-                await client.send_text(customer_wa_id, "Bumpa is unavailable, so I cannot confirm the transfer total. Please try again shortly.")
-                return None
             line_total = product.price * item_qty
             amount += line_total
-            quoted.append({"product_id": item["product_id"], "variation_id": item.get("variation_id"), "qty": item_qty, "name": product.name, "unit_price": str(product.price)})
+            quoted.append({"product_id": item["product_id"], "variation_id": item.get("variation_id"), "qty": item_qty, "name": product.name, "unit_price": str(product.price), "currency": currency, "cached_only": cached_only})
         row: PendingTransfer | None = None
         for _ in range(5):
             try:
