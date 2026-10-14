@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -48,6 +48,12 @@ from app.services.delivery_postcodes import registered_postcode, supplied_postco
 DETAILS_TTL = timedelta(hours=1)
 BASKET_TTL = timedelta(hours=24)
 PAGE_SIZE = 10
+SCARF_COLLECTIONS = [
+    "Printed scarves", "Ombre scarves", "Asma scarves", "Gold Dust Chiffon",
+    "silky scarves", "Snake Scarves", "Two-toned scarves", "Chiffon scarves",
+    "Shadow Jersey", "Crinkled scarves", "2 in 1 Jersey scarves", "Flower Bouquet",
+    "Rainbow scarves", "Vintage scarf", "Cotton Printed Scarf", "Mini Jersey",
+]
 
 
 def _unique_offers(rows: list[ProductCache]) -> list[ProductCache]:
@@ -334,6 +340,13 @@ class BumpaConversation:
         state.payload = payload
 
     async def _menu(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, *, page: int = 0, search: str | None = None) -> None:
+        if search is None and page == 0:
+            state = await self._state(merchant.id, wa_id)
+            await self._set_state(state, "collection_select", {"collection_page": 0, "basket_count": len(self._basket_for(merchant.id, wa_id))})
+            collection_rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[:9])]
+            collection_rows.append(("collection:more", "More collections", "See more scarf collections"))
+            await client.send_list(wa_id, "Choose a scarf collection first.", collection_rows)
+            return
         async with self._sessions() as session:
             query = select(ProductCache).where(
                 ProductCache.merchant_id == merchant.id,
@@ -341,7 +354,10 @@ class BumpaConversation:
                 (ProductCache.stock_qty.is_(None) | (ProductCache.stock_qty > 0)),
             )
             if search:
-                query = query.where(ProductCache.name.ilike(f"%{search[:80]}%"))
+                query = query.where(
+                    ProductCache.name.ilike(f"%{search[:80]}%")
+                    | cast(ProductCache.raw, Text).ilike(f"%{search[:80]}%")
+                )
             rows = _unique_offers(list((await session.scalars(query.order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()))
         rows = rows[page * PAGE_SIZE: (page + 1) * PAGE_SIZE + 1]
         products = rows[:PAGE_SIZE - 1] if len(rows) > PAGE_SIZE else rows
@@ -852,6 +868,24 @@ class BumpaConversation:
         if lower.startswith("product:"):
             await self._selected(merchant, wa_id, client, state, text.split(":", 1)[1], 1)
             return
+        if state.step == "collection_select" and lower.startswith("collection:"):
+            value = text.split(":", 1)[1]
+            if value == "more":
+                rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[9:], 9)]
+                await self._set_state(state, "collection_select", {"collection_page": 1, "basket_count": len(self._basket_for(merchant.id, wa_id))})
+                await client.send_list(wa_id, "Choose another scarf collection.", rows)
+                return
+            try:
+                collection = SCARF_COLLECTIONS[int(value)]
+            except (ValueError, IndexError):
+                await client.send_text(wa_id, "Please choose one of the collections shown.")
+                return
+            await self._menu(merchant, wa_id, client, search=collection)
+            return
+        if state.step == "collection_select" and message.get("type") == "text":
+            if lower not in {"menu", "cancel", "start over", "more", "next"} and not lower.startswith("collection:"):
+                await self._menu(merchant, wa_id, client, search=text)
+                return
         if state.step == "start" and lower == "menu:more":
             await self._menu(merchant, wa_id, client, page=int(state.payload.get("menu_page", 0)) + 1,
                              search=state.payload.get("menu_search"))
