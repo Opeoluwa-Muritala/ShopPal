@@ -30,12 +30,6 @@ from app.integrations.bumpa.client import (
 from app.integrations.bumpa.credentials import decrypt_credential
 
 PAGE_SIZE = 50
-STORE_COLLECTIONS = [
-    "Printed scarves", "Ombre scarves", "Asma scarves", "Gold Dust Chiffon",
-    "silky scarves", "Snake Scarves", "Two-toned scarves", "Chiffon scarves",
-    "Shadow Jersey", "Crinkled scarves", "2 in 1 Jersey scarves", "Flower Bouquet",
-    "Rainbow scarves", "Vintage scarf", "Cotton Printed Scarf", "Mini Jersey",
-]
 
 
 @dataclass(frozen=True)
@@ -119,31 +113,48 @@ async def sync_merchant_products(
         # collection feed so chat can browse from one local source of truth.
         storefront_slug = re.sub(r"[^a-z0-9]+", "", (merchant.business_name or "").lower()) if merchant else ""
         storefront_base = f"https://{storefront_slug}.bumpa.shop" if storefront_slug else ""
+        collection_names: list[str] = []
+        if storefront_base:
+            collections_response = await http_client.get(
+                f"{storefront_base}/storefront/collections",
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
+            )
+            collections_response.raise_for_status()
+            collection_names = [
+                str(item["tag"])
+                for item in collections_response.json().get("tags", [])
+                if isinstance(item, dict) and item.get("tag")
+            ]
         async with session_factory() as session:
-            for collection in STORE_COLLECTIONS:
-                if storefront_base:
+            for collection in collection_names:
+                page = 1
+                while storefront_base:
                     storefront_response = await http_client.get(
                         f"{storefront_base}/storefront/products",
-                        params={"tag": collection, "limit": PAGE_SIZE, "page": 1},
+                        params={"tag": collection, "limit": PAGE_SIZE, "page": page},
                         headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
                     )
                     storefront_response.raise_for_status()
-                    response = storefront_response.json()
-                else:
-                    response = {"products": {"data": []}}
-                for raw in mappers.extract_product_rows(response) or []:
-                    product_id = mappers.extract_product_id(raw)
-                    if not product_id:
-                        continue
-                    cached = await get_cached_product(session, merchant_id, product_id)
-                    if cached is None:
-                        continue
-                    enriched = dict(cached.raw or {})
-                    collections = list(enriched.get("collections") or [])
-                    if collection not in collections:
-                        collections.append(collection)
-                    enriched["collections"] = collections
-                    cached.raw = enriched
+                    rows = mappers.extract_product_rows(storefront_response.json()) or []
+                    if not rows:
+                        break
+                    for raw in rows:
+                        product_id = mappers.extract_product_id(raw)
+                        if not product_id:
+                            continue
+                        cached = await get_cached_product(session, merchant_id, product_id)
+                        if cached is None:
+                            await _cache_product(session, merchant_id, raw, started_at)
+                            cached = await get_cached_product(session, merchant_id, product_id)
+                        if cached is None:
+                            continue
+                        enriched = dict(cached.raw or {})
+                        collections = list(enriched.get("collections") or [])
+                        if collection not in collections:
+                            collections.append(collection)
+                        enriched["collections"] = collections
+                        cached.raw = enriched
+                    page += 1
             await session.commit()
         async with session_factory() as session:
             await session.execute(
