@@ -63,10 +63,10 @@ class TransferService:
             return False
         await client.send_text(
             wa_id,
-            f"Pay {_amount(row.amount)} using these bank details:\n"
-            f"Bank: {merchant.payout_bank_name}\n"
-            f"Account name: {merchant.payout_account_name}\n"
-            f"Account number: {merchant.payout_account_number}\n\n"
+            f"*Amount to pay:*\n{_amount(row.amount)}\n\n"
+            f"*Bank:*\n{merchant.payout_bank_name}\n"
+            f"*Account name:*\n{merchant.payout_account_name}\n"
+            f"*Account number:*\n{merchant.payout_account_number}\n\n"
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. "
             "Your payment is confirmed only after the owner checks their bank.",
@@ -151,10 +151,10 @@ class TransferService:
             return None
         await client.send_text(
             customer_wa_id,
-            f"Pay {_amount(amount)} using these bank details:\n"
-            f"Bank: {merchant.payout_bank_name}\n"
-            f"Account name: {merchant.payout_account_name}\n"
-            f"Account number: {merchant.payout_account_number}\n\n"
+            f"*Amount to pay:*\n{_amount(amount)}\n\n"
+            f"*Bank:*\n{merchant.payout_bank_name}\n"
+            f"*Account name:*\n{merchant.payout_account_name}\n"
+            f"*Account number:*\n{merchant.payout_account_number}\n\n"
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. Your payment is confirmed only after the owner checks their bank.",
         )

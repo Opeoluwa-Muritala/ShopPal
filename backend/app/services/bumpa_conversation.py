@@ -428,15 +428,16 @@ class BumpaConversation:
                 continue
             name = str(option.get("name") or option.get("title") or "Delivery option")
             fee = mappers.extract_shipping_fee(option)
-            label = f"{name} ({_money(fee, 'NGN')})" if fee is not None else name
-            rows.append((f"shipping:{shipping_id}", label))
+            label = name[:24]
+            description = f"Delivery fee: {_money(fee, 'NGN')}" if fee is not None else "Fee confirmed by the shop"
+            rows.append((f"shipping:{shipping_id}", label, description))
             shipping_options.append({"id": shipping_id, "name": name, "fee": str(fee) if fee is not None else None})
         if not rows:
             await client.send_text(wa_id, "No delivery options are available for that address. Send CANCEL to start over.")
             return
         await self._set_state(state, "shipping", {**state.payload, "shipping_options": shipping_options,
                                                    "shipping_ids": [row[0][9:] for row in rows]})
-        await client.send_list(wa_id, "Choose a delivery option.", rows[:10])
+        await client.send_list(wa_id, "These delivery options match your address. Choose one to see the final amount.", rows[:10])
 
     async def _payment_outage(self, merchant: Vendor, wa_id: str, client: WhatsAppClient) -> None:
         """Hand off to the owner without pretending an unquoted sale is paid."""
@@ -509,7 +510,7 @@ class BumpaConversation:
             currency = product.currency
             total += product.price * item.qty
             summaries.append(f"{product.name or 'Product'} x {item.qty}")
-        note = " Final amount is checked by Bumpa before payment."
+        note = "Final amount is checked by Bumpa before payment."
         await self._set_state(state, "confirm", state.payload)
         address_note = ""
         if state.payload.get("fulfilment") == "delivery":
@@ -522,9 +523,14 @@ class BumpaConversation:
                 shipping_fee = Decimal(str(option["fee"]))
                 break
         if shipping_fee:
-            summaries.append(f"Delivery: {_money(shipping_fee, currency)}")
+            summaries.append(f"*Delivery fee:*\n{_money(shipping_fee, currency)}")
             total += shipping_fee
-        await client.send_buttons(wa_id, f"{'; '.join(summaries)}: {_money(total, currency)}.{address_note}{note} Confirm checkout?", [("confirm", "Confirm"), ("cancel", "Cancel")])
+        summary = "\n".join(summaries)
+        await client.send_buttons(
+            wa_id,
+            f"*Order summary*\n{summary}\n\n*Total:*\n{_money(total, currency)}\n\n{address_note.strip()}\n{note}\n\nConfirm your order?",
+            [("confirm", "Confirm"), ("cancel", "Cancel")],
+        )
 
     async def _start_checkout(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
         async with self._sessions() as session:
@@ -925,9 +931,6 @@ class BumpaConversation:
                 await self._confirm(merchant, wa_id, client, state)
                 return
         elif state.step == "confirm" and lower == "confirm":
-            if state.payload.get("payment_method") == "transfer":
-                await self._start_transfer(merchant, wa_id, client, state, state.payload)
-            else:
-                await self._start_checkout(merchant, wa_id, client, state)
+            await self._start_transfer(merchant, wa_id, client, state, state.payload)
             return
         await client.send_text(wa_id, "Please use the choices shown, or send MENU to browse and CANCEL to start over.")
