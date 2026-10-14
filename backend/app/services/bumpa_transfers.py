@@ -186,7 +186,6 @@ class TransferService:
                 row.proof_media_id = media_id
             reference, amount, product_id, qty = row.reference, row.amount, row.bumpa_product_id, row.quantity
             await session.commit()
-        await client.send_text(wa_id, f"Thanks. We have sent {reference} to the owner for a bank check. A screenshot or message alone does not confirm payment.")
         send_buttons = getattr(client, "send_buttons", None)
         if send_buttons is not None:
             await send_buttons(
@@ -241,9 +240,9 @@ class TransferService:
             await session.commit()
         if customer_wa_id:
             if action == "CONFIRM":
-                await client.send_text(customer_wa_id, f"The owner confirmed transfer {reference}. The owner will send your invoice after recording the sale in Bumpa.")
+                await client.send_text(customer_wa_id, f"Payment received for {reference}. The owner will send your invoice after recording the sale in Bumpa.")
             else:
-                await client.send_text(customer_wa_id, f"The owner could not verify transfer {reference}. Please contact the shop to resolve it.")
+                await client.send_text(customer_wa_id, f"Payment not received for {reference}. The owner could not verify the transfer. Please contact the shop to resolve it.")
         if action == "CONFIRM":
             if self.on_confirm:
                 await self.on_confirm(row)
