@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -7,6 +8,24 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.db.models import Cart, Conversation, Order, Product, Vendor
 from app.db.session import database_url, get_db, get_engine
+from tests import conftest
+
+
+@pytest.mark.parametrize("schema", [None, "public", 'reply_test_x"; DROP SCHEMA public CASCADE;--'])
+def test_neon_fixture_rejects_unsafe_schema_before_connecting(monkeypatch, schema):
+    monkeypatch.setenv(
+        "TEST_DATABASE_URL",
+        "postgresql://test:test@ep-test-pooler.us-east-2.aws.neon.tech/test?sslmode=require",
+    )
+    if schema is None:
+        monkeypatch.delenv("TEST_DATABASE_SCHEMA", raising=False)
+    else:
+        monkeypatch.setenv("TEST_DATABASE_SCHEMA", schema)
+    connect = Mock(side_effect=AssertionError("Unsafe tests must not connect"))
+    monkeypatch.setattr(conftest, "create_engine", connect)
+    with pytest.raises((pytest.UsageError, ValueError), match="[Ii]solated"):
+        next(conftest.test_engine.__wrapped__())
+    connect.assert_not_called()
 
 
 def make_vendor(session):

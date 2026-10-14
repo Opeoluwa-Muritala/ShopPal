@@ -145,6 +145,16 @@ class BumpaConversation:
         items = self._basket_for(state.merchant_id, state.customer_wa_id)
         if items:
             return items
+        saved_items = state.payload.get("basket_items") or []
+        if saved_items:
+            return [
+                CheckoutItem(
+                    product_id=str(item["product_id"]),
+                    variation_id=item.get("variation_id"),
+                    qty=int(item["qty"]),
+                )
+                for item in saved_items
+            ]
         if state.payload.get("basket_count", 0) > 1:
             raise CheckoutError("The temporary basket has expired")
         return [CheckoutItem(product_id=state.payload["product_id"], variation_id=state.payload.get("variation_id"), qty=state.payload["qty"])]
@@ -171,7 +181,8 @@ class BumpaConversation:
         if items:
             last = items[-1]
             payload = {"product_id": last.product_id, "variation_id": last.variation_id,
-                       "qty": last.qty, "basket_count": len(items)}
+                       "qty": last.qty, "basket_count": len(items),
+                       "basket_items": [item.model_dump(mode="json") for item in items]}
         else:
             payload = state.payload
         if not payload.get("product_id"):
@@ -199,7 +210,12 @@ class BumpaConversation:
             self._baskets.pop(min(self._baskets, key=lambda key: self._baskets[key][0]))
         self._baskets[merchant.id, wa_id] = datetime.now(UTC), items
         await self._sync_basket(merchant, wa_id, client)
-        await self._set_state(state, "more_items", {**payload, "qty": qty, "basket_count": len(items)})
+        await self._set_state(state, "more_items", {
+            **payload,
+            "qty": qty,
+            "basket_count": len(items),
+            "basket_items": [item.model_dump(mode="json") for item in items],
+        })
         await client.send_buttons(wa_id, f"{product.name or 'Product'}: quantity {qty} in your basket, {_money(product.price, product.currency)} each. Would you like anything else?",
                                   [("more_yes", "Yes, browse more"), ("more_no", "No, let's pay"), ("cart", "Edit basket")])
 
@@ -220,7 +236,10 @@ class BumpaConversation:
             return
         if len(items) > start + 9:
             rows.append((f"cartpage:{page + 1}", "More basket items"))
-        await self._set_state(state, "cart_menu", {"basket_count": len(items)})
+        await self._set_state(state, "cart_menu", {
+            "basket_count": len(items),
+            "basket_items": [item.model_dump(mode="json") for item in items],
+        })
         await client.send_list(wa_id, "Choose an item to change its quantity or remove it. Reply NO when you're ready to pay.", rows)
 
     async def _remove_selection(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, state: ConversationState) -> None:
@@ -234,8 +253,13 @@ class BumpaConversation:
             await self._menu(merchant, wa_id, client)
             return
         last = items[-1]
-        await self._set_state(state, "more_items", {"product_id": last.product_id, "variation_id": last.variation_id,
-                                                   "qty": last.qty, "basket_count": len(items)})
+        await self._set_state(state, "more_items", {
+            "product_id": last.product_id,
+            "variation_id": last.variation_id,
+            "qty": last.qty,
+            "basket_count": len(items),
+            "basket_items": [item.model_dump(mode="json") for item in items],
+        })
         await client.send_buttons(wa_id, "Would you like anything else?",
                                   [("more_yes", "Yes, browse more"), ("more_no", "No, let's pay"), ("cart", "Edit basket")])
 
@@ -260,6 +284,10 @@ class BumpaConversation:
             if row is None:
                 return
             rates = {key: value for key, value in (row.payload or {}).items() if key.startswith("_rate_")}
+            if step != "start" and "basket_items" not in payload:
+                saved_items = (row.payload or {}).get("basket_items")
+                if saved_items:
+                    payload = {**payload, "basket_items": saved_items}
             row.step = step
             row.payload = {**rates, **payload}
             row.updated_at = datetime.now(UTC)
@@ -532,7 +560,12 @@ class BumpaConversation:
                     await client.send_text(wa_id, "This payment link is no longer active. Reply RESEND for a fresh link.")
                     return
         state = await self._state(merchant.id, wa_id)
-        if state.payload.get("basket_count", 0) > 1 and not self._basket_for(merchant.id, wa_id) and lower not in {"cancel", "start over"}:
+        if (
+            state.payload.get("basket_count", 0) > 1
+            and not self._basket_for(merchant.id, wa_id)
+            and not state.payload.get("basket_items")
+            and lower not in {"cancel", "start over"}
+        ):
             await self._set_state(state, "start", {})
             await client.send_text(wa_id, "Your temporary basket expired. Please choose your products again.")
             await self._menu(merchant, wa_id, client)

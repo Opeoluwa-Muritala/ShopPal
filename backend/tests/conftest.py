@@ -49,12 +49,14 @@ def test_engine():
         pytest.skip(
             "TEST_DATABASE_URL not set; skipping live PostgreSQL database tests"
         )
-    engine = create_engine(database_url(raw_url), hide_parameters=True, pool_pre_ping=True)
+    url = database_url(raw_url)
     schema = os.environ.get("TEST_DATABASE_SCHEMA")
+    if url.host and url.host.endswith(".neon.tech") and not schema:
+        raise pytest.UsageError("Neon tests require an isolated schema; use python scripts/test_live_replies.py")
+    if schema and not re.fullmatch(r"reply_test_[a-f0-9]{32}", schema):
+        raise ValueError("Invalid isolated test schema")
+    engine = create_engine(url, hide_parameters=True, pool_pre_ping=True)
     if schema:
-        if not re.fullmatch(r"reply_test_[a-f0-9]{32}", schema):
-            raise ValueError("Invalid isolated test schema")
-
         @event.listens_for(engine, "begin")
         def isolate_transaction(connection):
             connection.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')

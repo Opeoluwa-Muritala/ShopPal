@@ -11,6 +11,7 @@ from app.services import bumpa_conversation
 from app.services.bumpa_assistant import ShoppingIntent
 from app.services.bumpa_checkout import CheckoutPostcodeRequired, CheckoutResult
 from app.services.bumpa_conversation import BumpaConversation
+from tests.bumpa_factories import make_merchant, make_product
 
 
 @pytest.fixture
@@ -86,8 +87,8 @@ def _message(body):
 
 @pytest.mark.anyio
 async def test_gemma_selection_runs_live_product_validation_before_payment_options():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
-    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant()
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     session = FakeSession()
@@ -108,8 +109,8 @@ async def test_gemma_selection_runs_live_product_validation_before_payment_optio
 
 @pytest.mark.anyio
 async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop", pickup_location_id="pickup-1", delivery_enabled=True)
-    product = SimpleNamespace(bumpa_product_id="p1", name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(business_name="Shop", name="Shop", pickup_location_id="pickup-1", delivery_enabled=True)
+    product = make_product(name="Sneakers")
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     checkout = AsyncMock(return_value=CheckoutResult("internal-id", "order-1", "https://pay.example/only", "PAYREF", Decimal("5000"), "NGN", uuid4()))
@@ -142,8 +143,8 @@ async def test_pickup_checkout_collects_details_one_question_at_a_time(monkeypat
 
 @pytest.mark.anyio
 async def test_browsing_and_checkout_retry_reuse_email_without_persisting_it(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
-    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(pickup_location_id="pickup-1", delivery_enabled=False)
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     checkout = AsyncMock(side_effect=[bumpa_conversation.CheckoutError("Temporary failure"),
@@ -167,8 +168,8 @@ async def test_browsing_and_checkout_retry_reuse_email_without_persisting_it(mon
 
 @pytest.mark.anyio
 async def test_existing_email_is_reused_after_missing_name_is_collected():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
-    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(pickup_location_id="pickup-1", delivery_enabled=False)
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     flow._put_detail(merchant.id, flow.state.customer_wa_id, "email", "ada@example.com")
@@ -181,10 +182,8 @@ async def test_existing_email_is_reused_after_missing_name_is_collected():
 @pytest.mark.anyio
 @pytest.mark.parametrize("configured", [True, False])
 async def test_online_outage_hands_off_to_owner_without_losing_basket(monkeypatch, configured):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False,
-        payout_bank_name="Test Bank" if configured else None, payout_account_name="Test Owner" if configured else None,
-        payout_account_number="1234567890" if configured else None, owner_whatsapp_number="+2348011111111")
-    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(pickup_location_id="pickup-1", delivery_enabled=False, payout_bank_name="Test Bank" if configured else None, payout_account_name="Test Owner" if configured else None, payout_account_number="1234567890" if configured else None, owner_whatsapp_number="+2348011111111")
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     monkeypatch.setattr(bumpa_conversation, "start_checkout", AsyncMock(side_effect=bumpa_conversation.CheckoutUnavailable("Unavailable")))
@@ -209,9 +208,8 @@ async def test_online_outage_hands_off_to_owner_without_losing_basket(monkeypatc
 
 @pytest.mark.anyio
 async def test_shipping_outage_sends_owner_account_but_validation_does_not(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id=None, delivery_enabled=True,
-        payout_bank_name="Test Bank", payout_account_name="Test Owner", payout_account_number="1234567890", owner_whatsapp_number=None)
-    product = SimpleNamespace(bumpa_product_id="p1", name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(pickup_location_id=None, delivery_enabled=True, payout_bank_name="Test Bank", payout_account_name="Test Owner", payout_account_number="1234567890", owner_whatsapp_number=None)
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
@@ -227,8 +225,8 @@ async def test_shipping_outage_sends_owner_account_but_validation_does_not(monke
 
 @pytest.mark.anyio
 async def test_out_of_stock_selection_is_rejected():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
-    product = SimpleNamespace(name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=0, is_published=True, variations=[])
+    merchant = make_merchant(business_name="Shop", name="Shop")
+    product = make_product(name="Sneakers", stock_qty=0)
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, _message("product:p1"))
@@ -241,8 +239,8 @@ async def test_out_of_stock_selection_is_rejected():
 
 @pytest.mark.anyio
 async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop", pickup_location_id=None, delivery_enabled=True)
-    product = SimpleNamespace(bumpa_product_id="p1", name="Sneakers", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(business_name="Shop", name="Shop", pickup_location_id=None, delivery_enabled=True)
+    product = make_product(name="Sneakers")
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     shipping = AsyncMock(return_value=[{"shipping_id": "ship-1", "name": "Standard delivery"}])
@@ -273,7 +271,7 @@ async def test_delivery_checkout_uses_selected_shipping_option(monkeypatch):
 @pytest.mark.anyio
 @pytest.mark.parametrize("step", ["variation", "quantity", "more_items", "payment_method", "full_name", "email", "phone", "fulfilment", "address", "address_state", "street", "city", "state", "country", "zip", "shipping", "confirm"])
 async def test_cancel_works_at_every_checkout_step(step):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Shop", name="Shop")
+    merchant = make_merchant(business_name="Shop", name="Shop")
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, None, whatsapp)
     flow.state.step = step
@@ -288,7 +286,7 @@ async def test_cancel_works_at_every_checkout_step(step):
 
 @pytest.mark.anyio
 async def test_one_ilorin_address_autofills_location_and_registered_postcode(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id=None, delivery_enabled=True)
+    merchant = make_merchant(pickup_location_id=None, delivery_enabled=True)
     flow = ConversationHarness(merchant, None, FakeWhatsApp())
     flow.state.step = "address"
     flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
@@ -307,7 +305,7 @@ async def test_one_ilorin_address_autofills_location_and_registered_postcode(mon
 
 @pytest.mark.anyio
 async def test_postcode_is_asked_only_after_bumpa_requires_it(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    merchant = make_merchant()
     flow = ConversationHarness(merchant, None, FakeWhatsApp())
     flow.state.payload = {"product_id": "p1", "qty": 1, "fulfilment": "delivery"}
     for field, value in {"first_name": "Ada", "last_name": "Nwosu", "email": "ada@example.com", "phone": "+2348012345678", "street": "12 Main Street", "city": "Ilorin", "state": "Kwara", "country": "Nigeria"}.items():
@@ -323,11 +321,9 @@ async def test_postcode_is_asked_only_after_bumpa_requires_it(monkeypatch):
 
 @pytest.mark.anyio
 async def test_menu_shows_full_names_and_maps_numbers_without_mutating_inventory():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Old demo")
+    merchant = make_merchant(name="Old demo")
     name = "Droid Demo Perfumes Long Distinct Product Name"
-    product = SimpleNamespace(bumpa_product_id="p1", name=name, price=Decimal("5000"),
-                              currency="NGN", stock_qty=4, is_published=True, variations=[],
-                              image_urls=["https://images.example/perfume.jpg"])
+    product = make_product(name=name, image_urls=["https://images.example/perfume.jpg"])
     duplicate = SimpleNamespace(**{**vars(product), "bumpa_product_id": "p2"})
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
@@ -353,8 +349,8 @@ async def test_menu_shows_full_names_and_maps_numbers_without_mutating_inventory
 
 @pytest.mark.anyio
 async def test_natural_checkout_continues_from_number_selection_to_payment_link(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
-    product = SimpleNamespace(name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4, is_published=True, variations=[])
+    merchant = make_merchant(pickup_location_id="pickup-1", delivery_enabled=False)
+    product = make_product()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     flow.state.payload = {"menu_ids": ["p1"]}
@@ -373,7 +369,7 @@ async def test_natural_checkout_continues_from_number_selection_to_payment_link(
 
 @pytest.mark.anyio
 async def test_checkout_recovers_after_process_loses_personal_details():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    merchant = make_merchant()
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, None, whatsapp)
     flow.state.step = "confirm"
@@ -386,7 +382,7 @@ async def test_checkout_recovers_after_process_loses_personal_details():
 
 @pytest.mark.anyio
 async def test_number_outside_current_menu_does_not_select_a_product():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    merchant = make_merchant()
     flow = ConversationHarness(merchant, None, FakeWhatsApp())
     flow.state.payload = {"menu_ids": ["p1"]}
     flow._product = AsyncMock()
@@ -397,9 +393,8 @@ async def test_number_outside_current_menu_does_not_select_a_product():
 
 @pytest.mark.anyio
 async def test_exact_product_name_selects_one_without_gemma():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
-    product = SimpleNamespace(bumpa_product_id="p1", name="Rose Perfume", price=Decimal("5000"),
-                              currency="NGN", stock_qty=4, is_published=True, variations=[], image_urls=[])
+    merchant = make_merchant()
+    product = make_product(name="Rose Perfume", image_urls=[])
     flow = ConversationHarness(merchant, product, FakeWhatsApp())
     session = FakeSession()
     session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [product]))
@@ -413,7 +408,7 @@ async def test_exact_product_name_selects_one_without_gemma():
 
 @pytest.mark.anyio
 async def test_greeting_uses_shop_name_without_forcing_a_menu():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Old demo")
+    merchant = make_merchant(name="Old demo")
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, None, whatsapp)
     await flow(merchant, _message("hi"))
@@ -422,9 +417,8 @@ async def test_greeting_uses_shop_name_without_forcing_a_menu():
 
 @pytest.mark.anyio
 async def test_real_picker_reply_selects_quantity_one_and_sends_native_photo():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
-    product = SimpleNamespace(name="Rose Perfume", price=Decimal("5000"), currency="NGN",
-                              stock_qty=4, is_published=True, variations=[], image_urls=["https://images.example/rose.jpg"])
+    merchant = make_merchant()
+    product = make_product(name="Rose Perfume", image_urls=["https://images.example/rose.jpg"])
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, {"from": flow.state.customer_wa_id, "type": "interactive",
@@ -442,9 +436,8 @@ async def test_real_picker_reply_selects_quantity_one_and_sends_native_photo():
 async def test_photo_failure_does_not_stop_picker_checkout():
     import httpx
 
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
-    product = SimpleNamespace(name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=4,
-                              is_published=True, variations=[], image_urls=["https://images.example/bag.jpg"])
+    merchant = make_merchant()
+    product = make_product(image_urls=["https://images.example/bag.jpg"])
     whatsapp = FakeWhatsApp()
     whatsapp.send_image = AsyncMock(side_effect=httpx.ConnectError("unavailable"))
     flow = ConversationHarness(merchant, product, whatsapp)
@@ -455,9 +448,8 @@ async def test_photo_failure_does_not_stop_picker_checkout():
 
 @pytest.mark.anyio
 async def test_multiple_products_stay_in_basket_until_confirmed_payment(monkeypatch):
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid", pickup_location_id="pickup-1", delivery_enabled=False)
-    products = {identifier: SimpleNamespace(name=name, price=Decimal("5000"), currency="NGN", stock_qty=10,
-                                          is_published=True, variations=[], image_urls=[]) for identifier, name in [("p1", "Bag"), ("p2", "Perfume")]}
+    merchant = make_merchant(pickup_location_id="pickup-1", delivery_enabled=False)
+    products = {identifier: make_product(bumpa_product_id=identifier, name=name, stock_qty=10, image_urls=[]) for identifier, name in [("p1", "Bag"), ("p2", "Perfume")]}
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, None, whatsapp)
     flow._product = AsyncMock(side_effect=lambda _merchant, identifier: (products[identifier], False))
@@ -482,9 +474,8 @@ async def test_multiple_products_stay_in_basket_until_confirmed_payment(monkeypa
 
 @pytest.mark.anyio
 async def test_cart_quantity_reduction_and_zero_remove_without_resending_photo():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
-    product = SimpleNamespace(name="Bag", price=Decimal("5000"), currency="NGN", stock_qty=10,
-                              is_published=True, variations=[], image_urls=["https://images.example/bag.jpg"])
+    merchant = make_merchant()
+    product = make_product(stock_qty=10, image_urls=["https://images.example/bag.jpg"])
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, _message("product:p1"))
@@ -501,7 +492,7 @@ async def test_cart_quantity_reduction_and_zero_remove_without_resending_photo()
 
 @pytest.mark.anyio
 async def test_order_command_routes_to_customer_scoped_bumpa_lookup():
-    merchant = SimpleNamespace(id=uuid4(), business_name="Droid", name="Droid")
+    merchant = make_merchant()
     flow = ConversationHarness(merchant, None, FakeWhatsApp())
     flow._payments = SimpleNamespace(customer_orders=AsyncMock(return_value="Your Bumpa order is paid."))
     await flow(merchant, _message("my orders"))
@@ -519,9 +510,8 @@ async def test_droid_demo_photo_fallback_matches_selected_item_and_tenant():
     name, url = next(iter(DEMO_IMAGES.items()))
     assert demo_image_url(uuid4(), name) is None
     assert demo_image_url(DROID_DEMO_MERCHANT, "Unknown product") is None
-    merchant = SimpleNamespace(id=DROID_DEMO_MERCHANT, business_name="Droid", name="Droid")
-    product = SimpleNamespace(name=name, price=Decimal("5000"), currency="NGN", stock_qty=10,
-                              is_published=True, variations=[], image_urls=["https://images.example/blocked.jpg"])
+    merchant = make_merchant(id=DROID_DEMO_MERCHANT)
+    product = make_product(name=name, stock_qty=10, image_urls=["https://images.example/blocked.jpg"])
     whatsapp = FakeWhatsApp()
     flow = ConversationHarness(merchant, product, whatsapp)
     await flow(merchant, _message("product:p1"))

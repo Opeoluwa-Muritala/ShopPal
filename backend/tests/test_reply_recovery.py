@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Event
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import httpx
@@ -24,6 +24,7 @@ from app.db.models import (
 from app.main import app
 from app.routers.whatsapp_webhook import _persist_messages, _update_reply_status
 from app.services import reply_recovery as recovery
+from app.services.flutterwave_v4 import VirtualAccount
 from app.services.llm import GemmaError, LLMService
 
 
@@ -323,15 +324,18 @@ def test_invalid_agent_actions_rejected(action):
         recovery.validate_action(action)
 
 
-def test_checkout_does_not_repeat_after_provider_failure(
+def test_checkout_does_not_repeat_after_agent_failure(
     test_engine, setup_job, settings, monkeypatch
 ):
     identifier, product_id, vendor_id, _, phone = setup_job
-    payment = Mock(return_value={
-        "reference": "test-payment-reference",
-        "authorization_url": "https://checkout.paystack.com/test-checkout",
-    })
-    monkeypatch.setattr("app.services.customer_tools.initialize_transaction", payment)
+    provider = Mock(
+        create_customer=AsyncMock(return_value="test-customer"),
+        create_virtual_account=AsyncMock(return_value=VirtualAccount(
+            "test-payment-reference", "1234567890", "Test Bank", None,
+        )),
+    )
+    monkeypatch.setattr("app.services.customer_tools.get_virtual_account_provider", lambda _settings: provider)
+    monkeypatch.setattr("app.services.customer_tools.get_settings", lambda: settings)
     actions = Mock(
         side_effect=[
             {
@@ -358,7 +362,8 @@ def test_checkout_does_not_repeat_after_provider_failure(
             == 1
         )
         assert session.get(Product, product_id).stock == 4
-    payment.assert_called_once()
+    provider.create_customer.assert_awaited_once_with(phone)
+    provider.create_virtual_account.assert_awaited_once()
     assert row(test_engine, identifier).state == "accepted"
 
 
