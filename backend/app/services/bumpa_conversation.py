@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings
 from app.db.models import ConversationState, ProductCache, Vendor, WhatsAppMessage
 from app.integrations.bumpa import mappers
-from app.integrations.bumpa.credentials import decrypt_credential
+from app.integrations.bumpa.credentials import decrypt_credential, encrypt_credential
 from app.integrations.whatsapp.client import ListRow, MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
 from app.services.bumpa_assistant import (
@@ -301,6 +301,16 @@ class BumpaConversation:
                 state = ConversationState(merchant_id=merchant_id, customer_wa_id=wa_id, step="start", payload={})
                 session.add(state)
                 await session.commit()
+            encrypted = (state.payload or {}).get("_details_enc")
+            if encrypted and not self._details_for(merchant_id, wa_id):
+                try:
+                    details = json.loads(decrypt_credential(encrypted, self._settings))
+                    if isinstance(details, dict):
+                        self._details[merchant_id, wa_id] = datetime.now(UTC), {
+                            str(key): str(value) for key, value in details.items() if isinstance(value, str)
+                        }
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    logger.warning("Stored checkout details could not be restored", extra={"step": "bumpa_restore_details"})
             return state
 
     async def _set_state(self, state: ConversationState, step: str, payload: dict[str, Any]) -> None:
@@ -313,6 +323,9 @@ class BumpaConversation:
                 saved_items = (row.payload or {}).get("basket_items")
                 if saved_items:
                     payload = {**payload, "basket_items": saved_items}
+            details = self._details_for(state.merchant_id, state.customer_wa_id)
+            if details:
+                payload = {**payload, "_details_enc": encrypt_credential(json.dumps(details), self._settings)}
             row.step = step
             row.payload = {**rates, **payload}
             row.updated_at = datetime.now(UTC)
