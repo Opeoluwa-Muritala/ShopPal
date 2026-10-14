@@ -1,6 +1,7 @@
 """Bumpa product cache refresh; Bumpa remains the inventory source of truth."""
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -90,6 +91,7 @@ async def sync_merchant_products(
                 return SyncResult("already_running")
             await session.commit()
         connection = await get_connection(session, merchant_id)
+        merchant = await session.get(Vendor, merchant_id)
         if connection is None or connection.status != "active":
             await finish_sync(session, merchant_id, error="Bumpa connection is inactive")
             await session.commit()
@@ -115,11 +117,20 @@ async def sync_merchant_products(
         # The browse pages are collection-backed, while the normal product feed
         # does not include collection names. Enrich the cache from each public
         # collection feed so chat can browse from one local source of truth.
+        storefront_slug = re.sub(r"[^a-z0-9]+", "", (merchant.business_name or "").lower()) if merchant else ""
+        storefront_base = f"https://{storefront_slug}.bumpa.shop" if storefront_slug else ""
         async with session_factory() as session:
             for collection in STORE_COLLECTIONS:
-                response = await client.list_products(
-                    limit=PAGE_SIZE, page=1, collection=collection, variations=1
-                )
+                if storefront_base:
+                    storefront_response = await http_client.get(
+                        f"{storefront_base}/storefront/products",
+                        params={"tag": collection, "limit": PAGE_SIZE, "page": 1},
+                        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
+                    )
+                    storefront_response.raise_for_status()
+                    response = storefront_response.json()
+                else:
+                    response = {"products": {"data": []}}
                 for raw in mappers.extract_product_rows(response) or []:
                     product_id = mappers.extract_product_id(raw)
                     if not product_id:
