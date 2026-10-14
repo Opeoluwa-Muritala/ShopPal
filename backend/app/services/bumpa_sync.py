@@ -29,6 +29,12 @@ from app.integrations.bumpa.client import (
 from app.integrations.bumpa.credentials import decrypt_credential
 
 PAGE_SIZE = 50
+STORE_COLLECTIONS = [
+    "Printed scarves", "Ombre scarves", "Asma scarves", "Gold Dust Chiffon",
+    "silky scarves", "Snake Scarves", "Two-toned scarves", "Chiffon scarves",
+    "Shadow Jersey", "Crinkled scarves", "2 in 1 Jersey scarves", "Flower Bouquet",
+    "Rainbow scarves", "Vintage scarf", "Cotton Printed Scarf", "Mini Jersey",
+]
 
 
 @dataclass(frozen=True)
@@ -106,6 +112,28 @@ async def sync_merchant_products(
                     count += 1
                 await session.commit()
             page += 1
+        # The browse pages are collection-backed, while the normal product feed
+        # does not include collection names. Enrich the cache from each public
+        # collection feed so chat can browse from one local source of truth.
+        async with session_factory() as session:
+            for collection in STORE_COLLECTIONS:
+                response = await client.list_products(
+                    limit=PAGE_SIZE, page=1, collection=collection, variations=1
+                )
+                for raw in mappers.extract_product_rows(response) or []:
+                    product_id = mappers.extract_product_id(raw)
+                    if not product_id:
+                        continue
+                    cached = await get_cached_product(session, merchant_id, product_id)
+                    if cached is None:
+                        continue
+                    enriched = dict(cached.raw or {})
+                    collections = list(enriched.get("collections") or [])
+                    if collection not in collections:
+                        collections.append(collection)
+                    enriched["collections"] = collections
+                    cached.raw = enriched
+            await session.commit()
         async with session_factory() as session:
             await session.execute(
                 update(ProductCache)
