@@ -82,6 +82,8 @@ class TransferService:
     async def create(
         self, merchant: Vendor, customer_wa_id: str, product_id: str, qty: int, client: WhatsAppClient,
         *, items: list[dict[str, Any]] | None = None,
+        delivery_fee: Decimal = Decimal("0"), delivery_name: str | None = None,
+        delivery_address: str | None = None,
     ) -> PendingTransfer | None:
         if qty < 1 or qty > 100:
             await client.send_text(customer_wa_id, "Choose a quantity from 1 to 100 first.")
@@ -123,6 +125,11 @@ class TransferService:
             line_total = product.price * item_qty
             amount += line_total
             quoted.append({"product_id": item["product_id"], "variation_id": item.get("variation_id"), "qty": item_qty, "name": product.name, "unit_price": str(product.price), "currency": currency, "cached_only": cached_only})
+        if delivery_fee < 0:
+            raise ValueError("Invalid delivery fee")
+        amount += delivery_fee
+        if delivery_name or delivery_address:
+            quoted.append({"type": "delivery", "name": delivery_name or "Delivery", "fee": str(delivery_fee), "address": delivery_address})
         row: PendingTransfer | None = None
         for _ in range(5):
             try:
@@ -180,10 +187,21 @@ class TransferService:
             reference, amount, product_id, qty = row.reference, row.amount, row.bumpa_product_id, row.quantity
             await session.commit()
         await client.send_text(wa_id, f"Thanks. We have sent {reference} to the owner for a bank check. A screenshot or message alone does not confirm payment.")
+        send_buttons = getattr(client, "send_buttons", None)
+        if send_buttons is not None:
+            await send_buttons(
+                wa_id,
+                "While we wait for confirmation, would you like to order anything else?",
+                [("order_more", "Yes, order more"), ("done_waiting", "No, that's all")],
+            )
         if first_proof and merchant.owner_whatsapp_number:
+            delivery = next((item for item in (getattr(row, "items", None) or []) if item.get("type") == "delivery"), None)
+            delivery_note = ""
+            if delivery:
+                delivery_note = f" Delivery: {delivery.get('name')} {_amount(Decimal(delivery.get('fee', '0')))} to {delivery.get('address')}."
             notice = (
                 f"Transfer {reference}: product {product_id} × {qty}, {_amount(amount)}, customer {wa_id}. "
-                "A screenshot or 'I've paid' is never proof of payment. Verify in your bank app, "
+                f"{delivery_note} A screenshot or 'I've paid' is never proof of payment. Verify in your bank app, "
                 f"record the sale in Bumpa, then reply CONFIRM {reference} or REJECT {reference}."
             )
             template = self.settings.whatsapp_template_owner_transfer_alert
