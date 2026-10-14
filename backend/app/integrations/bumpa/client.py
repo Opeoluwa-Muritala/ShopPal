@@ -164,8 +164,8 @@ class BumpaClient:
     async def clear_cart(self, cart_token: str) -> dict[str, Any] | list[Any]:
         return await self._request("DELETE", "/carts/clear", cart_token=cart_token, json={"location_id": self._location_id})
 
-    async def shipping_options(self, cart_id: str, fulfillment_context: dict[str, Any]) -> dict[str, Any] | list[Any]:
-        return await self._request("POST", "/shipping-options", json={"cart_id": cart_id, "fulfillment_context": fulfillment_context})
+    async def shipping_options(self, cart_id: str, fulfillment_context: dict[str, Any], *, cart_token: str | None = None) -> dict[str, Any] | list[Any]:
+        return await self._request("POST", "/shipping-options", cart_token=cart_token, json={"cart_id": cart_id, "fulfillment_context": fulfillment_context})
 
     async def create_checkout(self, cart_id: str, customer_context: dict[str, Any], fulfillment_context: dict[str, Any]) -> dict[str, Any] | list[Any]:
         return await self._request("POST", "/checkouts", json={"cart_id": cart_id, "customer_context": customer_context, "fulfillment_context": fulfillment_context})

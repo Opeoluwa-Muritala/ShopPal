@@ -368,6 +368,18 @@ class CheckoutRef(Identity, Base):
     next_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class BumpaGuestCart(Identity, Timestamps, Base):
+    __tablename__ = "bumpa_guest_carts"
+    __table_args__ = (UniqueConstraint("merchant_id", "customer_wa_id"),)
+
+    merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    customer_wa_id: Mapped[str] = mapped_column(String(30), nullable=False)
+    bumpa_cart_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    cart_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    items: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PendingTransfer(Identity, Base):
     __tablename__ = "pending_transfers"
     __table_args__ = (

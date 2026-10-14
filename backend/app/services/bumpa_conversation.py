@@ -382,6 +382,7 @@ class BumpaConversation:
                 customer, fulfilment, session_factory=self._sessions, http_client=self._http, settings=self._settings,
                 items=self._checkout_items(state),
                 cart_id=await self._remote_baskets.sync(merchant.id, wa_id, self._checkout_items(state)),
+                cart_token=self._remote_baskets.token_for(merchant.id, wa_id),
             )
         except CheckoutPostcodeRequired:
             await self._set_state(state, "zip", state.payload)
@@ -519,6 +520,7 @@ class BumpaConversation:
                 session_factory=self._sessions, http_client=self._http, settings=self._settings,
                 items=self._checkout_items(state),
                 cart_id=await self._remote_baskets.sync(merchant.id, wa_id, self._checkout_items(state)),
+                cart_token=self._remote_baskets.token_for(merchant.id, wa_id),
             )
         except CheckoutUnavailable:
             await self._payment_outage(merchant, wa_id, client)

@@ -123,20 +123,25 @@ def _customer_context(customer: CustomerDetails) -> dict[str, Any]:
 
 
 def _delivery_context(customer: CustomerDetails, fulfilment: FulfilmentDetails) -> dict[str, Any]:
-    if not all((fulfilment.street, fulfilment.city, fulfilment.state, fulfilment.country)):
+    # Bumpa's checkout marks city as optional. Requiring it here prevents
+    # valid state-based delivery rules, such as Kwara-wide options, from
+    # reaching Bumpa's shipping calculator.
+    if not all((fulfilment.street, fulfilment.state, fulfilment.country)):
         raise CheckoutRejected("Delivery address is incomplete")
-    return {
+    context = {
         "type": "delivery",
         **_customer_context(customer),
         "phone": customer.phone or "",
         "street": fulfilment.street,
-        "city": fulfilment.city,
         "state": fulfilment.state,
         "country": fulfilment.country,
         # TODO(BUMPA_OPTIONAL_POSTCODE): verify empty zip support on staging.
         # Ask only if Bumpa rejects it; never invent a customer's postcode.
         "zip": fulfilment.zip or "",
     }
+    if fulfilment.city:
+        context["city"] = fulfilment.city
+    return context
 
 
 async def _new_cart(client: BumpaClient, product_id: str, variation_id: str | None, qty: int, items: list[CheckoutItem] | None = None) -> tuple[str, str]:
@@ -166,6 +171,7 @@ async def list_shipping_options(
     settings: Settings,
     items: list[CheckoutItem] | None = None,
     cart_id: str | None = None,
+    cart_token: str | None = None,
 ) -> list[dict[str, Any]]:
     if qty < 1 or fulfilment.type != "delivery":
         raise CheckoutRejected("A delivery product and quantity are required")
@@ -173,7 +179,7 @@ async def list_shipping_options(
     try:
         if cart_id is None:
             cart_id, _token = await _new_cart(client, product_id, variation_id, qty, items)
-        response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment))
+        response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment), cart_token=cart_token)
         return mappers.extract_shipping_options(response)
     except BumpaAuthError as exc:
         await _flag_invalid(merchant.id, session_factory)
@@ -202,6 +208,7 @@ async def start_checkout(
     settings: Settings,
     items: list[CheckoutItem] | None = None,
     cart_id: str | None = None,
+    cart_token: str | None = None,
 ) -> CheckoutResult:
     if qty < 1 or qty > 100:
         raise CheckoutRejected("Quantity must be between 1 and 100")
@@ -225,7 +232,7 @@ async def start_checkout(
                 raise CheckoutRejected("Pickup is not configured for this shop")
             checkout_fulfilment = {"type": "pickup", "pickup_location_id": pickup_id}
         else:
-            shipping_response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment))
+            shipping_response = await client.shipping_options(cart_id, _delivery_context(customer, fulfilment), cart_token=cart_token)
             options = mappers.extract_shipping_options(shipping_response)
             chosen = next((option for option in options if mappers.extract_shipping_id(option) == fulfilment.shipping_id), None)
             if chosen is None or fulfilment.shipping_id is None:

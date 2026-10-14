@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     BumpaConnection,
+    BumpaGuestCart,
     CheckoutRef,
     ConversationState,
     PendingTransfer,
@@ -18,6 +19,14 @@ from app.db.models import (
     ProductCache,
     SyncState,
 )
+
+
+async def get_guest_cart(session: AsyncSession, merchant_id: UUID, customer_wa_id: str) -> BumpaGuestCart | None:
+    return await session.scalar(select(BumpaGuestCart).where(
+        BumpaGuestCart.merchant_id == merchant_id,
+        BumpaGuestCart.customer_wa_id == customer_wa_id,
+        BumpaGuestCart.expires_at > datetime.now(UTC),
+    ))
 
 
 async def get_connection(session: AsyncSession, merchant_id: UUID) -> BumpaConnection | None:

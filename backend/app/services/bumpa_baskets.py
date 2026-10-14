@@ -6,9 +6,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.db.models import BumpaGuestCart
+from app.db.bumpa_repository import get_guest_cart
+from app.integrations.bumpa.credentials import decrypt_credential, encrypt_credential
 from app.integrations.bumpa import mappers
 from app.integrations.bumpa.client import (
     BumpaAuthError,
@@ -48,6 +52,50 @@ class BumpaBaskets:
     def forget(self, merchant_id: UUID, wa_id: str) -> None:
         self.carts.pop((merchant_id, wa_id), None)
 
+    def token_for(self, merchant_id: UUID, wa_id: str) -> str | None:
+        cart = self.carts.get((merchant_id, wa_id))
+        return cart.token if cart else None
+
+    async def _load_persisted(self, merchant_id: UUID, wa_id: str) -> GuestCart | None:
+        if self.sessions is None or self.settings is None:
+            return None
+        async with self.sessions() as session:
+            row = await get_guest_cart(session, merchant_id, wa_id)
+            if row is None:
+                return None
+            try:
+                token = decrypt_credential(row.cart_token_enc, self.settings)
+            except (TypeError, ValueError):
+                return None
+            return GuestCart(cart_id=row.bumpa_cart_id, token=token,
+                             items={(item["product_id"], item.get("variation_id")): int(item["qty"])
+                                    for item in row.items if isinstance(item, dict) and item.get("product_id")})
+
+    async def _persist(self, merchant_id: UUID, wa_id: str, cart: GuestCart) -> None:
+        if self.sessions is None or self.settings is None or not cart.token:
+            return
+        async with self.sessions() as session:
+            # Look up by the unique key without the expiry filter. An expired
+            # row must be updated, not inserted again, or the unique constraint
+            # would reject the new cart.
+            row = await session.scalar(select(BumpaGuestCart).where(
+                BumpaGuestCart.merchant_id == merchant_id,
+                BumpaGuestCart.customer_wa_id == wa_id,
+            ))
+            if row is None:
+                row = BumpaGuestCart(merchant_id=merchant_id, customer_wa_id=wa_id,
+                                     bumpa_cart_id=cart.cart_id or "",
+                                     cart_token_enc=encrypt_credential(cart.token or "", self.settings),
+                                     items=[{"product_id": p, "variation_id": v, "qty": q} for (p, v), q in cart.items.items()],
+                                     expires_at=datetime.now(UTC) + timedelta(hours=24))
+                session.add(row)
+            else:
+                row.bumpa_cart_id = cart.cart_id or row.bumpa_cart_id
+                row.cart_token_enc = encrypt_credential(cart.token or "", self.settings)
+                row.items = [{"product_id": p, "variation_id": v, "qty": q} for (p, v), q in cart.items.items()]
+                row.expires_at = datetime.now(UTC) + timedelta(hours=24)
+            await session.commit()
+
     async def sync(self, merchant_id: UUID, wa_id: str, items: list[CheckoutItem]) -> str | None:
         """Apply absolute quantities; never retry ambiguous cart mutations."""
         key = merchant_id, wa_id
@@ -58,6 +106,10 @@ class BumpaBaskets:
                 for old_key in [old_key for old_key, cart in self.carts.items() if cart.updated_at < cutoff and not cart.lock.locked()]:
                     self.carts.pop(old_key, None)
                 cart = self.carts.get(key)
+                if cart is None:
+                    cart = await self._load_persisted(merchant_id, wa_id)
+                if cart is not None:
+                    self.carts[key] = cart
                 if cart is None:
                     if not items:
                         return None
@@ -91,6 +143,7 @@ class BumpaBaskets:
                         await client.set_cart_item_quantity(cart.token, product_id, qty, variation_id)
                 cart.items = desired
                 cart.updated_at = datetime.now(UTC)
+                await self._persist(merchant_id, wa_id, cart)
                 return cart.cart_id
         except BumpaAuthError as exc:
             self.forget(merchant_id, wa_id)

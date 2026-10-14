@@ -72,3 +72,7 @@ lerna-debug.log*
 coverage/
 junit.xml
 config.bat
+
+# Local browser and generated artifacts
+.playwright-cli/
+output/
