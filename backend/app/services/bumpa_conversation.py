@@ -345,7 +345,7 @@ class BumpaConversation:
             await self._set_state(state, "collection_select", {"collection_page": 0, "basket_count": len(self._basket_for(merchant.id, wa_id))})
             collection_rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[:9])]
             collection_rows.append(("collection:more", "More collections", "See more scarf collections"))
-            await client.send_list(wa_id, "Choose a scarf collection first.", collection_rows)
+            await client.send_list(wa_id, "Choose a collection.", collection_rows)
             return
         async with self._sessions() as session:
             query = select(ProductCache).where(
@@ -386,7 +386,7 @@ class BumpaConversation:
         if len(rows) > PAGE_SIZE:
             menu_rows.append(("menu:more", "More scarves", "See more scarves"))
         note = " Send NEXT for more." if len(rows) > PAGE_SIZE else ""
-        await client.send_list(wa_id, f"Choose an item from {business}.{note}", menu_rows)
+        await client.send_list(wa_id, f"Choose a product from {business}.{note}", menu_rows)
 
     async def _product(self, merchant: Vendor, product_id: str) -> tuple[ProductCache | None, bool]:
         return await refresh_product_live(
@@ -873,7 +873,7 @@ class BumpaConversation:
             if value == "more":
                 rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[9:], 9)]
                 await self._set_state(state, "collection_select", {"collection_page": 1, "basket_count": len(self._basket_for(merchant.id, wa_id))})
-                await client.send_list(wa_id, "Choose another scarf collection.", rows)
+                await client.send_list(wa_id, "Choose a collection.", rows)
                 return
             try:
                 collection = SCARF_COLLECTIONS[int(value)]
