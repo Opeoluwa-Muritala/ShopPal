@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     bumpa_sync_interval_minutes: int = Field(default=10, ge=1)
     email_api_url: str = "https://emailope.vercel.app/"
     owner_alert_email: str = "abdulkareemaminah03@gmail.com"
+    public_base_url: str = ""
+    action_link_secret: SecretStr = SecretStr("")
     key_encryption_secret: SecretStr = SecretStr("")
 
     # Twilio / WhatsApp
