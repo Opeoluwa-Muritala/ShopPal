@@ -216,10 +216,13 @@ class BumpaConversation:
         if state.payload.get("fulfilment") == "delivery":
             details = self._details_for(merchant.id, wa_id)
             delivery_address = ", ".join(filter(None, [details.get("street"), details.get("city"), details.get("state")]))
+        details = self._details_for(merchant.id, wa_id)
         row = await self._transfers.create(
             merchant, wa_id, payload["product_id"], int(payload["qty"]), client,
             items=[item.model_dump() for item in basket],
             delivery_fee=delivery_fee, delivery_name=delivery_name, delivery_address=delivery_address,
+            customer_name=" ".join(filter(None, [details.get("first_name"), details.get("last_name")])),
+            customer_phone=details.get("phone"),
         )
         if row is not None:
             await self._set_state(state, "awaiting_transfer", {"transfer_ref_id": str(row.id)})

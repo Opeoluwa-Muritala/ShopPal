@@ -279,8 +279,9 @@ class ConversationalWhatsAppClient:
         if self.record_outbound:
             await self.record_outbound(to, body)
 
-    async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None:
-        await self.client.send_template(to, name, language, parameters)
+    async def send_template(self, to: str, name: str, language: str, parameters: list[str],
+                            buttons: list[str] | None = None) -> None:
+        await self.client.send_template(to, name, language, parameters, buttons=buttons)
 
     async def get_media(self, media_id: str) -> bytes:
         return await self.client.get_media(media_id)

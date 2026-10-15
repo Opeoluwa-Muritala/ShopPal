@@ -39,7 +39,16 @@ def _amount(amount: Decimal) -> str:
 
 def _message_text(message: dict[str, Any]) -> str:
     text = message.get("text")
-    return str(text.get("body", "")).strip() if isinstance(text, dict) else ""
+    if isinstance(text, dict):
+        return str(text.get("body", "")).strip()
+    if message.get("type") == "button":
+        button = message.get("button")
+        return str(button.get("payload", "")).strip() if isinstance(button, dict) else ""
+    if message.get("type") == "interactive":
+        interactive = message.get("interactive") or {}
+        reply = interactive.get("button_reply") or {}
+        return str(reply.get("id", "")).strip()
+    return ""
 
 
 class TransferService:
@@ -85,6 +94,7 @@ class TransferService:
         *, items: list[dict[str, Any]] | None = None,
         delivery_fee: Decimal = Decimal("0"), delivery_name: str | None = None,
         delivery_address: str | None = None,
+        customer_name: str | None = None, customer_phone: str | None = None,
     ) -> PendingTransfer | None:
         if qty < 1 or qty > 100:
             await client.send_text(customer_wa_id, "Choose a quantity from 1 to 100 first.")
@@ -131,6 +141,8 @@ class TransferService:
         amount += delivery_fee
         if delivery_name or delivery_address:
             quoted.append({"type": "delivery", "name": delivery_name or "Delivery", "fee": str(delivery_fee), "address": delivery_address})
+        quoted.append({"type": "customer", "name": (customer_name or "").strip()[:120],
+                       "phone": (customer_phone or customer_wa_id)[:30]})
         row: PendingTransfer | None = None
         for _ in range(5):
             try:
@@ -185,7 +197,7 @@ class TransferService:
             row.status = "proof_received"
             if isinstance(media_id, str) and len(media_id) <= 255:
                 row.proof_media_id = media_id
-            reference, amount, product_id, qty = row.reference, row.amount, row.bumpa_product_id, row.quantity
+            reference, amount = row.reference, row.amount
             await session.commit()
         send_buttons = getattr(client, "send_buttons", None)
         if send_buttons is not None:
@@ -195,15 +207,6 @@ class TransferService:
                 [("order_more", "Yes, order more"), ("done_waiting", "No, that's all")],
             )
         if first_proof:
-            delivery = next((item for item in (getattr(row, "items", None) or []) if item.get("type") == "delivery"), None)
-            delivery_note = ""
-            if delivery:
-                delivery_note = f" Delivery: {delivery.get('name')} {_amount(Decimal(delivery.get('fee', '0')))} to {delivery.get('address')}."
-            notice = (
-                f"Transfer {reference}: product {product_id} × {qty}, {_amount(amount)}, customer {wa_id}. "
-                f"{delivery_note} A screenshot or 'I've paid' is never proof of payment. Verify in your bank app, "
-                f"record the sale in Bumpa, then reply CONFIRM {reference} or REJECT {reference}."
-            )
             if is_paid:
                 await send_email(
                     self.http,
@@ -212,17 +215,36 @@ class TransferService:
                     f"Payment alert: {reference}",
                     f"Order {reference} got an 'I've paid' alert. Customer: {wa_id}. Amount: ₦{amount:,.2f}.",
                 )
-            if merchant.owner_whatsapp_number:
-                template = self.settings.whatsapp_template_owner_transfer_alert
-                if template:
-                    await client.send_template(merchant.owner_whatsapp_number, template, "en_US", [reference, product_id, str(qty), _amount(amount), wa_id])
-                else:
-                    # TODO(WHATSAPP_OWNER_TEMPLATE): register this template for alerts
-                    # outside the owner conversation window.
-                    await client.send_text(merchant.owner_whatsapp_number, notice)
-                on_owner_notified = getattr(self, "on_owner_notified", None)
-                if on_owner_notified is not None:
-                    await on_owner_notified(merchant.owner_whatsapp_number, notice)
+        if first_proof and merchant.owner_whatsapp_number:
+            items = getattr(row, "items", None) or []
+            delivery = next((item for item in items if item.get("type") == "delivery"), None)
+            customer = next((item for item in items if item.get("type") == "customer"), None)
+            name = (customer or {}).get("name") or "Not provided"
+            phone = (customer or {}).get("phone") or wa_id
+            address = (delivery or {}).get("address") or "Pickup / not provided"
+            products = ", ".join(
+                f"{item.get('name') or item.get('product_id') or 'Product'} x {item.get('qty', 1)}"
+                for item in items if item.get("type") not in {"delivery", "customer"}
+            ) or f"{row.bumpa_product_id} x {row.quantity}"
+            fulfilment = (delivery or {}).get("name") or "Pickup"
+            notice = (
+                f"Transfer {reference}\nCustomer: {name}\nPhone: {phone}\nWhatsApp: {wa_id}\n"
+                f"Items: {products}\nAmount: {_amount(amount)}\nFulfilment: {fulfilment}\nAddress: {address}\n\n"
+                "A screenshot or 'I've paid' is never proof of payment. Verify in your bank app, "
+                f"then reply CONFIRM {reference} or REJECT {reference}. Record confirmed sales in Bumpa."
+            )
+            template = self.settings.whatsapp_template_owner_transfer_alert
+            if template:
+                await client.send_template(merchant.owner_whatsapp_number, template, "en_US",
+                                           [reference, name, phone, wa_id, products, _amount(amount), fulfilment, address],
+                                           buttons=[f"CONFIRM {reference}", f"REJECT {reference}"])
+            else:
+                # TODO(WHATSAPP_OWNER_TEMPLATE): register this template for alerts
+                # outside the owner conversation window.
+                await client.send_text(merchant.owner_whatsapp_number, notice)
+            on_owner_notified = getattr(self, "on_owner_notified", None)
+            if on_owner_notified is not None:
+                await on_owner_notified(merchant.owner_whatsapp_number, notice)
         return True
 
     async def owner_action(self, merchant: Vendor, message: dict[str, Any], client: WhatsAppClient) -> bool:

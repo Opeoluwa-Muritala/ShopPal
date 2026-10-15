@@ -23,7 +23,8 @@ class WhatsAppClient(Protocol):
     async def send_image(self, to: str, image_url: str, caption: str = "") -> None: ...
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> None: ...
     async def send_list(self, to: str, body: str, rows: Sequence[ListRow]) -> None: ...
-    async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None: ...
+    async def send_template(self, to: str, name: str, language: str, parameters: list[str],
+                            buttons: list[str] | None = None) -> None: ...
     async def get_media(self, media_id: str) -> bytes: ...
 
 
@@ -141,13 +142,22 @@ class MetaWhatsAppClient:
             },
         })
 
-    async def send_template(self, to: str, name: str, language: str, parameters: list[str]) -> None:
+    async def send_template(self, to: str, name: str, language: str, parameters: list[str],
+                            buttons: list[str] | None = None) -> None:
         template: dict[str, Any] = {"name": name, "language": {"code": language}}
         if parameters:
             template["components"] = [{
                 "type": "body",
                 "parameters": [{"type": "text", "text": value} for value in parameters],
             }]
+        if buttons:
+            if len(buttons) > 3 or any(not value or len(value) > 256 for value in buttons):
+                raise ValueError("Invalid template quick reply payload")
+            template.setdefault("components", []).extend(
+                {"type": "button", "sub_type": "quick_reply", "index": str(index),
+                 "parameters": [{"type": "payload", "payload": value}]}
+                for index, value in enumerate(buttons)
+            )
         await self._send(to, {"type": "template", "template": template})
 
     async def get_media(self, media_id: str) -> bytes:

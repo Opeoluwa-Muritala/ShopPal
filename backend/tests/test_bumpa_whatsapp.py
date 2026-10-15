@@ -194,6 +194,25 @@ async def test_meta_client_sends_only_expected_payload_and_token_header():
 
 
 @pytest.mark.anyio
+async def test_meta_template_sends_owner_decision_buttons():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"messages": [{"id": "wamid.sent"}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        client = MetaWhatsAppClient("https://graph.facebook.com/v23.0", "123456789", "secret-token", http)
+        await client.send_template("2348012345678", "owner_transfer_alert", "en_US", ["SHP-4F2K"],
+                                   buttons=["CONFIRM SHP-4F2K", "REJECT SHP-4F2K"])
+    components = json.loads(requests[0].content)["template"]["components"]
+    assert [component["type"] for component in components] == ["body", "button", "button"]
+    assert [component["parameters"][0]["payload"] for component in components[1:]] == [
+        "CONFIRM SHP-4F2K", "REJECT SHP-4F2K",
+    ]
+
+
+@pytest.mark.anyio
 async def test_meta_sends_native_image_and_picker_descriptions():
     requests = []
 

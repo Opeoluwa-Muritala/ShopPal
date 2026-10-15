@@ -158,6 +158,34 @@ async def test_only_owner_can_confirm_or_reject_transfer(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_owner_template_contains_checkout_details_and_reject_action():
+    shop = merchant()
+    row = SimpleNamespace(
+        reference="SHP-4F2K", merchant_id=shop.id, bumpa_product_id="p1", quantity=2,
+        amount=Decimal("10500"), customer_wa_id="2348022222222", status="awaiting_proof",
+        proof_media_id=None, items=[
+            {"product_id": "p1", "name": "Sneakers", "qty": 2},
+            {"type": "delivery", "name": "Door delivery", "address": "12 Main St, Lagos"},
+            {"type": "customer", "name": "Ada Okafor", "phone": "08022222222"},
+        ],
+    )
+    session = FakeSession(row)
+    transfer = service(session)
+    transfer.settings.whatsapp_template_owner_transfer_alert = "owner_transfer_alert"
+    whatsapp = FakeWhatsApp()
+    whatsapp.send_template = AsyncMock()
+    assert await transfer.customer_proof(shop, {"from": row.customer_wa_id, "type": "text", "text": {"body": "paid"}}, whatsapp)
+    params = whatsapp.send_template.await_args.args[3]
+    assert params == ["SHP-4F2K", "Ada Okafor", "08022222222", "2348022222222",
+                      "Sneakers x 2", "NGN 10,500.00", "Door delivery", "12 Main St, Lagos"]
+    assert whatsapp.send_template.await_args.kwargs["buttons"] == ["CONFIRM SHP-4F2K", "REJECT SHP-4F2K"]
+    assert not await transfer.owner_action(shop, {"from": row.customer_wa_id, "type": "button", "button": {"payload": "CONFIRM SHP-4F2K"}}, whatsapp)
+    assert row.status == "proof_received"
+    assert await transfer.owner_action(shop, {"from": "2348011111111", "type": "button", "button": {"payload": "REJECT SHP-4F2K"}}, whatsapp)
+    assert row.status == "rejected"
+
+
+@pytest.mark.anyio
 async def test_expiry_marks_open_transfer_and_notifies_both_parties(monkeypatch):
     shop = merchant()
     row = SimpleNamespace(

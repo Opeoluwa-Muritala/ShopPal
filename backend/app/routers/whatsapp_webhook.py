@@ -273,6 +273,12 @@ def _validate_payload(payload):
                         or len(identifier) > 256 or not isinstance(title, str) or len(title) > title_limit
                     ):
                         raise ValueError("Malformed interactive reply")
+                if event.get("type") == "button":
+                    content = event.get("button")
+                    if not event.get("id") or not event.get("from") or not isinstance(content, dict):
+                        raise ValueError("Malformed template button reply")
+                    if not isinstance(content.get("payload"), str) or not 1 <= len(content["payload"]) <= 256:
+                        raise ValueError("Malformed template button reply")
 
 
 def _wa_datetime(value: Any) -> datetime | None:
