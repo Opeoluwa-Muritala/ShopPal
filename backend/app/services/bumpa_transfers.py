@@ -17,6 +17,7 @@ from app.db.models import ConversationState, PendingTransfer, Vendor, WhatsAppMe
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
+from app.services.email_alert import send_email
 from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_whatsapp import has_open_capacity
 
@@ -244,6 +245,17 @@ class TransferService:
             else:
                 await client.send_text(customer_wa_id, f"Payment not received for {reference}. The owner could not verify the transfer. Please contact the shop to resolve it.")
         if action == "CONFIRM":
+            customer_name_or_number = row.customer_wa_id or "Unknown customer"
+            await send_email(
+                self.http,
+                self.settings.email_api_url,
+                self.settings.owner_alert_email,
+                f"Payment confirmed: {reference}",
+                (
+                    f"Order {reference} was confirmed as paid. Customer: {customer_name_or_number}. "
+                    f"Amount: ₦{row.amount:,.2f}."
+                ),
+            )
             if self.on_confirm:
                 await self.on_confirm(row)
             await client.send_text(sender, f"Confirmed {reference}. Please record the sale in your Bumpa app; Bumpa stock only reduces once you do.")

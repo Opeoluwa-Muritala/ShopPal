@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     bumpa_base_url: str = "https://api.bumpa.xyz"
     bumpa_timeout_seconds: float = Field(default=10, gt=0, le=120)
     bumpa_sync_interval_minutes: int = Field(default=10, ge=1)
+    email_api_url: str = "https://emailope.vercel.app/"
+    owner_alert_email: str = "abdulkareemaminah03@gmail.com"
     key_encryption_secret: SecretStr = SecretStr("")
 
     # Twilio / WhatsApp

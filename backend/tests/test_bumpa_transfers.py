@@ -58,6 +58,8 @@ def service(session):
     result.http = None
     result.on_confirm = None
     result.settings = SimpleNamespace(
+        email_api_url="",
+        owner_alert_email="",
         whatsapp_template_owner_transfer_alert="",
         whatsapp_template_transfer_expiry="",
         whatsapp_template_owner_transfer_expiry="",
