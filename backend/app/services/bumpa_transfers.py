@@ -194,7 +194,7 @@ class TransferService:
                 "While we wait for confirmation, would you like to order anything else?",
                 [("order_more", "Yes, order more"), ("done_waiting", "No, that's all")],
             )
-        if first_proof and merchant.owner_whatsapp_number:
+        if first_proof:
             delivery = next((item for item in (getattr(row, "items", None) or []) if item.get("type") == "delivery"), None)
             delivery_note = ""
             if delivery:
@@ -204,16 +204,25 @@ class TransferService:
                 f"{delivery_note} A screenshot or 'I've paid' is never proof of payment. Verify in your bank app, "
                 f"record the sale in Bumpa, then reply CONFIRM {reference} or REJECT {reference}."
             )
-            template = self.settings.whatsapp_template_owner_transfer_alert
-            if template:
-                await client.send_template(merchant.owner_whatsapp_number, template, "en_US", [reference, product_id, str(qty), _amount(amount), wa_id])
-            else:
-                # TODO(WHATSAPP_OWNER_TEMPLATE): register this template for alerts
-                # outside the owner conversation window.
-                await client.send_text(merchant.owner_whatsapp_number, notice)
-            on_owner_notified = getattr(self, "on_owner_notified", None)
-            if on_owner_notified is not None:
-                await on_owner_notified(merchant.owner_whatsapp_number, notice)
+            if is_paid:
+                await send_email(
+                    self.http,
+                    self.settings.email_api_url,
+                    self.settings.owner_alert_email,
+                    f"Payment alert: {reference}",
+                    f"Order {reference} got an 'I've paid' alert. Customer: {wa_id}. Amount: ₦{amount:,.2f}.",
+                )
+            if merchant.owner_whatsapp_number:
+                template = self.settings.whatsapp_template_owner_transfer_alert
+                if template:
+                    await client.send_template(merchant.owner_whatsapp_number, template, "en_US", [reference, product_id, str(qty), _amount(amount), wa_id])
+                else:
+                    # TODO(WHATSAPP_OWNER_TEMPLATE): register this template for alerts
+                    # outside the owner conversation window.
+                    await client.send_text(merchant.owner_whatsapp_number, notice)
+                on_owner_notified = getattr(self, "on_owner_notified", None)
+                if on_owner_notified is not None:
+                    await on_owner_notified(merchant.owner_whatsapp_number, notice)
         return True
 
     async def owner_action(self, merchant: Vendor, message: dict[str, Any], client: WhatsAppClient) -> bool:
@@ -245,17 +254,6 @@ class TransferService:
             else:
                 await client.send_text(customer_wa_id, f"Payment not received for {reference}. The owner could not verify the transfer. Please contact the shop to resolve it.")
         if action == "CONFIRM":
-            customer_name_or_number = row.customer_wa_id or "Unknown customer"
-            await send_email(
-                self.http,
-                self.settings.email_api_url,
-                self.settings.owner_alert_email,
-                f"Payment confirmed: {reference}",
-                (
-                    f"Order {reference} was confirmed as paid. Customer: {customer_name_or_number}. "
-                    f"Amount: ₦{row.amount:,.2f}."
-                ),
-            )
             if self.on_confirm:
                 await self.on_confirm(row)
             await client.send_text(sender, f"Confirmed {reference}. Please record the sale in your Bumpa app; Bumpa stock only reduces once you do.")

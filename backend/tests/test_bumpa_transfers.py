@@ -10,7 +10,6 @@ import pytest
 
 from app.services import bumpa_transfers
 from app.services.bumpa_transfers import TransferService
-from tests.test_bumpa_conversation import FakeWhatsApp
 
 
 @pytest.fixture
@@ -41,6 +40,20 @@ class FakeSession:
 
     async def commit(self):
         self.commits += 1
+
+
+class FakeWhatsApp:
+    def __init__(self):
+        self.sent: list[tuple[str, str, str]] = []
+
+    async def send_text(self, to: str, body: str):
+        self.sent.append(("text", to, body))
+
+    async def send_buttons(self, to: str, body: str, _buttons):
+        self.sent.append(("buttons", to, body))
+
+    async def send_template(self, to: str, _name: str, _language: str, _components):
+        self.sent.append(("template", to, "template"))
 
 
 def merchant():
@@ -81,6 +94,8 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
         amount=Decimal("5000"), customer_wa_id="2348022222222", status="awaiting_proof",
         proof_media_id=None, created_at=datetime.now(UTC), resolved_at=None,
     )
+    send_email_mock = AsyncMock()
+    monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
     monkeypatch.setattr(bumpa_transfers, "save_pending_transfer", AsyncMock(return_value=row))
     assert whatsapp.sent == []
     created = await transfer.create(shop, row.customer_wa_id, "p1", 1, whatsapp)
@@ -94,10 +109,33 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert row.proof_media_id == "media-1"
     assert "never proof of payment" in whatsapp.sent[-1][2]
     assert "1234567890" not in whatsapp.sent[-1][2]
+    send_email_mock.assert_not_awaited()
 
 
 @pytest.mark.anyio
-async def test_only_owner_can_confirm_or_reject_transfer():
+async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monkeypatch):
+    shop = merchant()
+    row = SimpleNamespace(
+        reference="SHP-4F2K", merchant_id=shop.id, bumpa_product_id="p1", quantity=1,
+        amount=Decimal("5000"), customer_wa_id="2348022222222", status="awaiting_proof",
+        proof_media_id=None, created_at=datetime.now(UTC), resolved_at=None,
+    )
+    session = FakeSession(row)
+    transfer = service(session)
+    transfer.http = AsyncMock()
+    transfer.settings.email_api_url = "https://emailope.vercel.app/"
+    transfer.settings.owner_alert_email = "owner@example.com"
+    whatsapp = FakeWhatsApp()
+    send_email_mock = AsyncMock()
+    monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
+    paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I've paid"}}
+    assert await transfer.customer_proof(shop, paid, whatsapp)
+    assert any("never proof of payment" in sent[2] for sent in whatsapp.sent)
+    send_email_mock.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_only_owner_can_confirm_or_reject_transfer(monkeypatch):
     shop = merchant()
     row = SimpleNamespace(
         reference="SHP-4F2K", merchant_id=shop.id, customer_wa_id="2348022222222",
@@ -105,6 +143,8 @@ async def test_only_owner_can_confirm_or_reject_transfer():
     )
     session = FakeSession(row)
     transfer = service(session)
+    send_email_mock = AsyncMock()
+    monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
     whatsapp = FakeWhatsApp()
     forged = {"from": "2348099999999", "type": "text", "text": {"body": "CONFIRM SHP-4F2K"}}
     assert not await transfer.owner_action(shop, forged, whatsapp)
@@ -114,6 +154,7 @@ async def test_only_owner_can_confirm_or_reject_transfer():
     assert row.status == "confirmed"
     assert any("record the sale in your Bumpa app" in sent[2] for sent in whatsapp.sent)
     assert any("owner will send your invoice" in sent[2] for sent in whatsapp.sent)
+    send_email_mock.assert_not_awaited()
 
 
 @pytest.mark.anyio
