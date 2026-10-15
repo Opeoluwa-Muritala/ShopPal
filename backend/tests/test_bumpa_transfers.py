@@ -138,6 +138,10 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     assert "Confirm payment" in send_email_mock.await_args.kwargs["html"]
     assert "Reject payment" in send_email_mock.await_args.kwargs["html"]
 
+    image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
+    assert await transfer.customer_proof(shop, image, whatsapp)
+    send_email_mock.assert_awaited_once()
+
 
 @pytest.mark.anyio
 async def test_screenshot_alert_precedes_customer_reply_and_paid_text_does_not_duplicate_it(monkeypatch):
