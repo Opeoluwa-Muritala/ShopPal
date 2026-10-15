@@ -20,6 +20,7 @@ from app.logging_conf import logger
 from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.email_alert import send_email
+from app.services.transfer_email_links import review_links, transfer_alert_html
 
 TRANSFER_TTL = timedelta(hours=24)
 REFERENCE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -200,13 +201,30 @@ class TransferService:
             reference, amount = row.reference, row.amount
             await session.commit()
         if first_proof:
+            claim = "payment claim" if is_paid else "receipt screenshot"
+            email_text = (
+                f"Order {reference} got a {claim}. Customer: {wa_id}. Amount: {_amount(amount)}. "
+                "Verify the transfer in your bank app before confirming it."
+            )
+            email_html = None
+            base_url = getattr(self.settings, "public_base_url", "")
+            signing_key = getattr(self.settings, "key_encryption_secret", None)
+            if base_url and signing_key:
+                try:
+                    confirm_url, reject_url = review_links(
+                        merchant.id, reference, base_url, signing_key.get_secret_value(),
+                    )
+                    email_text += f"\nConfirm: {confirm_url}\nReject: {reject_url}"
+                    email_html = transfer_alert_html(reference, _amount(amount), claim, confirm_url, reject_url)
+                except ValueError:
+                    logger.exception("Transfer email action links unavailable", extra={"step": "transfer_email_links"})
             await send_email(
                 self.http,
                 self.settings.email_api_url,
                 self.settings.owner_alert_email,
                 f"Payment alert: {reference}",
-                f"Order {reference} got a {'payment claim' if is_paid else 'receipt screenshot'}. "
-                f"Customer: {wa_id}. Amount: {_amount(amount)}. Verify the transfer in your bank app.",
+                email_text,
+                html=email_html,
             )
         send_buttons = getattr(client, "send_buttons", None)
         if send_buttons is not None:
@@ -255,6 +273,19 @@ class TransferService:
         if len(words) != 2 or words[0] not in {"CONFIRM", "REJECT"} or not words[1].startswith("SHP-"):
             return False
         action, reference = words
+        if not await self.resolve(merchant, reference, action, client):
+            await client.send_text(sender, "That transfer reference is not open for this shop.")
+            return True
+        if action == "CONFIRM":
+            await client.send_text(sender, f"Confirmed {reference}. Please record the sale in your Bumpa app; Bumpa stock only reduces once you do.")
+        else:
+            await client.send_text(sender, f"Rejected {reference}.")
+        return True
+
+    async def resolve(self, merchant: Vendor, reference: str, action: str, client: WhatsAppClient | None = None) -> bool:
+        """Apply an owner-reviewed decision once, regardless of the delivery channel."""
+        if action not in {"CONFIRM", "REJECT"}:
+            return False
         async with self.sessions() as session:
             row = await session.scalar(
                 select(PendingTransfer).where(
@@ -264,23 +295,25 @@ class TransferService:
                 ).with_for_update()
             )
             if row is None:
-                await client.send_text(sender, "That transfer reference is not open for this shop.")
-                return True
+                return False
             row.status = "confirmed" if action == "CONFIRM" else "rejected"
             row.resolved_at = datetime.now(UTC)
             customer_wa_id = row.customer_wa_id
             await session.commit()
-        if customer_wa_id:
-            if action == "CONFIRM":
-                await client.send_text(customer_wa_id, f"Payment received for {reference}. The owner will send your invoice after recording the sale in Bumpa.")
-            else:
-                await client.send_text(customer_wa_id, f"Payment not received for {reference}. The owner could not verify the transfer. Please contact the shop to resolve it.")
+        if customer_wa_id and client is not None:
+            try:
+                if action == "CONFIRM":
+                    await client.send_text(customer_wa_id, f"Payment received for {reference}. The owner will send your invoice after recording the sale in Bumpa.")
+                else:
+                    await client.send_text(customer_wa_id, f"Payment not received for {reference}. The owner could not verify the transfer. Please contact the shop to resolve it.")
+            except Exception:
+                logger.exception("Customer transfer decision notice failed", extra={"step": "transfer_decision_notice"})
         if action == "CONFIRM":
             if self.on_confirm:
-                await self.on_confirm(row)
-            await client.send_text(sender, f"Confirmed {reference}. Please record the sale in your Bumpa app; Bumpa stock only reduces once you do.")
-        else:
-            await client.send_text(sender, f"Rejected {reference}.")
+                try:
+                    await self.on_confirm(row)
+                except Exception:
+                    logger.exception("Confirmed transfer basket cleanup failed", extra={"step": "transfer_basket_cleanup"})
         return True
 
     async def expire(self, *, now: datetime | None = None) -> int:

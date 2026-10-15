@@ -126,6 +126,8 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     transfer.http = AsyncMock()
     transfer.settings.email_api_url = "https://emailope.vercel.app/"
     transfer.settings.owner_alert_email = "owner@example.com"
+    transfer.settings.public_base_url = "https://shop.example"
+    transfer.settings.key_encryption_secret = SimpleNamespace(get_secret_value=lambda: "test-secret")
     whatsapp = FakeWhatsApp()
     send_email_mock = AsyncMock()
     monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
@@ -133,6 +135,8 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     assert await transfer.customer_proof(shop, paid, whatsapp)
     assert any("never proof of payment" in sent[2] for sent in whatsapp.sent)
     send_email_mock.assert_awaited_once()
+    assert "Confirm payment" in send_email_mock.await_args.kwargs["html"]
+    assert "Reject payment" in send_email_mock.await_args.kwargs["html"]
 
 
 @pytest.mark.anyio

@@ -25,6 +25,7 @@ from app.routers import (
     orders,
     privacy,
     products,
+    transfer_email_review,
     vendors,
     webhook,
     whatsapp_webhook,
@@ -56,6 +57,7 @@ async def lifespan(application):
         application.state.bumpa_conversation_handler = BumpaConversation(
             factory, application.state.bumpa_http_client, settings, payment_tracker
         )
+        application.state.bumpa_transfer_service = application.state.bumpa_conversation_handler._transfers
         scheduler.add_job(payment_tracker.poll_due, "interval", seconds=15, max_instances=1, coalesce=True)
         scheduler.add_job(retention_job, "interval", hours=1, args=[factory], max_instances=1, coalesce=True)
         transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
@@ -142,7 +144,8 @@ def create_app() -> FastAPI:
     @application.middleware("http")
     async def log_requests_middleware(request: Request, call_next):
         start_time = time.perf_counter()
-        route = request.url.path
+        raw_route = request.url.path
+        route = "/email/transfers/[token]" if raw_route.startswith("/email/transfers/") else raw_route
         method = request.method
 
         logger.info(
@@ -196,6 +199,7 @@ def create_app() -> FastAPI:
     application.include_router(logs.router)
     application.include_router(webhook.router)
     application.include_router(whatsapp_webhook.router)
+    application.include_router(transfer_email_review.router)
     application.include_router(flutterwave.router)
     application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
