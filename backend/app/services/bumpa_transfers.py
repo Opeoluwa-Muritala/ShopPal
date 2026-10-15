@@ -13,13 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
 from app.db.bumpa_repository import save_pending_transfer
-from app.db.models import ConversationState, PendingTransfer, Vendor, WhatsAppMessage
+from app.db.models import ConversationState, PendingTransfer, Vendor
 from app.integrations.bumpa.credentials import decrypt_credential
 from app.integrations.whatsapp.client import MetaWhatsAppClient, WhatsAppClient
 from app.logging_conf import logger
-from app.services.email_alert import send_email
 from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_whatsapp import has_open_capacity
+from app.services.email_alert import send_email
 
 TRANSFER_TTL = timedelta(hours=24)
 REFERENCE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
