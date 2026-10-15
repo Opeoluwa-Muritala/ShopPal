@@ -199,6 +199,15 @@ class TransferService:
                 row.proof_media_id = media_id
             reference, amount = row.reference, row.amount
             await session.commit()
+        if first_proof:
+            await send_email(
+                self.http,
+                self.settings.email_api_url,
+                self.settings.owner_alert_email,
+                f"Payment alert: {reference}",
+                f"Order {reference} got a {'payment claim' if is_paid else 'receipt screenshot'}. "
+                f"Customer: {wa_id}. Amount: {_amount(amount)}. Verify the transfer in your bank app.",
+            )
         send_buttons = getattr(client, "send_buttons", None)
         if send_buttons is not None:
             await send_buttons(
@@ -206,15 +215,6 @@ class TransferService:
                 "While we wait for confirmation, would you like to order anything else?",
                 [("order_more", "Yes, order more"), ("done_waiting", "No, that's all")],
             )
-        if first_proof:
-            if is_paid:
-                await send_email(
-                    self.http,
-                    self.settings.email_api_url,
-                    self.settings.owner_alert_email,
-                    f"Payment alert: {reference}",
-                    f"Order {reference} got an 'I've paid' alert. Customer: {wa_id}. Amount: ₦{amount:,.2f}.",
-                )
         if first_proof and merchant.owner_whatsapp_number:
             items = getattr(row, "items", None) or []
             delivery = next((item for item in items if item.get("type") == "delivery"), None)

@@ -109,7 +109,8 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert row.proof_media_id == "media-1"
     assert "never proof of payment" in whatsapp.sent[-1][2]
     assert "1234567890" not in whatsapp.sent[-1][2]
-    send_email_mock.assert_not_awaited()
+    send_email_mock.assert_awaited_once()
+    assert "receipt screenshot" in send_email_mock.await_args.args[4]
 
 
 @pytest.mark.anyio
@@ -131,6 +132,32 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I've paid"}}
     assert await transfer.customer_proof(shop, paid, whatsapp)
     assert any("never proof of payment" in sent[2] for sent in whatsapp.sent)
+    send_email_mock.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_screenshot_alert_precedes_customer_reply_and_paid_text_does_not_duplicate_it(monkeypatch):
+    shop = merchant()
+    row = SimpleNamespace(
+        reference="SHP-4F2K", merchant_id=shop.id, bumpa_product_id="p1", quantity=1,
+        amount=Decimal("5000"), customer_wa_id="2348022222222", status="awaiting_proof",
+        proof_media_id=None, items=[],
+    )
+    transfer = service(FakeSession(row))
+    whatsapp = FakeWhatsApp()
+    send_email_mock = AsyncMock()
+    monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
+
+    whatsapp.send_buttons = AsyncMock(side_effect=RuntimeError("WhatsApp unavailable"))
+    image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
+    with pytest.raises(RuntimeError, match="WhatsApp unavailable"):
+        await transfer.customer_proof(shop, image, whatsapp)
+    send_email_mock.assert_awaited_once()
+    assert "receipt screenshot" in send_email_mock.await_args.args[4]
+
+    whatsapp.send_buttons = AsyncMock()
+    paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I've paid"}}
+    assert await transfer.customer_proof(shop, paid, whatsapp)
     send_email_mock.assert_awaited_once()
 
 
