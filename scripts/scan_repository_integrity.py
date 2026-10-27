@@ -81,6 +81,11 @@ def main() -> int:
                 for label, pattern in RULES.items():
                     if pattern.search(line):
                         findings.append(f"{relative}: {label}")
+                # The incident appended a 30 KB, single-line JavaScript
+                # obfuscator to Tailwind config. Catch that family even when
+                # it is appended after otherwise valid source code.
+                if len(line) > 4_000 and line.count("parseInt(0x") >= 8:
+                    findings.append(f"{relative}: long obfuscated JavaScript line")
 
     if findings:
         print("Repository integrity scan FAILED:")
