@@ -51,3 +51,13 @@ clean commit, apply the remediation on top, rotate secrets, then replace the
 remote branch through an approved incident-response process. Clone it fresh on
 a clean machine and run `python scripts/scan_repository_integrity.py` before any
 install, editor task, build, or application command.
+
+## Repository ruleset
+
+Import `.github/rulesets/protect-main.json` from the repository's
+**Settings → Rules → Rulesets → New ruleset → Import a ruleset** page. It
+requires a pull request, one approval, resolved review threads, the `scan`
+integrity check, and an up-to-date branch; it blocks deletion and force pushes
+and grants no bypass actors. The approval requirement needs a second reviewer.
+GitHub stores rulesets in repository settings, so adding this file to Git alone
+does not activate it; an administrator must import and create it.
