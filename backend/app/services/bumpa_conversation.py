@@ -6,15 +6,18 @@ TODO(BUMPA_MULTI_WORKER_DETAILS): use an encrypted, expiring shared store if
 the application is deployed with multiple workers.
 """
 
+import asyncio
 import json
+from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
 from pydantic import ValidationError
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
@@ -44,16 +47,16 @@ from app.services.bumpa_sync import refresh_product_live
 from app.services.bumpa_transfers import TransferService
 from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.delivery_postcodes import registered_postcode, supplied_postcode
+from app.services.scarf_collections import (
+    collection_for_reply,
+    collection_names,
+    product_collections,
+)
 
 DETAILS_TTL = timedelta(hours=1)
 BASKET_TTL = timedelta(hours=24)
 PAGE_SIZE = 10
-SCARF_COLLECTIONS = [
-    "Printed scarves", "Ombre scarves", "Asma scarves", "Gold Dust Chiffon",
-    "silky scarves", "Snake Scarves", "Two-toned scarves", "Chiffon scarves",
-    "Shadow Jersey", "Crinkled scarves", "2 in 1 Jersey scarves", "Flower Bouquet",
-    "Rainbow scarves", "Vintage scarf", "Cotton Printed Scarf", "Mini Jersey",
-]
+SCARF_COLLECTIONS = collection_names()
 
 
 def _unique_offers(rows: list[ProductCache]) -> list[ProductCache]:
@@ -342,27 +345,56 @@ class BumpaConversation:
         state.step = step
         state.payload = payload
 
+    async def _browse_products(self, merchant_id: UUID) -> list[ProductCache]:
+        # Only browse data is cached. Selection and checkout still check Bumpa
+        # live. Tenant keys, short TTL and a size bound prevent cross-shop leaks.
+        if not hasattr(self, "_browse_cache"):
+            self._browse_cache = OrderedDict()
+            self._browse_lock = asyncio.Lock()
+        async with self._browse_lock:
+            cached = self._browse_cache.get(merchant_id)
+            if cached and cached[0] > monotonic():
+                self._browse_cache.move_to_end(merchant_id)
+                return cached[1]
+            async with self._sessions() as session:
+                query = select(ProductCache).where(
+                    ProductCache.merchant_id == merchant_id,
+                    ProductCache.is_published.is_(True),
+                    (ProductCache.stock_qty.is_(None) | (ProductCache.stock_qty > 0)),
+                ).order_by(ProductCache.name, ProductCache.bumpa_product_id)
+                rows = _unique_offers(list((await session.scalars(query)).all()))
+            if len(rows) <= 2000:
+                self._browse_cache[merchant_id] = (monotonic() + 60, rows)
+                self._browse_cache.move_to_end(merchant_id)
+                while len(self._browse_cache) > 32:
+                    self._browse_cache.popitem(last=False)
+            return rows
+
     async def _menu(self, merchant: Vendor, wa_id: str, client: WhatsAppClient, *, page: int = 0, search: str | None = None) -> None:
         if search is None and page == 0:
             state = await self._state(merchant.id, wa_id)
             await self._set_state(state, "collection_select", {"collection_page": 0, "basket_count": len(self._basket_for(merchant.id, wa_id))})
-            collection_rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[:9])]
+            collection_rows = [(f"collection:name:{name}", name) for name in SCARF_COLLECTIONS[:9]]
             collection_rows.append(("collection:more", "More collections", "See more scarf collections"))
             await client.send_list(wa_id, "Choose a collection.", collection_rows)
             return
-        async with self._sessions() as session:
-            query = select(ProductCache).where(
-                ProductCache.merchant_id == merchant.id,
-                ProductCache.is_published.is_(True),
-                (ProductCache.stock_qty.is_(None) | (ProductCache.stock_qty > 0)),
-            )
-            if search:
-                query = query.where(
-                    ProductCache.name.ilike(f"%{search[:80]}%")
-                    | cast(ProductCache.raw, Text).ilike(f"%{search[:80]}%")
-                )
-            rows = _unique_offers(list((await session.scalars(query.order_by(ProductCache.name, ProductCache.bumpa_product_id))).all()))
-        rows = rows[page * PAGE_SIZE: (page + 1) * PAGE_SIZE + 1]
+        rows = await self._browse_products(merchant.id)
+        if search:
+            needle = search[:80].casefold()
+            is_collection = needle in {name.casefold() for name in SCARF_COLLECTIONS}
+            def matches(item):
+                collections = product_collections(merchant.business_name, item.name, item.raw or {})
+                labels = [value.casefold() for value in collections if isinstance(value, str)]
+                if is_collection:
+                    return needle in labels
+                return any(needle in value for value in [
+                    (item.name or "").casefold(), (item.description or "").casefold(), *labels,
+                ])
+            rows = [item for item in rows if matches(item)]
+        # A full page reserves its tenth row for NEXT. Advance by the nine
+        # displayed products so the tenth product is not skipped.
+        start = page * (PAGE_SIZE - 1)
+        rows = rows[start: start + PAGE_SIZE + 1]
         products = rows[:PAGE_SIZE - 1] if len(rows) > PAGE_SIZE else rows
         if not products:
             if search:
@@ -874,12 +906,12 @@ class BumpaConversation:
         if state.step == "collection_select" and lower.startswith("collection:"):
             value = text.split(":", 1)[1]
             if value == "more":
-                rows = [(f"collection:{index}", name) for index, name in enumerate(SCARF_COLLECTIONS[9:], 9)]
+                rows = [(f"collection:name:{name}", name) for name in SCARF_COLLECTIONS[9:]]
                 await self._set_state(state, "collection_select", {"collection_page": 1, "basket_count": len(self._basket_for(merchant.id, wa_id))})
                 await client.send_list(wa_id, "Choose a collection.", rows)
                 return
             try:
-                collection = SCARF_COLLECTIONS[int(value)]
+                collection = collection_for_reply(value)
             except (ValueError, IndexError):
                 await client.send_text(wa_id, "Please choose one of the collections shown.")
                 return

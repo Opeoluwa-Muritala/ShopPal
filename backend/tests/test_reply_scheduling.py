@@ -50,6 +50,33 @@ def test_free_slot_accepts_new_message_while_slow_message_is_running(monkeypatch
     asyncio.run(run())
 
 
+def test_idle_polls_back_off_to_configured_limit(monkeypatch):
+    timeouts = []
+    monkeypatch.setattr(recovery, "get_engine", lambda: object())
+    monkeypatch.setattr(recovery, "ready_job_ids", lambda *args: [])
+    monkeypatch.setattr(recovery, "get_settings", lambda: Settings(
+        _env_file=None, meta_reply_worker_poll_seconds=1,
+        meta_reply_worker_idle_poll_seconds=600,
+    ))
+
+    async def run():
+        stop = asyncio.Event()
+
+        async def wait(tasks, *, timeout, return_when):
+            timeouts.append(timeout)
+            if len(timeouts) == 12:
+                stop.set()
+            await asyncio.sleep(0)
+            return set(), set(tasks)
+
+        monkeypatch.setattr(recovery.asyncio, "wait", wait)
+        await recovery.recovery_loop(stop)
+
+    asyncio.run(run())
+    assert timeouts[:4] == [2, 4, 8, 16]
+    assert timeouts[-2:] == [600, 600]
+
+
 def test_committed_message_wakeup_does_not_wait_for_poll_interval(monkeypatch):
     polled = Event()
     started = Event()

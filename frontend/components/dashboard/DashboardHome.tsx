@@ -207,11 +207,11 @@ export default function DashboardHome() {
     return () => clearTimeout(timer);
   }, [fetchDashboardData]);
 
-  // Real-Time Polling: Polls every 5 seconds (5000ms)
+  // Refresh visible dashboards once a minute; hidden tabs must not keep the DB awake.
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchDashboardData();
-    }, 5000);
+      if (document.visibilityState === 'visible') fetchDashboardData();
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
 

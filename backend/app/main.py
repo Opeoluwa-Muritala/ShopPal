@@ -58,12 +58,13 @@ async def lifespan(application):
             factory, application.state.bumpa_http_client, settings, payment_tracker
         )
         application.state.bumpa_transfer_service = application.state.bumpa_conversation_handler._transfers
-        scheduler.add_job(payment_tracker.poll_due, "interval", seconds=15, max_instances=1, coalesce=True)
-        scheduler.add_job(retention_job, "interval", hours=1, args=[factory], max_instances=1, coalesce=True)
-        transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
-        scheduler.add_job(transfer_service.expire, "interval", minutes=1, max_instances=1, coalesce=True)
-        scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
-        scheduler.start()
+        if settings.database_background_jobs_enabled:
+            scheduler.add_job(payment_tracker.poll_due, "interval", seconds=15, max_instances=1, coalesce=True)
+            scheduler.add_job(retention_job, "interval", hours=1, args=[factory], max_instances=1, coalesce=True)
+            transfer_service = TransferService(factory, application.state.bumpa_http_client, settings)
+            scheduler.add_job(transfer_service.expire, "interval", minutes=1, max_instances=1, coalesce=True)
+            scheduler.add_job(sync_active_merchants, "interval", minutes=settings.bumpa_sync_interval_minutes, kwargs=job_kwargs, max_instances=1, coalesce=True)
+            scheduler.start()
     stop = asyncio.Event()
     application.state.reply_wakeup = asyncio.Event()
     logger.info("Reply worker startup", extra={
@@ -71,8 +72,11 @@ async def lifespan(application):
         "status": "enabled" if get_settings().meta_reply_worker_enabled else "disabled",
     })
     task = asyncio.create_task(recovery_loop(stop, application.state.reply_wakeup)) if get_settings().meta_reply_worker_enabled else None
-    expiry_task = asyncio.create_task(expiry_loop(stop, get_settings())) if get_settings().database_url else None
-    reconciliation_task = asyncio.create_task(reconciliation_loop(stop, get_settings())) if get_settings().database_url else None
+    background_jobs_enabled = bool(
+        get_settings().database_url and get_settings().database_background_jobs_enabled
+    )
+    expiry_task = asyncio.create_task(expiry_loop(stop, get_settings())) if background_jobs_enabled else None
+    reconciliation_task = asyncio.create_task(reconciliation_loop(stop, get_settings())) if background_jobs_enabled else None
     try:
         yield
     finally:

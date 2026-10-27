@@ -34,6 +34,9 @@ class FakeSession:
     async def rollback(self):
         return None
 
+    async def get(self, *args):
+        return None
+
 
 def _settings_and_connection():
     settings = Settings(_env_file=None, key_encryption_secret=SecretStr(Fernet.generate_key().decode()))
@@ -54,7 +57,7 @@ def test_complete_sweep_pages_then_unpublishes(monkeypatch):
     finish = AsyncMock()
     monkeypatch.setattr(bumpa_sync, "claim_sync", AsyncMock(return_value=True))
     monkeypatch.setattr(bumpa_sync, "get_connection", AsyncMock(return_value=connection))
-    monkeypatch.setattr(bumpa_sync, "upsert_product_cache", upsert)
+    monkeypatch.setattr(bumpa_sync, "upsert_product_cache_batch", upsert)
     monkeypatch.setattr(bumpa_sync, "finish_sync", finish)
     with respx.mock(assert_all_called=True) as mock:
         route = mock.get("https://api.bumpa.xyz/api/commerce/v1/products").mock(
@@ -76,7 +79,7 @@ def test_complete_sweep_pages_then_unpublishes(monkeypatch):
     assert route.calls[0].request.url.params["page"] == "1"
     assert route.calls[1].request.url.params["page"] == "2"
     assert upsert.await_count == 1
-    assert upsert.await_args.kwargs["raw"] == {"id": "product-doc-1"}
+    assert upsert.await_args.args[1][0]["raw"] == {"id": "product-doc-1"}
     assert any("UPDATE products_cache" in sql for sql in FakeSession.statements)
     finish.assert_awaited_once_with(ANY, merchant_id)
 
@@ -89,7 +92,7 @@ def test_partial_failure_never_unpublishes(monkeypatch):
     finish = AsyncMock()
     monkeypatch.setattr(bumpa_sync, "claim_sync", AsyncMock(return_value=True))
     monkeypatch.setattr(bumpa_sync, "get_connection", AsyncMock(return_value=connection))
-    monkeypatch.setattr(bumpa_sync, "upsert_product_cache", upsert)
+    monkeypatch.setattr(bumpa_sync, "upsert_product_cache_batch", upsert)
     monkeypatch.setattr(bumpa_sync, "finish_sync", finish)
     with respx.mock(assert_all_called=True) as mock:
         route = mock.get("https://api.bumpa.xyz/api/commerce/v1/products").mock(

@@ -1,4 +1,6 @@
 from logging.config import fileConfig
+import os
+import re
 
 from sqlalchemy import create_engine, pool
 
@@ -42,6 +44,14 @@ def run_migrations_online():
     )
     try:
         with engine.connect() as connection:
+            schema = os.getenv("DATABASE_SCHEMA", "")
+            if schema:
+                if not re.fullmatch(r"[a-z_][a-z0-9_]*", schema):
+                    raise ValueError("DATABASE_SCHEMA must be a safe PostgreSQL identifier")
+                connection.exec_driver_sql(f'SET search_path TO "{schema}"')
+                # SET starts an implicit transaction; commit it before Alembic
+                # opens the migration transaction or the DDL is rolled back.
+                connection.commit()
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,

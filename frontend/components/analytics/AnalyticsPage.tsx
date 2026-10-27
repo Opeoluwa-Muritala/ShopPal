@@ -155,6 +155,8 @@ function AnalyticsContent({ vendorId = 'demo_vendor' }: { vendorId?: string }) {
     isError,
   } = useQuery<AnalyticsData>({
     queryKey: ['analytics', vendorId, dateRange, customFrom, customTo],
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const [ordersRes, productsRes] = await Promise.all([
         ordersApi.list(),

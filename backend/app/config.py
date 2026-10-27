@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     # Database & Cache
     database_url: PostgresDsn | None = Field(default=None, repr=False)
+    database_url_2: PostgresDsn | None = Field(default=None, repr=False)
+    database_failover_cooldown_seconds: int = Field(default=300, ge=30, le=3600)
+    database_background_jobs_enabled: bool = True
     redis_host: str = "localhost"
     redis_port: int = Field(default=6379, ge=1, le=65535)
     bumpa_base_url: str = "https://api.bumpa.xyz"
@@ -60,6 +63,7 @@ class Settings(BaseSettings):
     meta_reply_worker_enabled: bool = False
     meta_reply_worker_concurrency: int = Field(default=4, ge=1, le=16)
     meta_reply_worker_poll_seconds: float = Field(default=1.0, ge=0.5, le=30.0)
+    meta_reply_worker_idle_poll_seconds: float = Field(default=600, ge=1, le=3600)
 
     # Customer AI (Google Gemma) and voice transcription (Groq Whisper)
     gemma_api_key: SecretStr = SecretStr("")

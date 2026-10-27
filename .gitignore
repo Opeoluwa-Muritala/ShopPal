@@ -44,6 +44,9 @@ out/
 next-env.d.ts
 
 # Environment Variables & Secrets
+.env
+.env.*
+!.env.example
 .env*.local
 !.env.example
 

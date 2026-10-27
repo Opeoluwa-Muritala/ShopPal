@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,14 +82,31 @@ async def upsert_product_cache(
         "is_published": is_published,
         "synced_at": synced_at,
     }
-    await session.execute(
-        insert(ProductCache)
-        .values(**values)
-        .on_conflict_do_update(
-            index_elements=[ProductCache.merchant_id, ProductCache.bumpa_product_id],
-            set_={key: value for key, value in values.items() if key not in {"merchant_id", "bumpa_product_id"}},
-        )
+    await upsert_product_cache_batch(session, [values])
+
+
+async def upsert_product_cache_batch(session: AsyncSession, rows: list[dict]) -> None:
+    """One parameterized statement per page; retain locally imported categories."""
+    if not rows:
+        return
+    # PostgreSQL cannot update the same conflict key twice in one statement.
+    unique = {(row["merchant_id"], row["bumpa_product_id"]): row for row in rows}
+    statement = insert(ProductCache).values(list(unique.values()))
+    updates = {
+        key: statement.excluded[key]
+        for key in rows[0] if key not in {"merchant_id", "bumpa_product_id"}
+    }
+    # Single-product provider responses usually omit collections. Never erase
+    # the reviewed CSV labels simply because a price/stock refresh omitted them.
+    updates["raw"] = statement.excluded.raw.op("||")(
+        func.jsonb_build_object("collections", func.coalesce(
+            statement.excluded.raw["collections"], ProductCache.raw["collections"],
+        ))
     )
+    await session.execute(statement.on_conflict_do_update(
+        index_elements=[ProductCache.merchant_id, ProductCache.bumpa_product_id],
+        set_=updates,
+    ))
 
 
 async def get_cached_product(session: AsyncSession, merchant_id: UUID, product_id: str) -> ProductCache | None:

@@ -809,6 +809,7 @@ async def recovery_loop(stop, wakeup=None):
     # Keep polling while jobs run: a slow customer must not hold up free slots.
     running = {}
     settings = get_settings()
+    idle_delay = settings.meta_reply_worker_poll_seconds
     wakeup = wakeup or asyncio.Event()
     stop_task = asyncio.create_task(stop.wait())
     try:
@@ -822,6 +823,7 @@ async def recovery_loop(stop, wakeup=None):
                     except Exception:
                         logger.error("Reply job thread failed", extra={"step": "reply_recovery", "status": "worker_error"})
             try:
+                ids = []
                 capacity = settings.meta_reply_worker_concurrency - len(running)
                 if capacity:
                     engine = get_engine()
@@ -830,7 +832,12 @@ async def recovery_loop(stop, wakeup=None):
                         running[identifier] = asyncio.create_task(
                             asyncio.to_thread(process_claim, engine, identifier, settings)
                         )
+                idle_delay = (
+                    settings.meta_reply_worker_poll_seconds if running or ids
+                    else min(idle_delay * 2, settings.meta_reply_worker_idle_poll_seconds)
+                )
             except Exception as exc:
+                idle_delay = min(idle_delay * 2, settings.meta_reply_worker_idle_poll_seconds)
                 logger.error(
                     "Reply recovery poll failed",
                     extra={"step": "reply_recovery", "status": "poll_error", "error_type": type(exc).__name__},
@@ -839,9 +846,11 @@ async def recovery_loop(stop, wakeup=None):
             try:
                 await asyncio.wait(
                     [stop_task, wake_task],
-                    timeout=settings.meta_reply_worker_poll_seconds,
+                    timeout=idle_delay,
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+                if wakeup.is_set():
+                    idle_delay = settings.meta_reply_worker_poll_seconds
             finally:
                 wake_task.cancel()
                 await asyncio.gather(wake_task, return_exceptions=True)

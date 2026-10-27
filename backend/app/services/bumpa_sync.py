@@ -17,6 +17,7 @@ from app.db.bumpa_repository import (
     get_cached_product,
     get_connection,
     upsert_product_cache,
+    upsert_product_cache_batch,
 )
 from app.db.models import BumpaConnection, ProductCache, Vendor
 from app.integrations.bumpa import mappers
@@ -28,8 +29,10 @@ from app.integrations.bumpa.client import (
     BumpaUnavailable,
 )
 from app.integrations.bumpa.credentials import decrypt_credential
+from app.services.scarf_collections import is_avaia, product_collections
 
 PAGE_SIZE = 50
+MAX_SYNC_PAGES = 200
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,20 @@ async def _cache_product(session: AsyncSession, merchant_id: UUID, raw: dict, sy
     )
 
 
+def _product_values(merchant_id: UUID, raw: dict, synced_at: datetime) -> dict:
+    identifier = mappers.extract_product_id(raw)
+    if not identifier:
+        raise ValueError("Bumpa product ID could not be mapped")
+    return {
+        "merchant_id": merchant_id, "bumpa_product_id": identifier, "raw": raw,
+        "name": mappers.extract_name(raw), "description": mappers.extract_description(raw),
+        "price": mappers.extract_price(raw), "currency": mappers.extract_currency(raw),
+        "stock_qty": mappers.extract_stock(raw), "image_urls": mappers.extract_image_urls(raw),
+        "variations": mappers.extract_variations(raw),
+        "is_published": mappers.extract_is_published(raw) is not False, "synced_at": synced_at,
+    }
+
+
 async def sync_merchant_products(
     merchant_id: UUID,
     *,
@@ -90,22 +107,34 @@ async def sync_merchant_products(
             await finish_sync(session, merchant_id, error="Bumpa connection is inactive")
             await session.commit()
             return SyncResult("inactive")
-        client = _client(connection, http_client, settings)
 
     count = 0
     page = 1
+    seen_ids: set[str] = set()
     try:
+        client = _client(connection, http_client, settings)
         while True:
+            if page > MAX_SYNC_PAGES:
+                raise ValueError("Bumpa pagination limit exceeded")
             response = await client.list_products(limit=PAGE_SIZE, page=page, variations=1)
             rows = mappers.extract_product_rows(response)
             if rows is None:
                 raise ValueError("Bumpa product list shape is unknown")
             if not rows:
                 break
+            values = [_product_values(merchant_id, raw, started_at) for raw in rows]
+            if merchant and is_avaia(merchant.business_name):
+                for value in values:
+                    value["raw"] = {**value["raw"], "collections": product_collections(
+                        merchant.business_name, value["name"], value["raw"],
+                    )}
+            page_ids = {row["bumpa_product_id"] for row in values}
+            if page_ids <= seen_ids:
+                raise ValueError("Bumpa repeated a product page")
+            seen_ids.update(page_ids)
             async with session_factory() as session:
-                for raw in rows:
-                    await _cache_product(session, merchant_id, raw, started_at)
-                    count += 1
+                await upsert_product_cache_batch(session, values)
+                count += len(page_ids)
                 await session.commit()
             page += 1
         # The browse pages are collection-backed, while the normal product feed
@@ -114,7 +143,7 @@ async def sync_merchant_products(
         storefront_slug = re.sub(r"[^a-z0-9]+", "", (merchant.business_name or "").lower()) if merchant else ""
         storefront_base = f"https://{storefront_slug}.bumpa.shop" if storefront_slug else ""
         collection_names: list[str] = []
-        if storefront_base:
+        if storefront_base and not is_avaia(merchant.business_name):
             collections_response = await http_client.get(
                 f"{storefront_base}/storefront/collections",
                 headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
@@ -125,36 +154,48 @@ async def sync_merchant_products(
                 for item in collections_response.json().get("tags", [])
                 if isinstance(item, dict) and item.get("tag")
             ]
+        memberships: dict[str, list[str]] = {}
+        for collection in collection_names:
+            page = 1
+            collection_seen: set[str] = set()
+            while storefront_base:
+                if page > MAX_SYNC_PAGES:
+                    raise ValueError("Bumpa collection pagination limit exceeded")
+                storefront_response = await http_client.get(
+                    f"{storefront_base}/storefront/products",
+                    params={"tag": collection, "limit": PAGE_SIZE, "page": page},
+                    headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
+                )
+                storefront_response.raise_for_status()
+                rows = mappers.extract_product_rows(storefront_response.json())
+                if rows is None:
+                    raise ValueError("Bumpa collection response is unknown")
+                if not rows:
+                    break
+                page_ids = {mappers.extract_product_id(raw) for raw in rows}
+                if None in page_ids or page_ids <= collection_seen:
+                    raise ValueError("Bumpa collection IDs are missing or repeated")
+                collection_seen.update(page_ids)
+                for raw in rows:
+                    product_id = mappers.extract_product_id(raw)
+                    memberships.setdefault(product_id, []).append(collection)
+                page += 1
+        # No transaction is held during HTTP requests, and all memberships use
+        # a single SELECT instead of one SELECT for every product/collection.
         async with session_factory() as session:
-            for collection in collection_names:
-                page = 1
-                while storefront_base:
-                    storefront_response = await http_client.get(
-                        f"{storefront_base}/storefront/products",
-                        params={"tag": collection, "limit": PAGE_SIZE, "page": page},
-                        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "Bumpa-Agent": "Storefront"},
-                    )
-                    storefront_response.raise_for_status()
-                    rows = mappers.extract_product_rows(storefront_response.json()) or []
-                    if not rows:
-                        break
-                    for raw in rows:
-                        product_id = mappers.extract_product_id(raw)
-                        if not product_id:
-                            continue
-                        cached = await get_cached_product(session, merchant_id, product_id)
-                        if cached is None:
-                            await _cache_product(session, merchant_id, raw, started_at)
-                            cached = await get_cached_product(session, merchant_id, product_id)
-                        if cached is None:
-                            continue
-                        enriched = dict(cached.raw or {})
-                        collections = list(enriched.get("collections") or [])
+            if memberships:
+                cached_rows = (await session.scalars(select(ProductCache).where(
+                    ProductCache.merchant_id == merchant_id,
+                    ProductCache.bumpa_product_id.in_(memberships),
+                ))).all()
+                for cached in cached_rows:
+                    enriched = dict(cached.raw or {})
+                    collections = list(enriched.get("collections") or [])
+                    for collection in memberships[cached.bumpa_product_id]:
                         if collection not in collections:
                             collections.append(collection)
-                        enriched["collections"] = collections
-                        cached.raw = enriched
-                    page += 1
+                    if collections != enriched.get("collections"):
+                        cached.raw = {**enriched, "collections": collections}
             await session.commit()
         async with session_factory() as session:
             await session.execute(

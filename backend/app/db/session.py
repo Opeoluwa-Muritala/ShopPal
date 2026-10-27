@@ -1,7 +1,11 @@
 from collections.abc import AsyncIterator, Iterator
 from functools import lru_cache
+import logging
+from threading import Lock
+from time import monotonic
 from typing import cast
 
+import psycopg
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import (
@@ -11,8 +15,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def database_url(raw_url: str) -> URL:
@@ -27,21 +35,88 @@ def database_url(raw_url: str) -> URL:
     return url.set(drivername="postgresql+psycopg")
 
 
+class _DatabaseFailover:
+    """Select a database endpoint without logging credentials or replaying writes."""
+
+    def __init__(self, urls: tuple[URL, ...], cooldown_seconds: int) -> None:
+        self.urls = urls
+        self.cooldown_seconds = cooldown_seconds
+        self._unavailable_until: dict[int, float] = {}
+        self._lock = Lock()
+
+    def candidates(self) -> list[tuple[int, URL]]:
+        now = monotonic()
+        with self._lock:
+            available = [
+                (index, url)
+                for index, url in enumerate(self.urls)
+                if self._unavailable_until.get(index, 0) <= now
+            ]
+        # If all endpoints are cooling down, probe each once instead of failing closed forever.
+        return available or list(enumerate(self.urls))
+
+    def mark_unavailable(self, index: int) -> None:
+        with self._lock:
+            self._unavailable_until[index] = monotonic() + self.cooldown_seconds
+        logger.warning("Database endpoint unavailable", extra={"database_endpoint": index + 1})
+
+
+def _configured_urls() -> tuple[URL, ...]:
+    settings = get_settings()
+    values = [settings.database_url, settings.database_url_2]
+    return tuple(database_url(str(value)) for value in values if value is not None)
+
+
+def _conninfo(url: URL) -> str:
+    return url.set(drivername="postgresql").render_as_string(hide_password=False)
+
+
+@lru_cache
+def _failover() -> _DatabaseFailover:
+    urls = _configured_urls()
+    if not urls:
+        raise RuntimeError("DATABASE_URL is not configured")
+    return _DatabaseFailover(urls, get_settings().database_failover_cooldown_seconds)
+
+
+def _connect_sync():
+    last_error: Exception | None = None
+    for index, url in _failover().candidates():
+        try:
+            return psycopg.connect(_conninfo(url), connect_timeout=10)
+        except psycopg.OperationalError as exc:
+            _failover().mark_unavailable(index)
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
+async def _connect_async():
+    last_error: Exception | None = None
+    for index, url in _failover().candidates():
+        try:
+            return await psycopg.AsyncConnection.connect(
+                _conninfo(url), connect_timeout=10
+            )
+        except psycopg.OperationalError as exc:
+            _failover().mark_unavailable(index)
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
 @lru_cache
 def get_engine() -> Engine:
-    settings = get_settings()
-    if settings.database_url is None:
+    urls = _configured_urls()
+    if not urls:
         raise RuntimeError("DATABASE_URL is not configured")
-    return create_engine(
-        database_url(str(settings.database_url)),
-        pool_size=10,
-        max_overflow=20,
-        pool_timeout=30,
-        pool_recycle=1800,
-        pool_pre_ping=True,
+    engine = create_engine(
+        urls[0],
+        creator=_connect_sync,
+        poolclass=NullPool,
         hide_parameters=True,
-        connect_args={"connect_timeout": 10},
     )
+    return engine
 
 
 def get_db() -> Iterator[Session]:
@@ -56,19 +131,13 @@ def get_db() -> Iterator[Session]:
 
 @lru_cache
 def get_async_engine() -> AsyncEngine:
-    settings = get_settings()
-    if settings.database_url is None:
+    urls = _configured_urls()
+    if not urls:
         raise RuntimeError("DATABASE_URL is not configured")
-    url = database_url(str(settings.database_url)).set(drivername="postgresql+psycopg")
-    return create_async_engine(
-        url,
-        pool_size=10,
-        max_overflow=20,
-        pool_timeout=30,
-        pool_recycle=1800,
-        pool_pre_ping=True,
-        connect_args={"connect_timeout": 10},
+    engine = create_async_engine(
+        urls[0], async_creator=_connect_async, poolclass=NullPool
     )
+    return engine
 
 
 @lru_cache
