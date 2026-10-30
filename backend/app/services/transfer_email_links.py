@@ -71,14 +71,39 @@ def review_links(merchant_id: UUID, reference: str, webhook_base_url: str, secre
     )
 
 
-def transfer_alert_html(reference: str, amount: str, claim: str, confirm_url: str, reject_url: str) -> str:
+def transfer_alert_html(
+    reference: str,
+    amount: str,
+    claim: str,
+    confirm_url: str,
+    reject_url: str,
+    *,
+    buyer_name: str | None = None,
+    buyer_phone: str | None = None,
+    buyer_address: str | None = None,
+    items: list[dict] | None = None,
+) -> str:
     reference, amount, claim = escape(reference), escape(amount), escape(claim)
     confirm_url, reject_url = escape(confirm_url, quote=True), escape(reject_url, quote=True)
+    buyer_name = escape(buyer_name or "Not provided")
+    buyer_phone = escape(buyer_phone or "Not provided")
+    buyer_address = escape(buyer_address or "Pickup / not provided")
+    item_lines = "".join(
+        f"<li>{escape(str(item.get('name') or item.get('product_id') or 'Product'))} "
+        f"x {escape(str(item.get('qty', 1)))}</li>"
+        for item in (items or [])
+        if item.get("type") not in {"delivery", "customer"}
+    )
+    if not item_lines:
+        item_lines = "<li>Product details unavailable</li>"
     return (
         '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#17212b;line-height:1.5">'
         '<div style="max-width:560px;margin:auto;padding:24px">'
         '<h1 style="font-size:24px">Review transfer payment</h1>'
         f'<p>Order <strong>{reference}</strong> received a {claim}. Amount: <strong>{amount}</strong>.</p>'
+        f"<h2 style=\"font-size:18px\">Buyer details</h2><p>Name: {buyer_name}<br>"
+        f"Phone: {buyer_phone}<br>Address: {buyer_address}</p>"
+        f"<h2 style=\"font-size:18px\">Items bought</h2><ul>{item_lines}</ul>"
         '<p>A screenshot or payment claim is not proof of payment. Verify the full amount in your bank app first.</p>'
         '<p style="margin:28px 0">'
         f'<a href="{confirm_url}" style="background:#136b46;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;margin-right:10px;display:inline-block">Confirm payment</a>'

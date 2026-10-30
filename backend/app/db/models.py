@@ -79,6 +79,7 @@ class Product(Identity, Timestamps, Base):
     vendor_id: Mapped[UUID] = mapped_column(
         ForeignKey("vendors.id", ondelete="CASCADE")
     )
+    bumpa_product_id: Mapped[str | None] = mapped_column(String(120))
     image_media_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("whatsapp_media.id", ondelete="SET NULL"), nullable=True
     )
@@ -146,6 +147,12 @@ class Order(Identity, Timestamps, Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fw_transaction_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+    bumpa_order_id: Mapped[str | None] = mapped_column(String(120))
+    bumpa_sync_status: Mapped[str] = mapped_column(
+        String(20), server_default=text("'pending'"), nullable=False
+    )
+    bumpa_sync_error: Mapped[str | None] = mapped_column(Text)
+    bumpa_sync_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Customer(Identity, Timestamps, Base):
@@ -423,4 +430,3 @@ class WhatsAppOptOut(Base):
     merchant_id: Mapped[UUID] = mapped_column(ForeignKey("vendors.id", ondelete="CASCADE"), primary_key=True)
     customer_wa_id: Mapped[str] = mapped_column(String(30), primary_key=True)
     opted_out_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
-

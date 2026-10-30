@@ -202,8 +202,20 @@ class TransferService:
             await session.commit()
         if first_proof:
             claim = "payment claim" if is_paid else "receipt screenshot"
+            items = getattr(row, "items", None) or []
+            delivery = next((item for item in items if item.get("type") == "delivery"), None)
+            customer = next((item for item in items if item.get("type") == "customer"), None)
+            buyer_name = (customer or {}).get("name") or "Not provided"
+            buyer_phone = (customer or {}).get("phone") or wa_id
+            buyer_address = (delivery or {}).get("address") or "Pickup / not provided"
+            products = [
+                f"{item.get('name') or item.get('product_id') or 'Product'} x {item.get('qty', 1)}"
+                for item in items if item.get("type") not in {"delivery", "customer"}
+            ] or [f"{row.bumpa_product_id} x {row.quantity}"]
             email_text = (
-                f"Order {reference} got a {claim}. Customer: {wa_id}. Amount: {_amount(amount)}. "
+                f"Order {reference} got a {claim}. Amount: {_amount(amount)}.\n"
+                f"Buyer: {buyer_name}\nPhone: {buyer_phone}\nWhatsApp: {wa_id}\n"
+                f"Address: {buyer_address}\nItems: {', '.join(products)}\n"
                 "Verify the transfer in your bank app before confirming it."
             )
             email_html = None
@@ -215,7 +227,11 @@ class TransferService:
                         merchant.id, reference, base_url, signing_key.get_secret_value(),
                     )
                     email_text += f"\nConfirm: {confirm_url}\nReject: {reject_url}"
-                    email_html = transfer_alert_html(reference, _amount(amount), claim, confirm_url, reject_url)
+                    email_html = transfer_alert_html(
+                        reference, _amount(amount), claim, confirm_url, reject_url,
+                        buyer_name=buyer_name, buyer_phone=buyer_phone,
+                        buyer_address=buyer_address, items=items,
+                    )
                 except ValueError:
                     logger.exception("Transfer email action links unavailable", extra={"step": "transfer_email_links"})
             await send_email(
