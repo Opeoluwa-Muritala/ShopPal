@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.db.models import Conversation, Order, Product, Vendor
 from app.db.session import get_db
 from app.logging_conf import logger
+from app.services.bumpa_orders import schedule_order_bumpa_sync
 from app.services.customer_tools import CustomerToolDispatcher
 from app.services.flutterwave import FlutterwaveError
 from app.services.flutterwave import (
@@ -333,6 +334,7 @@ async def paystack_webhook(
             order.payment_confirmed_at = datetime.now(UTC)
             order.payment_confirmation_source = "paystack_webhook"
             session.commit()
+            schedule_order_bumpa_sync(order.id, settings)
             if not was_already_paid and order.customer_phone:
                 try:
                     await send_whatsapp_text(
@@ -419,6 +421,7 @@ async def flutterwave_webhook(
             order.payment_confirmed_at = datetime.now(UTC)
             order.payment_confirmation_source = "flutterwave_webhook"
             session.commit()
+            schedule_order_bumpa_sync(order.id, settings)
             if not was_already_paid and order.customer_phone:
                 try:
                     await send_whatsapp_text(
