@@ -40,6 +40,7 @@ class ProductCreateSchema(BaseModel):
     stock: int = Field(default=0, ge=0)  # Rejects negative stock
     image_url: str = Field(..., max_length=500)
     description: str | None = Field(default=None, max_length=100)
+    bumpa_product_id: str | None = Field(default=None, max_length=120)
 
 
 @router.get("")
@@ -100,6 +101,7 @@ def create_product(
         stock=body.stock,
         image_url=body.image_url,
         description=body.description,
+        bumpa_product_id=body.bumpa_product_id,
         status="active",
     )
     session.add(product)
@@ -111,6 +113,7 @@ def create_product(
         "price": str(product.price),
         "stock": product.stock,
         "status": product.status,
+        "bumpa_product_id": product.bumpa_product_id,
     }
 
 
@@ -120,6 +123,7 @@ async def create_product_with_image(
     price: Decimal = Form(..., gt=0, decimal_places=2),
     stock: int = Form(default=0, ge=0),
     description: str | None = Form(default=None, max_length=100),
+    bumpa_product_id: str | None = Form(default=None, max_length=120),
     image: UploadFile = File(...),
     current_account: Account = Depends(get_current_account),
     session: Session = Depends(get_db),
@@ -166,6 +170,7 @@ async def create_product_with_image(
         stock=stock,
         image_url=image_url,
         description=description.strip() if description else None,
+        bumpa_product_id=bumpa_product_id,
         status="active",
     )
     session.add(media)
@@ -180,6 +185,7 @@ async def create_product_with_image(
         "image_url": product.image_url,
         "has_uploaded_image": True,
         "status": product.status,
+        "bumpa_product_id": product.bumpa_product_id,
     }
 
 

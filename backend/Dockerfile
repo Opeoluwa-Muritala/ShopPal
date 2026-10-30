@@ -27,5 +27,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-# Production boot: bind dynamically to $PORT supplied by Render/Railway
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Optional one-time production repair runs inside the deployed container before
+# the API starts. Remove RUN_PAYMENT_REPAIR_REFERENCE after the first success.
+CMD ["sh", "-c", "if [ -n \"${RUN_PAYMENT_REPAIR_REFERENCE:-}\" ]; then python scripts/resend_payment_and_create_bumpa_order.py --reference \"$RUN_PAYMENT_REPAIR_REFERENCE\"; fi; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

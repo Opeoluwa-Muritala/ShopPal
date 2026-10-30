@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.logging_conf import logger
 from app.services.auth import get_current_account
 from app.services.catalog_provider import require_legacy_order_management
+from app.services.bumpa_orders import schedule_order_bumpa_sync
 from app.services.whatsapp import send_whatsapp_text
 
 router = APIRouter(prefix="/api/orders", tags=["Frontend Orders"])
@@ -231,6 +232,7 @@ async def confirm_payment(
     if order.vendor_id != current_account.vendor_id:
         raise HTTPException(status_code=403, detail="Access forbidden")
     if order.payment_status == "paid":
+        schedule_order_bumpa_sync(order.id, settings)
         return {"order_code": order.order_code, "payment_status": "paid", "notification_sent": False}
     if order.payment_status not in ("pending_payment", "manual_review"):
         raise HTTPException(status_code=409, detail="Order is not awaiting payment confirmation")
@@ -240,6 +242,7 @@ async def confirm_payment(
     order.payment_confirmed_at = datetime.now(UTC)
     order.payment_confirmation_source = "vendor_manual"
     session.commit()
+    schedule_order_bumpa_sync(order.id, settings)
     notification_sent = False
     try:
         await send_whatsapp_text(

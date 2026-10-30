@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models import Cart, Customer, Order, Product, Vendor, WebhookEvent
 from app.logging_conf import logger
+from app.services.bumpa_orders import schedule_order_bumpa_sync
 from app.services.flutterwave_v4 import (
     FlutterwaveClientError,
     VirtualAccountProvider,
@@ -136,6 +137,7 @@ async def confirm_verified_charge(session: AsyncSession, *, transaction_id: str,
     if review_recipient:
         await send_whatsapp_text(review_recipient, review_message, settings)
         return "review"
+    schedule_order_bumpa_sync(order.id, settings)
     await _send_payment_confirmation(order, settings)
     return "paid"
 
