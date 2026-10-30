@@ -51,7 +51,12 @@ class BumpaClient:
     ) -> None:
         if not public_key or not location_id:
             raise ValueError("Bumpa public key and location ID are required")
-        self._base_url = base_url.rstrip("/") + "/api/commerce/v1"
+        normalized_base_url = base_url.rstrip("/")
+        self._base_url = (
+            normalized_base_url
+            if normalized_base_url.endswith("/api/commerce/v1")
+            else normalized_base_url + "/api/commerce/v1"
+        )
         self._public_key = public_key
         self._secret_key = secret_key
         self._location_id = location_id
