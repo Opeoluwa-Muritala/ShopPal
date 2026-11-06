@@ -36,6 +36,7 @@ from app.services.auth import (
     clear_all_login_rate_limits,
     create_access_token,
     decode_access_token,
+    get_current_account,
     hash_password,
     hash_token,
     validate_password_strength,
@@ -475,6 +476,42 @@ def test_staff_role_cannot_invite_staff():
 # ============================================================================
 # 10. Password Reset Flow
 # ============================================================================
+
+def test_authenticated_password_change_revokes_sessions():
+    account = Account(
+        id=uuid4(),
+        vendor_id=uuid4(),
+        email="owner@example.com",
+        phone="08012345678",
+        password_hash=hash_password("DemoShoppal@2026"),
+        role="owner",
+        is_active=True,
+    )
+    mock_db = MagicMock()
+    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_account] = lambda: account
+    client = TestClient(app, raise_server_exceptions=False)
+    try:
+        wrong = client.post(
+            "/api/auth/change-password",
+            json={"current_password": "wrong", "new_password": "NewSecurePassword1!"},
+        )
+        assert wrong.status_code == 400
+        assert verify_password("DemoShoppal@2026", account.password_hash)
+
+        changed = client.post(
+            "/api/auth/change-password",
+            json={
+                "current_password": "DemoShoppal@2026",
+                "new_password": "NewSecurePassword1!",
+            },
+        )
+        assert changed.status_code == 200
+        assert verify_password("NewSecurePassword1!", account.password_hash)
+        assert not verify_password("DemoShoppal@2026", account.password_hash)
+        mock_db.commit.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
 
 def test_password_reset_flow():
     """

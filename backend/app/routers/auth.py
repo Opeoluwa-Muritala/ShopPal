@@ -48,6 +48,11 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
 @router.post("/login")
 def login(
     req: LoginRequest,
@@ -180,6 +185,32 @@ def logout_all(
     """Revokes all refresh tokens for the authenticated account (log out everywhere)."""
     revoke_all_refresh_tokens_for_account(session, current_account.id)
     return {"message": "Successfully logged out of all active devices"}
+
+
+@router.post("/change-password")
+def change_password(
+    req: ChangePasswordRequest,
+    current_account: Account = Depends(get_current_account),
+    session: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Replace the authenticated account's password and revoke refresh sessions."""
+    if not verify_password(req.current_password, current_account.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if verify_password(req.new_password, current_account.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password",
+        )
+    current_account.password_hash = hash_password(req.new_password)
+    revoke_all_refresh_tokens_for_account(session, current_account.id)
+    logger.info(
+        "Account password changed",
+        extra={"step": "password_change", "account_id": str(current_account.id)},
+    )
+    return {"message": "Password updated successfully. All active sessions have been revoked."}
 
 
 @router.post("/forgot-password")

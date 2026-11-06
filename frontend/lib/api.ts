@@ -225,6 +225,13 @@ export const authApi = {
       body: JSON.stringify(body),
     });
   },
+
+  changePassword: async (body: { current_password: string; new_password: string }) => {
+    return apiClient<{ message: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 export const accountsApi = {

@@ -278,9 +278,19 @@ function SettingsPageInner() {
     setHasUnsavedChanges(false);
   };
 
-  // POST /api/auth/change-password does not exist — show informative error
-  const handleChangePassword = async (_currentPass: string, _newPass: string) => {
-    throw new Error('Password update is not available in this version.');
+  // Changing a password revokes refresh sessions; return to login afterwards.
+  const handleChangePassword = async (currentPass: string, newPass: string) => {
+    const response = await authApi.changePassword({
+      current_password: currentPass,
+      new_password: newPass,
+    });
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    clearStoredTokens();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   };
 
   // POST /api/auth/logout-all is a real endpoint — keep this one
