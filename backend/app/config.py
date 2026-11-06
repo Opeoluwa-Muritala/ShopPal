@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     database_background_jobs_enabled: bool = True
     redis_host: str = "localhost"
     redis_port: int = Field(default=6379, ge=1, le=65535)
-    bumpa_base_url: str = "https://api.bumpa.xyz"
+    bumpa_base_url: str = "https://api.getbumpa.com/api/commerce/v1"
+    bumpa_secret_key: SecretStr = SecretStr("")
+    bumpa_location_id: str = ""
     bumpa_timeout_seconds: float = Field(default=10, gt=0, le=120)
     bumpa_sync_interval_minutes: int = Field(default=10, ge=1)
     email_api_url: str = "https://emailope.vercel.app/"

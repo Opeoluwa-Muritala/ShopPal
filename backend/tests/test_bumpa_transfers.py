@@ -92,7 +92,11 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     row = SimpleNamespace(
         reference="SHP-4F2K", merchant_id=shop.id, bumpa_product_id="p1", quantity=1,
         amount=Decimal("5000"), customer_wa_id="2348022222222", status="awaiting_proof",
-        proof_media_id=None, created_at=datetime.now(UTC), resolved_at=None,
+        proof_media_id=None, created_at=datetime.now(UTC), resolved_at=None, items=[
+            {"product_id": "p1", "name": "Sneakers", "qty": 2},
+            {"type": "delivery", "name": "Door delivery", "address": "12 Main St, Lagos"},
+            {"type": "customer", "name": "Ada Okafor", "phone": "08022222222"},
+        ],
     )
     send_email_mock = AsyncMock()
     monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
@@ -137,6 +141,12 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     send_email_mock.assert_awaited_once()
     assert "Confirm payment" in send_email_mock.await_args.kwargs["html"]
     assert "Reject payment" in send_email_mock.await_args.kwargs["html"]
+    assert "Buyer details" in send_email_mock.await_args.kwargs["html"]
+    assert "Items bought" in send_email_mock.await_args.kwargs["html"]
+    assert "Ada Okafor" in send_email_mock.await_args.kwargs["html"]
+    assert "Sneakers" in send_email_mock.await_args.kwargs["html"]
+    assert "Ada Okafor" in send_email_mock.await_args.args[4]
+    assert "Sneakers x 2" in send_email_mock.await_args.args[4]
 
     image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
     assert await transfer.customer_proof(shop, image, whatsapp)
