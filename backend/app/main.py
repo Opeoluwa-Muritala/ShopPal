@@ -17,6 +17,7 @@ from app.logging_conf import logger, setup_logging
 from app.routers import (
     accounts,
     auth,
+    blaaiz,
     bumpa_merchants,
     dashboard,
     flutterwave,
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
             {"name": "Twilio WhatsApp", "description": "Signed Twilio WhatsApp customer messages."},
             {"name": "Paystack", "description": "Signed legacy Paystack payment callbacks."},
             {"name": "Flutterwave", "description": "Signed Flutterwave payment callbacks."},
+            {"name": "Blaaiz", "description": "Blaaiz card collections and signed callbacks."},
             {
                 "name": "Meta WhatsApp",
                 "description": (
@@ -205,6 +207,7 @@ def create_app() -> FastAPI:
     application.include_router(whatsapp_webhook.router)
     application.include_router(transfer_email_review.router)
     application.include_router(flutterwave.router)
+    application.include_router(blaaiz.webhook_router)
     application.include_router(privacy.router)
     frontend_dependencies = [Depends(require_frontend_api_key)]
     application.include_router(vendors.router, dependencies=frontend_dependencies)
@@ -214,6 +217,7 @@ def create_app() -> FastAPI:
     application.include_router(dashboard.router, dependencies=frontend_dependencies)
     application.include_router(orders.router, dependencies=frontend_dependencies)
     application.include_router(products.router, dependencies=frontend_dependencies)
+    application.include_router(blaaiz.router, dependencies=frontend_dependencies)
     return application
 
 

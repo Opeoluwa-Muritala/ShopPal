@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     flw_encryption_key: SecretStr = SecretStr("")
     order_expiry_minutes: int = Field(default=30, ge=1, le=1440)
 
+    # Blaaiz development integration. Credentials and card data remain server-side.
+    blaaiz_client_id: SecretStr = SecretStr("")
+    blaaiz_client_secret: SecretStr = SecretStr("")
+    blaaiz_webhook_signing_secret: SecretStr = SecretStr("")
+    blaaiz_wallet_id: str = ""
+    blaaiz_env: Literal["development", "production"] = "development"
+    blaaiz_redirect_url: str = ""
+
     @property
     def whatsapp_token(self) -> str:
         """Support the new WHATSAPP_TOKEN name without breaking old deployments."""

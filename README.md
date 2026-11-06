@@ -48,6 +48,8 @@ The sections below describe the existing **legacy** merchant demo and deployment
 | **CI / CD** | GitHub Actions | Automated linting, test suites, coverage checks, and deployment webhooks |
 | **Hosting** | Render / Railway (Backend), Vercel (Frontend) | Cloud application hosting and continuous deployment |
 
+The `blaaiz-demo` branch also contains a sandbox Blaaiz card-collection adapter and signed collection webhook. See [the Blaaiz demo guide](docs/BLAAIZ_DEMO.md) for credentials, scopes, and the test flow.
+
 ---
 
 ## Local Development Prerequisites
