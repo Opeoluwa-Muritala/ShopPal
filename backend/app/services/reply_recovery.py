@@ -421,14 +421,19 @@ def generate_reply(session, job, owner, settings):
 
 
 def send_reply(session, job, owner, settings):
-    if (
-        not settings.whatsapp_access_token.get_secret_value()
-        or not settings.whatsapp_phone_number_id
-    ):
-        fail(session, job, "meta_credentials", permanent=True)
+    vendor = session.get(Vendor, job.vendor_id) if job.vendor_id else None
+    if vendor is None or not vendor.is_active:
+        fail(session, job, "vendor_mapping", permanent=True)
         return
-    if job.phone_number_id != settings.whatsapp_phone_number_id:
+    expected_phone_id = (
+        vendor.whatsapp_phone_number_id or settings.whatsapp_phone_number_id
+    )
+    if expected_phone_id != job.phone_number_id:
         fail(session, job, "sender_mismatch", permanent=True)
+        return
+    access_token = settings.whatsapp_access_token.get_secret_value()
+    if not access_token or not job.phone_number_id:
+        fail(session, job, "meta_credentials", permanent=True)
         return
     last_inbound = session.scalar(
         select(func.max(WhatsAppMessage.wa_timestamp)).where(
@@ -541,10 +546,9 @@ def send_reply(session, job, owner, settings):
             )
         else:
             response = httpx.post(
-                f"https://graph.facebook.com/v25.0/{settings.whatsapp_phone_number_id}/messages",
+                f"https://graph.facebook.com/v25.0/{expected_phone_id}/messages",
                 headers={
-                    "Authorization": "Bearer "
-                    + settings.whatsapp_access_token.get_secret_value()
+                    "Authorization": "Bearer " + access_token
                 },
                 json=payload,
                 timeout=20,

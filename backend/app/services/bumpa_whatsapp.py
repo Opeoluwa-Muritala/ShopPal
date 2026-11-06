@@ -32,7 +32,7 @@ async def classify_events(
     session_factory: async_sessionmaker[AsyncSession],
     legacy_phone_number_id: str,
 ) -> tuple[dict[str, Any], list[tuple[UUID, dict[str, Any]]]]:
-    """Route Bumpa messages while persisting them for conversation history."""
+    """Route configured Meta senders to Bumpa or the legacy reply worker."""
     ids: set[str] = set()
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
@@ -43,13 +43,12 @@ async def classify_events(
         merchants = (
             await session.scalars(
                 select(Vendor).where(
-                    Vendor.catalog_provider == "bumpa",
                     Vendor.is_active.is_(True),
                     Vendor.whatsapp_phone_number_id.in_(ids),
                 )
             )
         ).all() if ids else []
-    by_phone = {merchant.whatsapp_phone_number_id: merchant.id for merchant in merchants}
+    by_phone = {merchant.whatsapp_phone_number_id: merchant for merchant in merchants}
     legacy_entries: list[dict[str, Any]] = []
     bumpa_messages: list[tuple[UUID, dict[str, Any]]] = []
     for entry in payload.get("entry", []):
@@ -57,10 +56,10 @@ async def classify_events(
         for change in entry.get("changes", []):
             value = change.get("value", {})
             phone_id = value.get("metadata", {}).get("phone_number_id")
-            merchant_id = by_phone.get(phone_id)
-            if merchant_id is not None:
+            merchant = by_phone.get(phone_id)
+            if merchant is not None and merchant.catalog_provider == "bumpa":
                 for message in value.get("messages", []):
-                    bumpa_messages.append((merchant_id, message))
+                    bumpa_messages.append((merchant.id, message))
                     message_id = message.get("id")
                     if message_id:
                         await session.execute(
@@ -79,7 +78,7 @@ async def classify_events(
                 for status in value.get("statuses", []):
                     if status.get("status") == "failed":
                         logger.warning("Bumpa WhatsApp delivery failed", extra={"message_id": status.get("id"), "step": "bumpa_delivery"})
-            elif phone_id == legacy_phone_number_id:
+            elif phone_id == legacy_phone_number_id or merchant is not None:
                 legacy_changes.append(change)
         if legacy_changes:
             legacy_entries.append({**entry, "changes": legacy_changes})
