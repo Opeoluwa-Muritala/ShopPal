@@ -45,7 +45,7 @@ class BlaaizClient:
                             "grant_type": "client_credentials",
                             "client_id": client_id,
                             "client_secret": client_secret,
-                            "scope": "collection:create transaction:read",
+                            "scope": "collection:create transaction:read wallet:read",
                         },
                         headers={"Accept": "application/json"},
                     )
@@ -63,7 +63,7 @@ class BlaaizClient:
 
     async def _request(
         self, method: str, path: str, *, payload: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    ) -> Any:
         for attempt in range(2):
             token = await self._access_token(force_refresh=attempt == 1)
             try:
@@ -84,10 +84,32 @@ class BlaaizClient:
                 body = response.json()
             except (httpx.HTTPError, ValueError) as exc:
                 raise BlaaizError("Blaaiz API request failed") from exc
-            if not isinstance(body, dict):
-                raise BlaaizError("Blaaiz API response was invalid")
             return body
         raise BlaaizError("Blaaiz API authorization failed")
+
+    async def wallet_id(self, currency: str = "NGN") -> str:
+        """Return an explicitly configured wallet or resolve one from Blaaiz."""
+        configured_wallet_id = self.settings.blaaiz_wallet_id.strip()
+        if configured_wallet_id:
+            return configured_wallet_id
+
+        body = await self._request("GET", "/api/external/wallet")
+        wallets = body.get("data") if isinstance(body, dict) else body
+        if not isinstance(wallets, list):
+            raise BlaaizError("Blaaiz wallet response was invalid")
+
+        matches = [
+            wallet
+            for wallet in wallets
+            if isinstance(wallet, dict)
+            and str(wallet.get("currency", "")).upper() == currency.upper()
+            and wallet.get("is_active") is True
+            and isinstance(wallet.get("id"), str)
+            and wallet["id"].strip()
+        ]
+        if len(matches) != 1:
+            raise BlaaizError(f"Expected exactly one active {currency.upper()} Blaaiz wallet")
+        return matches[0]["id"].strip()
 
     async def create_card_collection(
         self,
@@ -101,9 +123,7 @@ class BlaaizClient:
         cvc: str,
         phone: str | None,
     ) -> dict[str, str]:
-        wallet_id = self.settings.blaaiz_wallet_id
-        if not wallet_id:
-            raise BlaaizError("Blaaiz wallet is not configured")
+        wallet_id = await self.wallet_id("NGN")
         payload: dict[str, Any] = {
             "method": "card",
             "amount": float(amount),
@@ -133,9 +153,12 @@ class BlaaizClient:
     async def get_transaction(self, transaction_id: str) -> dict[str, Any]:
         if not transaction_id or len(transaction_id) > 255:
             raise BlaaizError("Invalid Blaaiz transaction identifier")
-        return await self._request(
+        body = await self._request(
             "GET", f"/api/external/transaction/{quote(transaction_id, safe='')}"
         )
+        if not isinstance(body, dict):
+            raise BlaaizError("Blaaiz transaction response was invalid")
+        return body
 
 
 def transaction_data(body: dict[str, Any]) -> dict[str, Any]:
