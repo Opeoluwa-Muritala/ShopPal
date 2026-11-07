@@ -56,7 +56,7 @@ export default function PrivacyPolicyPage() {
                 1. Overview &amp; Scope
               </h2>
               <p>
-                ShopPal provides an automated conversational commerce platform enabling Nigerian retail merchants to showcase products, engage prospective shoppers, and accept secure payments via WhatsApp and Flutterwave. We take privacy seriously and adhere strictly to the Nigeria Data Protection Act (NDPA) and NDPR standards.
+                ShopPal provides an automated conversational commerce platform enabling Nigerian retail merchants to showcase products, engage prospective shoppers, and accept secure payments via WhatsApp and Blaaiz. We take privacy seriously and adhere strictly to the Nigeria Data Protection Act (NDPA) and NDPR standards.
               </p>
             </section>
 
@@ -66,7 +66,7 @@ export default function PrivacyPolicyPage() {
               </h2>
               <ul className="list-disc pl-5 space-y-1 text-slate-600 text-xs sm:text-sm">
                 <li><strong>Merchant Credentials:</strong> Business name, email, phone number, and bank account for automated settlements.</li>
-                <li><strong>Customer Order Telemetry:</strong> WhatsApp customer phone numbers, cart items, delivery notes, and Flutterwave reference tokens.</li>
+                <li><strong>Customer Order Telemetry:</strong> WhatsApp customer phone numbers, cart items, delivery notes, and Blaaiz payment reference tokens.</li>
                 <li><strong>Chat Transcripts:</strong> WhatsApp dialog between customers and the AI agent for order fulfillment only. We do not sell or monetize personal customer transcripts.</li>
               </ul>
             </section>
@@ -76,7 +76,7 @@ export default function PrivacyPolicyPage() {
                 3. Payment Gateway Security
               </h2>
               <p>
-                All financial transactions and card data are handled through Flutterwave, a PCI-DSS compliant processor. ShopPal never stores or logs merchant or customer debit card CVVs or PINs.
+                Card payments are processed through Blaaiz. ShopPal does not store or log merchant or customer card numbers, CVVs, or PINs.
               </p>
             </section>
 

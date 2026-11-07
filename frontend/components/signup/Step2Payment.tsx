@@ -49,14 +49,14 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           </span>
         </div>
         <p className="text-xs text-slate-600 mt-1">
-          Choose the bank account where Flutterwave should transfer your proceeds after receiving and verifying customer payments.
+          Choose the bank account where Blaaiz should transfer your proceeds after receiving and verifying customer payments.
         </p>
       </div>
 
       {/* Skip Notice Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
         <span className="font-semibold block text-slate-900">Optional for setup — Skip for now.</span>
-        Flutterwave receives each customer payment first. This account receives the vendor payout afterward.
+        Blaaiz receives each customer payment first. This account receives the vendor payout afterward.
       </div>
 
       {/* Bank Details */}
@@ -91,7 +91,7 @@ export default function Step2Payment({ data, onChange, onNext, onBack }: Step2Pr
           </select>
           {data.flutterwave_bank_code && (
             <p className="mt-1 text-[11px] text-blue-700" aria-live="polite">
-              Flutterwave bank code selected automatically: {data.flutterwave_bank_code}
+              Settlement bank code selected automatically: {data.flutterwave_bank_code}
             </p>
           )}
         </div>

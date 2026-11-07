@@ -145,7 +145,7 @@ export default function PaymentSettings({
   return (
     <div className="space-y-6">
       <div className="bg-cool-50 border border-cool-200 rounded-lg p-6">
-        <h2 className="text-base font-bold text-slate-900">Flutterwave Payments</h2>
+        <h2 className="text-base font-bold text-slate-900">Blaaiz Payments</h2>
         <p className="text-xs text-slate-600 mt-1">
           Payment credentials are managed securely by the platform. They are never entered, displayed, or stored in this dashboard.
         </p>
@@ -159,9 +159,9 @@ export default function PaymentSettings({
       <div className="bg-white border border-slate-200 rounded-lg p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Connected Flutterwave Account</h2>
+            <h2 className="text-base font-bold text-slate-900">Connected Blaaiz Account</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Customers complete secure card, bank, and transfer payments verified via Flutterwave.
+              Customer card payments are securely processed and independently verified via Blaaiz.
             </p>
           </div>
           {!isEditingKey && (

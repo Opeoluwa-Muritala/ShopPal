@@ -50,7 +50,7 @@ describe('Settings Page & Subcomponents', () => {
 
       // Switch to Payment Settings
       fireEvent.click(screen.getByRole('button', { name: /Payment Settings/i }));
-      expect(screen.getByText('Flutterwave Payments')).toBeDefined();
+      expect(screen.getByText('Blaaiz Payments')).toBeDefined();
       expect(screen.getByText('Bank Account (for withdrawals)')).toBeDefined();
 
       // Switch to Bot Customization

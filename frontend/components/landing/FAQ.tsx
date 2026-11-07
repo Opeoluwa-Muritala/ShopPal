@@ -16,11 +16,11 @@ export default function FAQ() {
     },
     {
       q: 'Do customers need to download an app?',
-      a: 'No. Customers shop directly inside WhatsApp. They message your number, browse products, view details and prices, and receive direct Flutterwave bank-transfer instructions right in the chat.',
+      a: 'No. Customers shop directly inside WhatsApp. They message your number, browse products, view details and prices, and receive a secure Blaaiz payment option right in the chat.',
     },
     {
       q: 'How do I get paid?',
-      a: 'All transactions are processed securely through Flutterwave. The funds are split automatically into your registered Nigerian bank account after server-side verification.',
+      a: 'Card transactions are processed securely through Blaaiz and independently verified by ShopPal before an order is marked paid. Vendor proceeds are settled to the registered Nigerian bank account.',
     },
     {
       q: 'Does the bot understand Nigerian Pidgin and local phrases?',

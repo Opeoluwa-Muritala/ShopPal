@@ -275,7 +275,7 @@ describe('Signup Flow Components', () => {
 
       expect(screen.getByText(/You're Live!/i)).toBeDefined();
       expect(screen.getAllByText('+1 415 523 8886').length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/Flutterwave bank transfer inside WhatsApp/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Secure Blaaiz payment inside WhatsApp/i).length).toBeGreaterThan(0);
       expect(screen.getByRole('link', { name: /Go to Dashboard/i })).toBeDefined();
     });
 

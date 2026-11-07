@@ -64,7 +64,7 @@ export default function Step4Success({
           <div className="bg-slate-50 p-3 rounded border border-slate-200">
             <span className="text-slate-500 block text-xs">Checkout:</span>
             <strong className="text-slate-900 text-sm block mt-1">
-              Flutterwave bank transfer inside WhatsApp
+              Secure Blaaiz payment inside WhatsApp
             </strong>
           </div>
         </div>
