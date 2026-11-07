@@ -4,9 +4,11 @@ import json
 import time
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+from app.config import Settings
 from app.routers.blaaiz import CardCollectionRequest, verify_signature
+from app.services.blaaiz import BlaaizClient, BlaaizError
 
 
 def test_blaaiz_signature_checks_raw_body_and_timestamp():
@@ -52,3 +54,50 @@ def test_blaaiz_rejects_malformed_card_fields(field, value):
     payload[field] = value
     with pytest.raises(ValidationError):
         CardCollectionRequest(**payload)
+
+
+@pytest.mark.asyncio
+async def test_blaaiz_resolves_active_ngn_wallet_when_not_configured(monkeypatch):
+    client = BlaaizClient(
+        Settings(
+            blaaiz_client_id=SecretStr("client-id"),
+            blaaiz_client_secret=SecretStr("client-secret"),
+            blaaiz_wallet_id="",
+        )
+    )
+
+    async def fake_request(method, path, *, payload=None):
+        assert (method, path, payload) == ("GET", "/api/external/wallet", None)
+        return [
+            {"id": "wallet-cad", "currency": "CAD", "is_active": True},
+            {"id": "wallet-ngn", "currency": "NGN", "is_active": True},
+        ]
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    assert await client.wallet_id() == "wallet-ngn"
+
+
+@pytest.mark.asyncio
+async def test_blaaiz_wallet_resolution_fails_on_ambiguous_ngn_wallets(monkeypatch):
+    client = BlaaizClient(Settings(blaaiz_wallet_id=""))
+
+    async def fake_request(method, path, *, payload=None):
+        return [
+            {"id": "wallet-one", "currency": "NGN", "is_active": True},
+            {"id": "wallet-two", "currency": "NGN", "is_active": True},
+        ]
+
+    monkeypatch.setattr(client, "_request", fake_request)
+    with pytest.raises(BlaaizError, match="exactly one active NGN"):
+        await client.wallet_id()
+
+
+@pytest.mark.asyncio
+async def test_blaaiz_configured_wallet_skips_api_lookup(monkeypatch):
+    client = BlaaizClient(Settings(blaaiz_wallet_id=" configured-wallet "))
+
+    async def unexpected_request(*args, **kwargs):
+        raise AssertionError("wallet API should not be called")
+
+    monkeypatch.setattr(client, "_request", unexpected_request)
+    assert await client.wallet_id() == "configured-wallet"
