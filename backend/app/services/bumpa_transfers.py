@@ -53,6 +53,14 @@ def _message_text(message: dict[str, Any]) -> str:
     return ""
 
 
+def is_customer_paid_claim(message: dict[str, Any]) -> bool:
+    text = _message_text(message).casefold()
+    for apostrophe in ("’", "‘", "ʼ", "＇"):
+        text = text.replace(apostrophe, "'")
+    text = re.sub(r"[.!?,;:]+$", "", text).strip()
+    return text in {"i've paid", "ive paid", "paid"}
+
+
 class TransferService:
     def __init__(self, sessions: async_sessionmaker[AsyncSession], http_client: httpx.AsyncClient, settings: Settings) -> None:
         self.sessions = sessions
@@ -181,11 +189,7 @@ class TransferService:
         wa_id = str(message.get("from") or "")
         if not wa_id:
             return False
-        text = _message_text(message).casefold()
-        for apostrophe in ("’", "‘", "ʼ", "＇"):
-            text = text.replace(apostrophe, "'")
-        text = re.sub(r"[.!?,;:]+$", "", text).strip()
-        is_paid = text in {"i've paid", "ive paid", "paid"}
+        is_paid = is_customer_paid_claim(message)
         image = message.get("image") if message.get("type") == "image" else None
         media_id = image.get("id") if isinstance(image, dict) else None
         if not is_paid and not media_id:

@@ -86,6 +86,24 @@ def _message(body):
 
 
 @pytest.mark.anyio
+async def test_paid_claim_does_not_reach_assistant():
+    merchant = make_merchant()
+    client = FakeWhatsApp()
+    flow = ConversationHarness(merchant, make_product(), client)
+    assistant = SimpleNamespace(enabled=True, interpret=AsyncMock())
+    flow._assistant = assistant
+
+    await flow(merchant, _message("I’ve paid."))
+
+    assistant.interpret.assert_not_awaited()
+    assert client.sent[-1] == (
+        "text",
+        flow.state.customer_wa_id,
+        "I couldn't find an open transfer for this WhatsApp number. Reply RESEND to request the bank details again.",
+    )
+
+
+@pytest.mark.anyio
 async def test_waiting_for_transfer_shows_paid_quick_reply():
     merchant = make_merchant()
     client = FakeWhatsApp()
