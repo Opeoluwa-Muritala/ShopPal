@@ -72,7 +72,7 @@ class TransferService:
             )
         if row is None:
             return False
-        await client.send_text(
+        await client.send_buttons(
             wa_id,
             f"*Amount to pay:*\n{_amount(row.amount)}\n\n"
             f"*Bank:*\n{merchant.payout_bank_name}\n"
@@ -81,6 +81,7 @@ class TransferService:
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. "
             "Your payment is confirmed only after the owner checks their bank.",
+            [("paid", "I've paid")],
         )
         return True
 
@@ -163,7 +164,7 @@ class TransferService:
         if row is None:
             await client.send_text(customer_wa_id, "Transfer instructions are temporarily unavailable. Please try again.")
             return None
-        await client.send_text(
+        await client.send_buttons(
             customer_wa_id,
             f"*Amount to pay:*\n{_amount(amount)}\n\n"
             f"*Bank:*\n{merchant.payout_bank_name}\n"
@@ -171,6 +172,7 @@ class TransferService:
             f"*Account number:*\n{merchant.payout_account_number}\n\n"
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. Your payment is confirmed only after the owner checks their bank.",
+            [("paid", "I've paid")],
         )
         return row
 

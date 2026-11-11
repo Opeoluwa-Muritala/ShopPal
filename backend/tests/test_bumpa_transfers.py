@@ -45,12 +45,14 @@ class FakeSession:
 class FakeWhatsApp:
     def __init__(self):
         self.sent: list[tuple[str, str, str]] = []
+        self.buttons: list[list[tuple[str, str]]] = []
 
     async def send_text(self, to: str, body: str):
         self.sent.append(("text", to, body))
 
     async def send_buttons(self, to: str, body: str, _buttons):
         self.sent.append(("buttons", to, body))
+        self.buttons.append(_buttons)
 
     async def send_template(self, to: str, _name: str, _language: str, _components):
         self.sent.append(("template", to, "template"))
@@ -106,6 +108,7 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert created is row
     assert "1234567890" in whatsapp.sent[-1][2]
     assert "SHP-4F2K" in whatsapp.sent[-1][2]
+    assert whatsapp.buttons[-1] == [("paid", "I've paid")]
     session.row = row
     image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
     assert await transfer.customer_proof(shop, image, whatsapp)
