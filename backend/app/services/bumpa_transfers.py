@@ -210,7 +210,7 @@ class TransferService:
                 row.proof_media_id = media_id
             reference, amount = row.reference, row.amount
             await session.commit()
-        if first_proof:
+        if first_proof or is_paid:
             claim = "payment claim" if is_paid else "receipt screenshot"
             items = getattr(row, "items", None) or []
             delivery = next((item for item in items if item.get("type") == "delivery"), None)
