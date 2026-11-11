@@ -86,6 +86,23 @@ def _message(body):
 
 
 @pytest.mark.anyio
+async def test_waiting_for_transfer_shows_paid_quick_reply():
+    merchant = make_merchant()
+    client = FakeWhatsApp()
+    flow = ConversationHarness(merchant, make_product(), client)
+    flow.state.step = "awaiting_transfer"
+
+    await flow(merchant, _message("hello"))
+
+    assert client.sent[-1] == (
+        "buttons",
+        flow.state.customer_wa_id,
+        "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or tap I've paid after transferring.",
+        [("paid", "I've paid")],
+    )
+
+
+@pytest.mark.anyio
 async def test_gemma_selection_runs_live_product_validation_before_payment_options():
     merchant = make_merchant()
     product = make_product()
