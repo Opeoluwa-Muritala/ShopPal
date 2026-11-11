@@ -108,7 +108,9 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert created is row
     assert "1234567890" in whatsapp.sent[-1][2]
     assert "SHP-4F2K" in whatsapp.sent[-1][2]
-    assert whatsapp.buttons[-1] == [("resend", "Resend details"), ("paid", "I've paid")]
+    assert whatsapp.buttons[-1] == [
+        ("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart"),
+    ]
     session.row = row
     image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
     assert await transfer.customer_proof(shop, image, whatsapp)
@@ -118,6 +120,20 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert "1234567890" not in whatsapp.sent[-1][2]
     send_email_mock.assert_awaited_once()
     assert "receipt screenshot" in send_email_mock.await_args.args[4]
+
+
+@pytest.mark.anyio
+async def test_resend_sends_account_details_without_pending_row():
+    shop = merchant()
+    transfer = service(FakeSession())
+    whatsapp = FakeWhatsApp()
+
+    assert await transfer.resend(shop, "2348022222222", whatsapp)
+
+    assert "1234567890" in whatsapp.sent[-1][2]
+    assert whatsapp.buttons[-1] == [
+        ("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart"),
+    ]
 
 
 @pytest.mark.anyio
