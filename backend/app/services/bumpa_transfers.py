@@ -1,5 +1,6 @@
 """Human-verified transfer fallback; Bumpa remains the order ledger."""
 
+import re
 import secrets
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -180,7 +181,10 @@ class TransferService:
         wa_id = str(message.get("from") or "")
         if not wa_id:
             return False
-        text = _message_text(message).casefold().replace("’", "'")
+        text = _message_text(message).casefold()
+        for apostrophe in ("’", "‘", "ʼ", "＇"):
+            text = text.replace(apostrophe, "'")
+        text = re.sub(r"[.!?,;:]+$", "", text).strip()
         is_paid = text in {"i've paid", "ive paid", "paid"}
         image = message.get("image") if message.get("type") == "image" else None
         media_id = image.get("id") if isinstance(image, dict) else None
