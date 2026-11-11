@@ -662,9 +662,10 @@ class BumpaConversation:
         if await self._transfers.customer_proof(merchant, message, client):
             return
         if is_customer_paid_claim(message):
-            await client.send_text(
+            await client.send_buttons(
                 wa_id,
                 "I couldn't find an open transfer for this WhatsApp number. Reply RESEND to request the bank details again.",
+                [("resend", "Resend details")],
             )
             return
         text = _incoming(message)
@@ -719,7 +720,7 @@ class BumpaConversation:
             await client.send_buttons(
                 wa_id,
                 "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or tap I've paid after transferring.",
-                [("paid", "I've paid")],
+                [("resend", "Resend details"), ("paid", "I've paid")],
             )
             return
         if state.step == "cart_menu":
