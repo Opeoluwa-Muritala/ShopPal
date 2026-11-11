@@ -108,7 +108,7 @@ async def test_transfer_sends_bank_only_after_choice_and_never_persists_proof_im
     assert created is row
     assert "1234567890" in whatsapp.sent[-1][2]
     assert "SHP-4F2K" in whatsapp.sent[-1][2]
-    assert whatsapp.buttons[-1] == [("paid", "I've paid")]
+    assert whatsapp.buttons[-1] == [("resend", "Resend details"), ("paid", "I've paid")]
     session.row = row
     image = {"from": row.customer_wa_id, "type": "image", "image": {"id": "media-1"}}
     assert await transfer.customer_proof(shop, image, whatsapp)
