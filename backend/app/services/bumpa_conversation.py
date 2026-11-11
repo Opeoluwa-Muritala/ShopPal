@@ -720,7 +720,7 @@ class BumpaConversation:
             await client.send_buttons(
                 wa_id,
                 "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or tap I've paid after transferring.",
-                [("resend", "Resend details"), ("paid", "I've paid")],
+                [("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart")],
             )
             return
         if state.step == "cart_menu":
