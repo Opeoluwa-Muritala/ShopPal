@@ -138,7 +138,7 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
     whatsapp = FakeWhatsApp()
     send_email_mock = AsyncMock()
     monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
-    paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I've paid"}}
+    paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I’ve paid."}}
     assert await transfer.customer_proof(shop, paid, whatsapp)
     assert any("never proof of payment" in sent[2] for sent in whatsapp.sent)
     send_email_mock.assert_awaited_once()
