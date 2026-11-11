@@ -90,7 +90,7 @@ class TransferService:
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. "
             "Your payment is confirmed only after the owner checks their bank.",
-            [("paid", "I've paid")],
+            [("resend", "Resend details"), ("paid", "I've paid")],
         )
         return True
 
@@ -181,7 +181,7 @@ class TransferService:
             f"*Account number:*\n{merchant.payout_account_number}\n\n"
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. Your payment is confirmed only after the owner checks their bank.",
-            [("paid", "I've paid")],
+            [("resend", "Resend details"), ("paid", "I've paid")],
         )
         return row
 
