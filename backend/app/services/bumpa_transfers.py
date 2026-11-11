@@ -80,7 +80,21 @@ class TransferService:
                 ).order_by(PendingTransfer.created_at.desc())
             )
         if row is None:
-            return False
+            if not all((
+                merchant.payout_bank_name,
+                merchant.payout_account_name,
+                merchant.payout_account_number,
+            )):
+                return False
+            await client.send_buttons(
+                wa_id,
+                f"*Bank:*\n{merchant.payout_bank_name}\n"
+                f"*Account name:*\n{merchant.payout_account_name}\n"
+                f"*Account number:*\n{merchant.payout_account_number}\n\n"
+                "Please confirm the amount and include your transfer reference if the shop provided one.",
+                [("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart")],
+            )
+            return True
         await client.send_buttons(
             wa_id,
             f"*Amount to pay:*\n{_amount(row.amount)}\n\n"
@@ -90,7 +104,7 @@ class TransferService:
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. "
             "Your payment is confirmed only after the owner checks their bank.",
-            [("resend", "Resend details"), ("paid", "I've paid")],
+            [("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart")],
         )
         return True
 
@@ -181,7 +195,7 @@ class TransferService:
             f"*Account number:*\n{merchant.payout_account_number}\n\n"
             f"Put {row.reference} in the transfer narration. "
             "Send 'I've paid' or a screenshot of your receipt when done. Your payment is confirmed only after the owner checks their bank.",
-            [("resend", "Resend details"), ("paid", "I've paid")],
+            [("resend", "Resend details"), ("paid", "I've paid"), ("order_more", "Add more to cart")],
         )
         return row
 
