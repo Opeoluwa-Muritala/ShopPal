@@ -44,7 +44,7 @@ from app.services.bumpa_checkout import (
 )
 from app.services.bumpa_payments import PaymentTracker
 from app.services.bumpa_sync import refresh_product_live
-from app.services.bumpa_transfers import TransferService
+from app.services.bumpa_transfers import TransferService, is_customer_paid_claim
 from app.services.bumpa_whatsapp import has_open_capacity
 from app.services.delivery_postcodes import registered_postcode, supplied_postcode
 from app.services.scarf_collections import (
@@ -660,6 +660,12 @@ class BumpaConversation:
         if await self._transfers.owner_action(merchant, message, client):
             return
         if await self._transfers.customer_proof(merchant, message, client):
+            return
+        if is_customer_paid_claim(message):
+            await client.send_text(
+                wa_id,
+                "I couldn't find an open transfer for this WhatsApp number. Reply RESEND to request the bank details again.",
+            )
             return
         text = _incoming(message)
         lower = text.casefold()

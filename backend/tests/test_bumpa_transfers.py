@@ -157,6 +157,25 @@ async def test_paid_text_alert_keeps_whatsapp_owner_notice_and_sends_email(monke
 
 
 @pytest.mark.anyio
+async def test_repeated_paid_claim_resends_confirmation_email(monkeypatch):
+    shop = merchant()
+    row = SimpleNamespace(
+        reference="SHP-4F2K", merchant_id=shop.id, bumpa_product_id="p1", quantity=1,
+        amount=Decimal("5000"), customer_wa_id="2348022222222", status="proof_received",
+        proof_media_id=None, created_at=datetime.now(UTC), resolved_at=None,
+        items=[{"type": "customer", "name": "Ada Okafor", "phone": "08022222222"}],
+    )
+    transfer = service(FakeSession(row))
+    whatsapp = FakeWhatsApp()
+    send_email_mock = AsyncMock()
+    monkeypatch.setattr(bumpa_transfers, "send_email", send_email_mock)
+
+    paid = {"from": row.customer_wa_id, "type": "text", "text": {"body": "I've paid"}}
+    assert await transfer.customer_proof(shop, paid, whatsapp)
+    send_email_mock.assert_awaited_once()
+
+
+@pytest.mark.anyio
 async def test_screenshot_alert_precedes_customer_reply_and_paid_text_does_not_duplicate_it(monkeypatch):
     shop = merchant()
     row = SimpleNamespace(
