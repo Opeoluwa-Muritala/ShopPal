@@ -710,7 +710,11 @@ class BumpaConversation:
             await self._menu(merchant, wa_id, client)
             return
         if state.step in {"awaiting_payment", "awaiting_transfer"} and lower not in {"cancel", "start over"}:
-            await client.send_text(wa_id, "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or send I've paid after transferring.")
+            await client.send_buttons(
+                wa_id,
+                "Your basket is waiting for transfer confirmation. Reply RESEND if you need the bank details again, or tap I've paid after transferring.",
+                [("paid", "I've paid")],
+            )
             return
         if state.step == "cart_menu":
             if lower.startswith("cartpage:"):
